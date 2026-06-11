@@ -1,9 +1,5 @@
 # Changelog
 
-## [0.2.0] - 2026-06-12
-
-- Plotly engine, 11 chart types, chart-to-map selection, live mode, themes
-
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
