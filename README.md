@@ -4,7 +4,7 @@
 
 # 02viz — Geospatial Visualization Studio
 
-**Elite geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.**
+**Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.**
 
 [![QGIS](https://img.shields.io/badge/QGIS-3.28%2B-93b023?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/02viz/)
 [![Version](https://img.shields.io/github/v/tag/YusufEminoglu/02viz?label=version&color=blue)](https://github.com/YusufEminoglu/02viz/releases)

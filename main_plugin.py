@@ -114,7 +114,7 @@ class O2VizPlugin:
             self.iface.mainWindow(),
             PLUGIN_TITLE,
             "<h3>02viz</h3>"
-            "<p>Geospatial Visualization Studio — elite, multi-engine charts "
+            "<p>Geospatial Visualization Studio — multi-engine charts "
             "from QGIS layers and external data.</p>"
             "<p><a href='https://github.com/YusufEminoglu/02viz'>"
             "github.com/YusufEminoglu/02viz</a></p>",
