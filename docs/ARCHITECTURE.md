@@ -9,12 +9,14 @@
     bridge.py           # SelectionBridge: chart click → canvas selection
   core/
     datasource.py       # layer → row-aligned columns (+feature ids); OGR tables
-    stats.py            # pure-Python aggregation / histogram / boxplot
+    stats.py            # pure-Python aggregation / histogram / boxplot / Pearson
     transform.py        # pivot, heatmap matrix, tree, top-N, sort, trend, bubble sizes
+    profile.py          # one-click layer profiling → dashboard tiles + insights
   engines/
     base.py             # ChartEngine contract, spec schema, themes, HTML shell
     echarts.py          # Apache ECharts engine (canvas)
     plotly.py           # Plotly.js engine (SVG)
+    dashboard.py        # profile → single-page dashboard (KPIs, insight chips, chart grid)
   web/
     echarts.min.js      # vendored, Apache-2.0
     plotly.min.js       # vendored, MIT

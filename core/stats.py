@@ -89,6 +89,23 @@ def histogram(values: list, bins: int = 20) -> tuple[list[str], list[int]]:
     return labels, counts
 
 
+def pearson(xs: list, ys: list) -> float | None:
+    """Pearson correlation of the numeric pairs in xs/ys; None if degenerate."""
+    pairs = [(a, b) for a, b in ((to_float(x), to_float(y)) for x, y in zip(xs, ys))
+             if a is not None and b is not None]
+    n = len(pairs)
+    if n < 3:
+        return None
+    mx = sum(p[0] for p in pairs) / n
+    my = sum(p[1] for p in pairs) / n
+    sxx = sum((p[0] - mx) ** 2 for p in pairs)
+    syy = sum((p[1] - my) ** 2 for p in pairs)
+    if sxx == 0 or syy == 0:
+        return None
+    sxy = sum((p[0] - mx) * (p[1] - my) for p in pairs)
+    return sxy / math.sqrt(sxx * syy)
+
+
 def boxplot_stats(values: list) -> list[float] | None:
     """[min, Q1, median, Q3, max] with linear-interpolation quartiles."""
     nums = sorted(v for v in (to_float(x) for x in values) if v is not None)

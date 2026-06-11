@@ -1,7 +1,18 @@
 # Changelog
 
+## [0.3.0] - 2026-06-12
+
+- One-click Explore dashboard, honest axes, heatmap contrast
+
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
+
+## [0.3.0] - 2026-06-12
+
+- ✨ **Explore**: one click profiles every field of a layer and builds a complete interactive dashboard — KPI cards, a count bar per categorical field, a histogram per numeric field, a Pearson correlation matrix (diverging colors), the strongest-relationship scatter with trend line, and plain-English insight chips. Exports as a single HTML file; every chart stays clickable (chart → map selection).
+- Honest axes: bar, area and histogram value axes now always start at zero (a category could previously disappear).
+- Heatmap polish: per-cell value labels with automatic contrast (white on intense cells) and a diverging red-teal ramp for correlation matrices in both engines.
+- Human number formatting in titles and insights (219,250 instead of 2.192e+05).
 
 ## [0.2.0] - 2026-06-12
 

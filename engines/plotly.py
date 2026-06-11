@@ -129,11 +129,14 @@ class PlotlyEngine(ChartEngine):
             z: list[list] = [[None] * len(x_cats) for _ in y_cats]
             for xi, yi, v in data.get("cells", []):
                 z[yi][xi] = v
+            if data.get("diverging"):
+                scale = [[0, theme["palette"][1]], [0.5, theme["bg"]],
+                         [1, theme["palette"][0]]]
+            else:
+                scale = [[0, theme["bg"]], [0.5, theme["palette"][0]],
+                         [1, theme["palette"][2]]]
             traces.append({"type": "heatmap", "x": x_cats, "y": y_cats, "z": z,
-                           "colorscale": [[0, theme["bg"]],
-                                          [0.5, theme["palette"][0]],
-                                          [1, theme["palette"][2]]],
-                           "showscale": True})
+                           "colorscale": scale, "showscale": True})
 
         elif kind in ("treemap", "sunburst"):
             ids_, labels, parents, values = [], [], [], []

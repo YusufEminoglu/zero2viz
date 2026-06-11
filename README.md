@@ -23,6 +23,7 @@ Charting in GIS has always meant exporting attribute tables to a spreadsheet, or
 
 ## ✨ Features
 
+- **One-click Explore** — pick a layer, press one button: 02viz profiles every field and builds a complete interactive dashboard — KPI cards, a chart per field, a Pearson correlation matrix, the strongest-relationship scatter with trend line, and plain-English insight chips ("Strongest link: pop ↔ income, r = -0.47").
 - **Eleven chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap and sunburst.
 - **Two rendering engines** — vendored Apache ECharts and Plotly.js behind one spec contract; switch engines with a combo box, everything works offline.
 - **Chart → map selection** — click a bar, slice or point and the matching features are selected on the canvas (QtWebKit and QtWebEngine bridges).
@@ -61,7 +62,8 @@ Requires QGIS 3.28 or newer. No external Python dependencies for the core studio
 | Chart | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
 | Chart | Stacked / Trend line / Click selects | Stack bars+areas, least-squares trend, chart→map selection toggle |
 | Output | Render chart | Renders interactive HTML in the embedded viewer (WebEngine → WebKit → browser) |
-| Output | Export HTML… | Saves the chart as one self-contained offline HTML file |
+| Output | ✨ Explore layer | One click → full dashboard: KPIs, auto-charts, correlation matrix, insights |
+| Output | Export HTML… | Saves the chart **or the whole dashboard** as one self-contained offline HTML file |
 
 ## 🧩 Part of the PlanX ecosystem
 

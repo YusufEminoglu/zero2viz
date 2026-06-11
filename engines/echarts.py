@@ -18,7 +18,8 @@ window.__chartReady = true;
 """
 
 
-def _axis(theme: dict, name: str, kind: str = "value", data=None, rotate: int = 0) -> dict:
+def _axis(theme: dict, name: str, kind: str = "value", data=None, rotate: int = 0,
+          zero: bool = False) -> dict:
     ax = {"type": kind, "name": name, "nameLocation": "middle",
           "nameGap": 38 if kind == "category" else 42,
           "nameTextStyle": {"color": theme["text"]},
@@ -30,7 +31,8 @@ def _axis(theme: dict, name: str, kind: str = "value", data=None, rotate: int = 
         if rotate:
             ax["axisLabel"]["rotate"] = rotate
     else:
-        ax["scale"] = True
+        # bars/areas must start at zero or relative sizes lie to the reader
+        ax["scale"] = not zero
     return ax
 
 
@@ -46,10 +48,14 @@ class EChartsEngine(ChartEngine):
     label = "ECharts"
 
     def build_html(self, spec: dict) -> str:
-        option = self._option(spec)
+        option = self.option(spec)
         return wrap_html(spec.get("title", ""), read_web("echarts.min.js"),
                          _BODY % {"option": json.dumps(option, ensure_ascii=False)},
                          theme_of(spec))
+
+    def option(self, spec: dict) -> dict:
+        """Public: the ECharts option for a spec (reused by the dashboard)."""
+        return self._option(spec)
 
     # ───────────────────── option builder ─────────────────────
 
@@ -78,7 +84,8 @@ class EChartsEngine(ChartEngine):
             option["xAxis"] = _axis(theme, spec.get("x_label", ""), "category",
                                     data.get("categories", []),
                                     rotate=45 if kind == "histogram" else 30)
-            option["yAxis"] = _axis(theme, spec.get("y_label", ""))
+            option["yAxis"] = _axis(theme, spec.get("y_label", ""),
+                                    zero=kind in ("bar", "area", "histogram"))
             if len(series_in) > 1:
                 option["legend"] = {"top": 28, "textStyle": {"color": theme["text"]}}
             out = []
@@ -149,15 +156,30 @@ class EChartsEngine(ChartEngine):
             option["yAxis"] = _axis(theme, spec.get("y_label", ""), "category",
                                     data.get("y_cats", []))
             option["yAxis"]["nameGap"] = 70
+            vmin, vmax = data.get("vmin", 0), data.get("vmax", 1)
+            if data.get("diverging"):
+                ramp = [theme["palette"][1], theme["bg"], theme["palette"][0]]
+            else:
+                ramp = [theme["bg"], theme["palette"][0], theme["palette"][2]]
             option["visualMap"] = {
-                "min": data.get("vmin", 0), "max": data.get("vmax", 1),
+                "min": vmin, "max": vmax,
                 "calculable": True, "orient": "horizontal", "left": "center", "bottom": 6,
                 "textStyle": {"color": theme["text"]},
-                "inRange": {"color": [theme["bg"], theme["palette"][0],
-                                      theme["palette"][2]]},
+                "inRange": {"color": ramp},
             }
-            option["series"] = [{"type": "heatmap", "data": data.get("cells", []),
-                                 "label": {"show": True, "color": theme["text"]}}]
+            # per-cell labels: white on intense cells, theme text near the middle
+            mid = (vmin + vmax) / 2.0
+            span = (vmax - vmin) or 1.0
+            items = []
+            for cell in data.get("cells", []):
+                v = cell[2]
+                intense = abs(v - mid) > span * 0.28
+                txt = f"{v:,.0f}" if abs(v) >= 1000 else f"{v:.3g}"
+                items.append({"value": cell,
+                              "label": {"color": "#ffffff" if intense else theme["text"],
+                                        "formatter": txt}})
+            option["series"] = [{"type": "heatmap", "data": items,
+                                 "label": {"show": True}}]
 
         elif kind in ("treemap", "sunburst"):
             nodes = data.get("nodes", [])

@@ -29,9 +29,10 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
-from ..core import datasource, stats, transform
+from ..core import datasource, profile as profiler, stats, transform
 from ..engines import engines
 from ..engines.base import DEFAULT_THEME, THEMES
+from ..engines.dashboard import build_dashboard
 from .bridge import SelectionBridge
 from .webview import attach_bridge, create_chart_view, show_html_file
 
@@ -240,6 +241,15 @@ class StudioDockWidget(QDockWidget):
         self.render_btn.setStyleSheet(_RENDER_BTN_QSS)
         self.render_btn.clicked.connect(self._render)
         btn_row.addWidget(self.render_btn, 2)
+        self.explore_btn = QPushButton("✨ Explore layer")
+        self.explore_btn.setToolTip(
+            "One click: profile every field and build a full interactive dashboard")
+        self.explore_btn.setStyleSheet(
+            "QPushButton { background-color: #16323f; border: 1px solid #16323f;"
+            " color: #ffffff; font-weight: 600; padding: 7px 12px; border-radius: 8px; }"
+            "QPushButton:hover { background-color: #1f4254; }")
+        self.explore_btn.clicked.connect(self._explore)
+        btn_row.addWidget(self.explore_btn, 2)
         self.export_btn = QPushButton("Export HTML…")
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_html)
@@ -517,19 +527,12 @@ class StudioDockWidget(QDockWidget):
 
     _spec_sunburst = _spec_treemap
 
-    # ───────────────────────── render / export ─────────────────────────
+    # ───────────────────────── render / explore / export ─────────────────────────
 
-    def _render(self) -> None:
-        try:
-            spec = self._build_spec()
-            if spec is None:
-                return
-            engine = engines()[max(0, self.engine_combo.currentIndex())]
-            html = engine.build_html(spec)
-        except Exception as exc:
-            self.set_status(f"Chart failed: {exc}")
-            return
+    def _current_theme(self) -> dict:
+        return THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
 
+    def _show_html(self, html: str, status: str) -> None:
         if self._tmp_dir is None:
             self._tmp_dir = tempfile.mkdtemp(prefix="o2viz_")
         path = os.path.join(self._tmp_dir, f"chart_{int(time.time() * 1000)}.html")
@@ -549,7 +552,37 @@ class StudioDockWidget(QDockWidget):
         embedded = show_html_file(self._view_kind, self._view, path)
         self.export_btn.setEnabled(True)
         where = "" if embedded else " (no web view in this QGIS build — opened in your browser)"
-        self.set_status(f"Rendered {spec['type']} · {engine.label}{where}")
+        self.set_status(status + where)
+
+    def _render(self) -> None:
+        try:
+            spec = self._build_spec()
+            if spec is None:
+                return
+            engine = engines()[max(0, self.engine_combo.currentIndex())]
+            html = engine.build_html(spec)
+        except Exception as exc:
+            self.set_status(f"Chart failed: {exc}")
+            return
+        self._show_html(html, f"Rendered {spec['type']} · {engine.label}")
+
+    def _explore(self) -> None:
+        layer = self.layer_combo.currentLayer()
+        if layer is None:
+            self.set_status("Pick a layer first")
+            return
+        try:
+            prof = profiler.build_profile(layer, self.selected_only.isChecked(),
+                                          self._current_theme())
+            if not prof["tiles"]:
+                self.set_status("Nothing chartable found in this layer's fields")
+                return
+            html = build_dashboard(prof, self._current_theme())
+        except Exception as exc:
+            self.set_status(f"Explore failed: {exc}")
+            return
+        self._show_html(html, f"Explored {layer.name()}: {len(prof['tiles'])} charts, "
+                              f"{len(prof['insights'])} insights")
 
     def _export_html(self) -> None:
         if not self._last_html:
