@@ -23,14 +23,14 @@ Charting in GIS has always meant exporting attribute tables to a spreadsheet, or
 
 ## ✨ Features
 
-- **Six chart types, zero setup** — bar, line, scatter, histogram, pie/donut and box plot, rendered as interactive HTML by a vendored Apache ECharts engine (fully offline).
-- **Built-in aggregation** — count, sum, mean, median, min, max grouped by any field; histograms and box-plot quartiles are computed in pure Python.
+- **Eleven chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap and sunburst.
+- **Two rendering engines** — vendored Apache ECharts and Plotly.js behind one spec contract; switch engines with a combo box, everything works offline.
+- **Chart → map selection** — click a bar, slice or point and the matching features are selected on the canvas (QtWebKit and QtWebEngine bridges).
+- **Live mode** — optionally re-render on every canvas selection change; "Only selected features" scopes any chart to your selection.
+- **Built-in data shaping** — aggregation (count/sum/mean/median/min/max), group/color-by field, Top-N with "Other" collapse, value sorting, least-squares trend line, histogram binning and box-plot quartiles — all pure Python, no pandas/numpy needed.
 - **Layers and beyond** — chart any vector layer or attribute table, or load external CSV/XLSX/ODS tables straight into the studio.
-- **Selection-aware** — flip "Only selected features" and the chart follows your canvas selection.
-- **One-file export** — every chart saves as a single self-contained interactive HTML; PNG export via the built-in chart toolbox.
-- **Multi-engine architecture** — Plotly.js, Vega-Lite and an R/ggplot2 bridge plug into the same spec contract ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). *(planned)*
-- **Map-linked interactivity** — select on the chart, see it highlighted on the canvas. *(planned)*
-- **Instant startup** — engines load lazily; the studio dock opens immediately and never slows QGIS down.
+- **Four themes** — Studio Light, Ink Dark, Soft Pastel, Bold Print; consistent across both engines.
+- **One-file export** — every chart saves as a single self-contained interactive HTML; PNG export via the chart toolbox.
 - **Qt5 and Qt6 ready** — runs on QGIS 3.28+ and the QGIS 4 line, with a WebEngine → WebKit → browser viewer fallback chain.
 
 ## 🚀 Installation
@@ -54,8 +54,12 @@ Requires QGIS 3.28 or newer. No external Python dependencies for the core studio
 | Group | Component | What it does |
 |-------|-----------|--------------|
 | Data | Layer combo + selected-only | Binds any vector layer/table; respects canvas selection |
+| Data | Live: redraw on selection | Re-renders the chart whenever the layer selection changes |
 | Data | Load external table… | Opens CSV/XLSX/ODS/GPKG tables via OGR and adds them to the layer list |
-| Chart | Type / Engine / X / Y / Aggregate / Bins | Spec builder: 6 chart types, 6 aggregations, histogram binning |
+| Chart | Type / Engine / Theme | 11 chart types × 2 engines (ECharts, Plotly) × 4 themes |
+| Chart | X / Y / Group / Value-Size | Field bindings; Group splits colored series, Value drives bubble size, heatmap cells and treemap weights |
+| Chart | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
+| Chart | Stacked / Trend line / Click selects | Stack bars+areas, least-squares trend, chart→map selection toggle |
 | Output | Render chart | Renders interactive HTML in the embedded viewer (WebEngine → WebKit → browser) |
 | Output | Export HTML… | Saves the chart as one self-contained offline HTML file |
 

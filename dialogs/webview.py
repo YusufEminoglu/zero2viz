@@ -29,6 +29,33 @@ def create_chart_view(parent=None):
         return "browser", None
 
 
+def attach_bridge(kind: str, view, bridge) -> bool:
+    """Expose the SelectionBridge to the page as ``o2vizBridge``.
+    Must be called once, before the first load. Returns True if wired."""
+    if view is None:
+        return False
+    try:
+        if kind == "webkit":
+            frame = view.page().mainFrame()
+
+            def _inject():
+                frame.addToJavaScriptWindowObject("o2vizBridge", bridge)
+
+            frame.javaScriptWindowObjectCleared.connect(_inject)
+            return True
+        if kind == "webengine":
+            from qgis.PyQt.QtWebChannel import QWebChannel
+
+            channel = QWebChannel(view.page())
+            channel.registerObject("o2vizBridge", bridge)
+            view.page().setWebChannel(channel)
+            view._o2viz_channel = channel  # keep alive
+            return True
+    except Exception as exc:
+        FALLBACK_LOG.append(f"bridge[{kind}]: {exc}")
+    return False
+
+
 def show_html_file(kind: str, view, path: str) -> bool:
     """Display the HTML file; returns True if shown embedded."""
     if view is not None:

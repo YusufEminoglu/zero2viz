@@ -2,9 +2,9 @@
 """02viz studio dock — the chart builder.
 
 Data card (layer / selected-only / external table) + Chart card (type,
-fields, aggregation, bins) + embedded viewer. Spec assembly lives in
-``_build_spec``; rendering goes through the engine registry so future
-engines (Plotly, Vega-Lite, R) plug in without touching this UI flow.
+engine, theme, fields, aggregation, shaping) + embedded viewer with a
+chart→map selection bridge. Spec assembly lives in ``_build_spec``;
+rendering goes through the engine registry, so engines never touch Qt.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import os
 import tempfile
 import time
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,9 +29,11 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
-from ..core import datasource, stats
+from ..core import datasource, stats, transform
 from ..engines import engines
-from .webview import create_chart_view, show_html_file
+from ..engines.base import DEFAULT_THEME, THEMES
+from .bridge import SelectionBridge
+from .webview import attach_bridge, create_chart_view, show_html_file
 
 _DOCK_QSS = """
 QWidget#o2vizRoot { background: #fbfbfd; }
@@ -55,11 +57,32 @@ _RENDER_BTN_QSS = (
 CHART_TYPES = [
     ("bar", "Bar chart"),
     ("line", "Line chart"),
+    ("area", "Area chart"),
     ("scatter", "Scatter plot"),
+    ("bubble", "Bubble chart"),
     ("histogram", "Histogram"),
     ("pie", "Pie / donut"),
     ("box", "Box plot"),
+    ("heatmap", "Heatmap (matrix)"),
+    ("treemap", "Treemap"),
+    ("sunburst", "Sunburst"),
 ]
+
+# which controls matter per chart type:
+#   (y, group, value_size, aggregate, bins, topn_sort, stacked, trend)
+_CONTROLS = {
+    "bar":       (True,  True,  False, True,  False, True,  True,  False),
+    "line":      (True,  True,  False, True,  False, True,  False, False),
+    "area":      (True,  True,  False, True,  False, True,  True,  False),
+    "scatter":   (True,  True,  False, False, False, False, False, True),
+    "bubble":    (True,  True,  True,  False, False, False, False, True),
+    "histogram": (False, False, False, False, True,  False, False, False),
+    "pie":       (True,  False, False, True,  False, True,  False, False),
+    "box":       (True,  True,  False, False, False, False, False, False),
+    "heatmap":   (True,  False, True,  True,  False, False, False, False),
+    "treemap":   (False, True,  True,  True,  False, False, False, False),
+    "sunburst":  (False, True,  True,  True,  False, False, False, False),
+}
 
 
 def _vector_filter():
@@ -85,6 +108,10 @@ class StudioDockWidget(QDockWidget):
         self._view_slot: QVBoxLayout | None = None
         self._last_html: str | None = None
         self._tmp_dir: str | None = None
+        self._watched_layer = None
+        self._suppress_refresh_until = 0.0
+        self.bridge = SelectionBridge(self)
+        self.bridge.on_selected = self._on_chart_drove_selection
         self._build_ui()
 
     # ───────────────────────── UI ─────────────────────────
@@ -92,13 +119,17 @@ class StudioDockWidget(QDockWidget):
     def _card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         card = QFrame()
         card.setProperty("class", "o2vizCard")
-        card.setObjectName("card_" + title)
         lay = QVBoxLayout(card)
         lay.setContentsMargins(12, 10, 12, 10)
         head = QLabel(title)
         head.setProperty("class", "o2vizCardTitle")
         lay.addWidget(head)
         return card, lay
+
+    def _field_combo(self) -> QgsFieldComboBox:
+        combo = QgsFieldComboBox()
+        combo.setAllowEmptyFieldName(True)
+        return combo
 
     def _build_ui(self) -> None:
         container = QWidget()
@@ -121,8 +152,14 @@ class StudioDockWidget(QDockWidget):
         self.layer_combo.setFilters(_vector_filter())
         self.layer_combo.layerChanged.connect(self._on_layer_changed)
         data_lay.addWidget(self.layer_combo)
+        row = QHBoxLayout()
         self.selected_only = QCheckBox("Only selected features")
-        data_lay.addWidget(self.selected_only)
+        row.addWidget(self.selected_only)
+        self.auto_refresh = QCheckBox("Live: redraw on selection")
+        self.auto_refresh.setToolTip(
+            "Re-render the chart whenever the layer selection changes")
+        row.addWidget(self.auto_refresh)
+        data_lay.addLayout(row)
         ext_btn = QPushButton("Load external table…")
         ext_btn.setToolTip("Open a CSV/XLSX/ODS table — it joins the layer list above")
         ext_btn.clicked.connect(self._load_external)
@@ -146,13 +183,22 @@ class StudioDockWidget(QDockWidget):
             self.engine_combo.addItem(eng.label, eng.id)
         form.addRow("Engine", self.engine_combo)
 
-        self.x_combo = QgsFieldComboBox()
-        self.x_combo.setAllowEmptyFieldName(True)
-        form.addRow("X field", self.x_combo)
+        self.theme_combo = QComboBox()
+        for name in THEMES:
+            self.theme_combo.addItem(name)
+        self.theme_combo.setCurrentText(DEFAULT_THEME)
+        form.addRow("Theme", self.theme_combo)
 
-        self.y_combo = QgsFieldComboBox()
-        self.y_combo.setAllowEmptyFieldName(True)
-        form.addRow("Y field", self.y_combo)
+        self.x_combo = self._field_combo()
+        form.addRow("X / Category", self.x_combo)
+        self.y_combo = self._field_combo()
+        form.addRow("Y", self.y_combo)
+        self.group_combo = self._field_combo()
+        self.group_combo.setToolTip("Split into one colored series per value (or sub-group for treemap/sunburst)")
+        form.addRow("Group / Color", self.group_combo)
+        self.value_combo = self._field_combo()
+        self.value_combo.setToolTip("Bubble size, heatmap cell value or treemap weight")
+        form.addRow("Value / Size", self.value_combo)
 
         self.agg_combo = QComboBox()
         self.agg_combo.addItems(list(stats.AGGREGATIONS))
@@ -163,7 +209,29 @@ class StudioDockWidget(QDockWidget):
         self.bins_spin.setValue(20)
         form.addRow("Bins", self.bins_spin)
 
+        self.topn_spin = QSpinBox()
+        self.topn_spin.setRange(0, 200)
+        self.topn_spin.setValue(0)
+        self.topn_spin.setSpecialValueText("all")
+        self.topn_spin.setToolTip("Keep the N largest categories, collapse the rest into 'Other'")
+        form.addRow("Top N", self.topn_spin)
+
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItem("natural order", "natural")
+        self.sort_combo.addItem("value ↓", "value_desc")
+        self.sort_combo.addItem("value ↑", "value_asc")
+        form.addRow("Sort", self.sort_combo)
+
+        flags = QHBoxLayout()
+        self.stacked_check = QCheckBox("Stacked")
+        flags.addWidget(self.stacked_check)
+        self.trend_check = QCheckBox("Trend line")
+        flags.addWidget(self.trend_check)
+        self.link_check = QCheckBox("Click selects on map")
+        self.link_check.setChecked(True)
+        flags.addWidget(self.link_check)
         chart_lay.addLayout(form)
+        chart_lay.addLayout(flags)
         root.addWidget(chart_card)
 
         # ── Actions ──
@@ -199,14 +267,44 @@ class StudioDockWidget(QDockWidget):
     # ───────────────────────── wiring ─────────────────────────
 
     def _on_layer_changed(self, layer) -> None:
-        self.x_combo.setLayer(layer)
-        self.y_combo.setLayer(layer)
+        for combo in (self.x_combo, self.y_combo, self.group_combo, self.value_combo):
+            combo.setLayer(layer)
+        self._watch_layer(layer)
+
+    def _watch_layer(self, layer) -> None:
+        if self._watched_layer is not None:
+            try:
+                self._watched_layer.selectionChanged.disconnect(self._on_selection_changed)
+            except (RuntimeError, TypeError):
+                pass
+        self._watched_layer = layer
+        if layer is not None:
+            layer.selectionChanged.connect(self._on_selection_changed)
+
+    def _on_selection_changed(self, *_args) -> None:
+        if not self.auto_refresh.isChecked():
+            return
+        if time.time() < self._suppress_refresh_until:
+            return
+        QTimer.singleShot(120, self._render)
+
+    def _on_chart_drove_selection(self) -> None:
+        # a chart click is about to change the selection — don't re-render
+        # the very chart the user is interacting with
+        self._suppress_refresh_until = time.time() + 1.0
 
     def _sync_controls(self) -> None:
         kind = self.type_combo.currentData()
-        self.y_combo.setEnabled(kind != "histogram")
-        self.agg_combo.setEnabled(kind in ("bar", "line", "pie"))
-        self.bins_spin.setEnabled(kind == "histogram")
+        y, group, value, agg, bins, topn_sort, stacked, trend = _CONTROLS[kind]
+        self.y_combo.setEnabled(y)
+        self.group_combo.setEnabled(group)
+        self.value_combo.setEnabled(value)
+        self.agg_combo.setEnabled(agg)
+        self.bins_spin.setEnabled(bins)
+        self.topn_spin.setEnabled(topn_sort)
+        self.sort_combo.setEnabled(topn_sort)
+        self.stacked_check.setEnabled(stacked)
+        self.trend_check.setEnabled(trend)
 
     def _load_external(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -221,7 +319,7 @@ class StudioDockWidget(QDockWidget):
         self.layer_combo.setLayer(layer)
         self.set_status(f"Loaded table: {layer.name()} ({layer.featureCount()} rows)")
 
-    # ───────────────────────── spec / render ─────────────────────────
+    # ───────────────────────── spec assembly ─────────────────────────
 
     def _build_spec(self) -> dict | None:
         layer = self.layer_combo.currentLayer()
@@ -229,99 +327,197 @@ class StudioDockWidget(QDockWidget):
             self.set_status("Pick a layer first")
             return None
         kind = self.type_combo.currentData()
-        x_field = self.x_combo.currentField()
-        y_field = self.y_combo.currentField()
+        x = self.x_combo.currentField()
+        y = self.y_combo.currentField()
+        group = self.group_combo.currentField() if self.group_combo.isEnabled() else ""
+        value = self.value_combo.currentField() if self.value_combo.isEnabled() else ""
         agg = self.agg_combo.currentText()
         sel = self.selected_only.isChecked()
 
-        def col(*names):
-            return datasource.columns(layer, [n for n in names if n], sel)
+        fields = [f for f in {x, y, group, value} if f]
+        if not fields:
+            self.set_status("Pick at least an X field")
+            return None
+        try:
+            cols, fids = datasource.columns_with_ids(layer, fields, sel)
+        except ValueError as exc:
+            self.set_status(str(exc))
+            return None
+        if not fids:
+            self.set_status("No rows (empty selection?)")
+            return None
 
-        title = layer.name()
-        spec = {"type": kind, "title": title, "x_label": x_field, "y_label": y_field}
+        spec = {"type": kind, "title": layer.name(), "x_label": x, "y_label": y,
+                "stacked": self.stacked_check.isChecked(),
+                "theme": THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])}
 
-        if kind == "histogram":
-            if not x_field:
-                self.set_status("Histogram needs an X field (numeric)")
-                return None
-            labels, counts = stats.histogram(col(x_field)[x_field], self.bins_spin.value())
-            if not labels:
-                self.set_status(f"No numeric values in '{x_field}'")
-                return None
-            spec["y_label"] = "count"
-            spec["data"] = {"categories": labels, "values": counts}
-            return spec
+        builder = getattr(self, f"_spec_{kind}", None)
+        data = builder(spec, cols, fids, x=x, y=y, group=group, value=value, agg=agg)
+        if data is None:
+            return None
+        spec["data"] = data
+        return spec
 
-        if kind == "scatter":
-            if not x_field or not y_field:
-                self.set_status("Scatter needs both X and Y fields")
-                return None
-            cols = col(x_field, y_field)
-            points = []
-            for xv, yv in zip(cols[x_field], cols[y_field]):
-                xf, yf = stats.to_float(xv), stats.to_float(yv)
-                if xf is not None and yf is not None:
-                    points.append([xf, yf])
-            if not points:
-                self.set_status("No numeric X/Y pairs found")
-                return None
-            spec["data"] = {"points": points}
-            return spec
+    # — per-type builders: return the spec["data"] dict, or None + status —
 
-        if kind == "box":
-            if not y_field:
-                self.set_status("Box plot needs a Y field (numeric)")
-                return None
-            cols = col(x_field, y_field)
-            if x_field:
-                groups: dict[str, list] = {}
-                order: list[str] = []
-                for xv, yv in zip(cols[x_field], cols[y_field]):
-                    key = "(null)" if xv is None else str(xv)
-                    if key not in groups:
-                        groups[key] = []
-                        order.append(key)
-                    groups[key].append(yv)
-            else:
-                order = [y_field]
-                groups = {y_field: cols[y_field]}
-            names, box_stats = [], []
-            for key in order:
-                st = stats.boxplot_stats(groups[key])
-                if st is not None:
-                    names.append(key)
-                    box_stats.append(st)
-            if not box_stats:
-                self.set_status(f"No numeric values in '{y_field}'")
-                return None
-            spec["data"] = {"groups": names, "stats": box_stats}
-            return spec
+    def _agg_or(self, agg: str, fallback: str) -> str:
+        return fallback if agg == "none" else agg
 
-        # bar / line / pie
-        if not x_field:
-            self.set_status(f"{kind.capitalize()} needs an X field")
+    def _cat_series(self, spec, cols, fids, *, x, y, group, agg):
+        if not x:
+            self.set_status("This chart needs an X / Category field")
             return None
         if agg == "none":
-            if not y_field:
-                self.set_status("Pick a Y field, or choose an aggregation like 'count'")
+            if not y:
+                self.set_status("Pick a Y field, or an aggregation like 'count'")
                 return None
-            cols = col(x_field, y_field)
-            cats = ["(null)" if v is None else str(v) for v in cols[x_field]]
-            vals = [stats.to_float(v) for v in cols[y_field]]
-            vals = [0.0 if v is None else v for v in vals]
+            cats = [transform._key(v) for v in cols[x]]
+            vals = [stats.to_float(v) or 0.0 for v in cols[y]]
+            ids = [[fid] for fid in fids]
+            series = [{"name": y, "values": vals, "ids": ids}]
+        elif group:
+            spec["y_label"] = f"{agg}({y})" if agg != "count" else "count"
+            cats, series = transform.pivot_rows(
+                cols[x], cols[group], cols.get(y, []), fids, agg)
         else:
-            if agg != "count" and not y_field:
+            if agg != "count" and not y:
                 self.set_status(f"Aggregation '{agg}' needs a Y field")
                 return None
-            cols = col(x_field, y_field)
-            cats, vals = stats.aggregate(
-                cols[x_field], cols.get(y_field, []), agg)
-            spec["y_label"] = f"{agg}({y_field})" if agg != "count" else "count"
-        if not cats:
-            self.set_status("No rows to plot")
+            spec["y_label"] = f"{agg}({y})" if agg != "count" else "count"
+            cats, vals, ids = transform.group_rows(cols[x], cols.get(y, []), fids, agg)
+            series = [{"name": spec["y_label"], "values": vals, "ids": ids}]
+        if len(series) == 1:
+            cats, vals, ids = transform.sort_cats(
+                cats, series[0]["values"], series[0]["ids"],
+                self.sort_combo.currentData())
+            cats, vals, ids = transform.topn_collapse(
+                cats, vals, ids, self.topn_spin.value())
+            series = [dict(series[0], values=vals, ids=ids)]
+        return {"categories": cats, "series": series}
+
+    def _spec_bar(self, spec, cols, fids, *, x, y, group, value, agg):
+        return self._cat_series(spec, cols, fids, x=x, y=y, group=group, agg=agg)
+
+    _spec_line = _spec_bar
+    _spec_area = _spec_bar
+
+    def _points(self, spec, cols, fids, *, x, y, group, size_field):
+        if not x or not y:
+            self.set_status("This chart needs numeric X and Y fields")
             return None
-        spec["data"] = {"categories": cats, "values": vals}
-        return spec
+        sizes = (transform.bubble_sizes(cols[size_field])
+                 if size_field else [None] * len(fids))
+        buckets: dict[str, list] = {}
+        order: list[str] = []
+        all_points = []
+        for i in range(len(fids)):
+            xf, yf = stats.to_float(cols[x][i]), stats.to_float(cols[y][i])
+            if xf is None or yf is None:
+                continue
+            point = [xf, yf, sizes[i], fids[i]]
+            all_points.append(point)
+            key = transform._key(cols[group][i]) if group else ""
+            if key not in buckets:
+                buckets[key] = []
+                order.append(key)
+            buckets[key].append(point)
+        if not all_points:
+            self.set_status("No numeric X/Y pairs found")
+            return None
+        series = [{"name": k or spec["y_label"], "points": buckets[k]} for k in order]
+        trend = (transform.linreg_endpoints(all_points)
+                 if self.trend_check.isChecked() else None)
+        return {"series": series, "trend": trend}
+
+    def _spec_scatter(self, spec, cols, fids, *, x, y, group, value, agg):
+        return self._points(spec, cols, fids, x=x, y=y, group=group, size_field=None)
+
+    def _spec_bubble(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not value:
+            self.set_status("Bubble chart needs a Value / Size field")
+            return None
+        return self._points(spec, cols, fids, x=x, y=y, group=group, size_field=value)
+
+    def _spec_histogram(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("Histogram needs an X field (numeric)")
+            return None
+        labels, counts = stats.histogram(cols[x], self.bins_spin.value())
+        if not labels:
+            self.set_status(f"No numeric values in '{x}'")
+            return None
+        spec["y_label"] = "count"
+        return {"categories": labels, "values": counts}
+
+    def _spec_pie(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("Pie needs an X / Category field")
+            return None
+        how = self._agg_or(agg, "count")
+        if how != "count" and not y:
+            self.set_status(f"Aggregation '{how}' needs a Y field")
+            return None
+        cats, vals, ids = transform.group_rows(cols[x], cols.get(y, []), fids, how)
+        cats, vals, ids = transform.sort_cats(cats, vals, ids, self.sort_combo.currentData())
+        cats, vals, ids = transform.topn_collapse(cats, vals, ids, self.topn_spin.value())
+        return {"categories": cats, "values": vals, "ids": ids}
+
+    def _spec_box(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not y:
+            self.set_status("Box plot needs a Y field (numeric)")
+            return None
+        source = cols[group] if group else (cols[x] if x else None)
+        if source is not None:
+            buckets: dict[str, list] = {}
+            order: list[str] = []
+            for i, raw in enumerate(source):
+                key = transform._key(raw)
+                if key not in buckets:
+                    buckets[key] = []
+                    order.append(key)
+                buckets[key].append(cols[y][i])
+        else:
+            order = [y]
+            buckets = {y: cols[y]}
+        groups, box = [], []
+        for key in order:
+            st = stats.boxplot_stats(buckets[key])
+            if st is not None:
+                groups.append(key)
+                box.append(st)
+        if not box:
+            self.set_status(f"No numeric values in '{y}'")
+            return None
+        return {"groups": groups, "stats": box}
+
+    def _spec_heatmap(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x or not y:
+            self.set_status("Heatmap needs X and Y category fields")
+            return None
+        how = self._agg_or(agg, "count")
+        if how != "count" and not value:
+            self.set_status(f"Aggregation '{how}' needs a Value field")
+            return None
+        x_cats, y_cats, cells, vmin, vmax = transform.heatmap_rows(
+            cols[x], cols[y], cols.get(value, []), how)
+        return {"x_cats": x_cats, "y_cats": y_cats, "cells": cells,
+                "vmin": vmin, "vmax": vmax}
+
+    def _spec_treemap(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("This chart needs an X field as the main grouping")
+            return None
+        how = self._agg_or(agg, "count")
+        if how != "count" and not value:
+            self.set_status(f"Aggregation '{how}' needs a Value field")
+            return None
+        nodes = transform.tree_rows(cols[x], cols.get(group, []),
+                                    cols.get(value, []), how)
+        return {"nodes": nodes}
+
+    _spec_sunburst = _spec_treemap
+
+    # ───────────────────────── render / export ─────────────────────────
 
     def _render(self) -> None:
         try:
@@ -344,22 +540,16 @@ class StudioDockWidget(QDockWidget):
         if self._view is None and self._view_kind is None:
             self._view_kind, self._view = create_chart_view(self)
             if self._view is not None:
+                attach_bridge(self._view_kind, self._view, self.bridge)
                 self._view_placeholder.hide()
-                self._view.setMinimumHeight(280)
+                self._view.setMinimumHeight(300)
                 self._view_slot.addWidget(self._view, 1)
+        self.bridge.bind(self.layer_combo.currentLayer()
+                         if self.link_check.isChecked() else None)
         embedded = show_html_file(self._view_kind, self._view, path)
         self.export_btn.setEnabled(True)
-        n = self._spec_row_count(spec)
         where = "" if embedded else " (no web view in this QGIS build — opened in your browser)"
-        self.set_status(f"Rendered {spec['type']} · {n} item(s){where}")
-
-    @staticmethod
-    def _spec_row_count(spec: dict) -> int:
-        data = spec.get("data", {})
-        for key in ("categories", "points", "groups"):
-            if key in data:
-                return len(data[key])
-        return 0
+        self.set_status(f"Rendered {spec['type']} · {engine.label}{where}")
 
     def _export_html(self) -> None:
         if not self._last_html:

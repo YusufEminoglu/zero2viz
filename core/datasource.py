@@ -17,7 +17,16 @@ MAX_ROWS = 100_000  # hard cap so a misclick on a huge layer never freezes QGIS
 
 def columns(layer, field_names: list[str], selected_only: bool = False) -> dict[str, list]:
     """Row-aligned column extraction. Missing/NULL values become None."""
+    cols, _ = columns_with_ids(layer, field_names, selected_only)
+    return cols
+
+
+def columns_with_ids(layer, field_names: list[str],
+                     selected_only: bool = False) -> tuple[dict[str, list], list]:
+    """Like :func:`columns` but also returns the feature id per row, so
+    charts can select their features back on the canvas."""
     out: dict[str, list] = {name: [] for name in field_names}
+    fids: list = []
     idx = {name: layer.fields().lookupField(name) for name in field_names}
     missing = [n for n, i in idx.items() if i < 0]
     if missing:
@@ -27,6 +36,7 @@ def columns(layer, field_names: list[str], selected_only: bool = False) -> dict[
     for row_no, feat in enumerate(feats):
         if row_no >= MAX_ROWS:
             break
+        fids.append(feat.id())
         attrs = feat.attributes()
         for name in field_names:
             value = attrs[idx[name]]
@@ -35,7 +45,7 @@ def columns(layer, field_names: list[str], selected_only: bool = False) -> dict[
                 out[name].append(None)
             else:
                 out[name].append(value)
-    return out
+    return out, fids
 
 
 def load_table(path: str):

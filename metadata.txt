@@ -3,11 +3,11 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.1.0
+version=0.2.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
-about=02viz turns QGIS into a full data visualization studio. Build interactive, publication-quality charts from vector layers, attribute tables or external files, with multiple rendering engines (Python, R and HTML/JavaScript chart libraries) behind a single studio dock. Charts stay linked to the map canvas, so selections flow both ways. Developed with feedback from educational workflows at Dokuz Eylul University, Department of City and Regional Planning.
+about=02viz turns QGIS into a full data visualization studio. Eleven chart types (bar, line, area, scatter, bubble, histogram, pie, box, heatmap, treemap, sunburst) rendered by two vendored engines (Apache ECharts and Plotly.js), fully offline. Charts are linked to the map: click a bar, slice or point and the matching features are selected on the canvas; flip live mode and the chart follows your selection. Built-in aggregation, group/color-by series, Top-N, sorting and trend lines; chart vector layers, attribute tables or external CSV/XLSX files; export any chart as a single interactive HTML file. Developed with feedback from educational workflows at Dokuz Eylul University, Department of City and Regional Planning.
 
 tracker=https://github.com/YusufEminoglu/02viz/issues
 repository=https://github.com/YusufEminoglu/02viz
@@ -24,4 +24,5 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.2.0 - Second engine (Plotly.js) + 5 new chart types (area, bubble, heatmap, treemap, sunburst) = 11 total. Chart-to-map selection: clicking a bar, slice or point selects the features on the canvas (WebKit and WebEngine bridges). Live mode re-renders on selection change. Group/color-by series, stacked bars and areas, Top-N with Other, value sorting, least-squares trend line, 4 themes.
     0.1.0 - Chart studio MVP: 6 chart types (bar, line, scatter, histogram, pie, box) rendered by a vendored ECharts engine, aggregation, selected-only mode, external CSV/XLSX tables, embedded viewer with browser fallback, one-file HTML export.

@@ -9,8 +9,9 @@ def engines():
     global _ENGINES
     if _ENGINES is None:
         from .echarts import EChartsEngine
+        from .plotly import PlotlyEngine
 
-        _ENGINES = [EChartsEngine()]
+        _ENGINES = [EChartsEngine(), PlotlyEngine()]
     return _ENGINES
 
 
