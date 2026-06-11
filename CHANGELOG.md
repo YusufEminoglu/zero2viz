@@ -1,9 +1,5 @@
 # Changelog
 
-## [0.2.0] - 2026-06-12
-
-- First working chart studio: 6 ECharts chart types, aggregation, external tables, embedded viewer
-
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
