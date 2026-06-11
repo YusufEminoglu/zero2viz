@@ -1,9 +1,5 @@
 # Changelog
 
-## [0.3.0] - 2026-06-12
-
-- One-click Explore dashboard, honest axes, heatmap contrast
-
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
