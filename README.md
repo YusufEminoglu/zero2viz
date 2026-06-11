@@ -23,12 +23,15 @@ Charting in GIS has always meant exporting attribute tables to a spreadsheet, or
 
 ## ✨ Features
 
-- **Multi-engine rendering** — one studio, many engines: Python, R and HTML/JavaScript chart libraries behind a single consistent UI. *(in development)*
-- **Layers and beyond** — chart vector layers and attribute tables, but also external CSV/Excel/JSON sources that never touch the map. *(in development)*
-- **Map-linked interactivity** — select on the chart, see it highlighted on the canvas; filter the canvas, watch the chart follow. *(in development)*
-- **Publication-quality export** — vector and high-DPI raster export plus standalone interactive HTML. *(in development)*
+- **Six chart types, zero setup** — bar, line, scatter, histogram, pie/donut and box plot, rendered as interactive HTML by a vendored Apache ECharts engine (fully offline).
+- **Built-in aggregation** — count, sum, mean, median, min, max grouped by any field; histograms and box-plot quartiles are computed in pure Python.
+- **Layers and beyond** — chart any vector layer or attribute table, or load external CSV/XLSX/ODS tables straight into the studio.
+- **Selection-aware** — flip "Only selected features" and the chart follows your canvas selection.
+- **One-file export** — every chart saves as a single self-contained interactive HTML; PNG export via the built-in chart toolbox.
+- **Multi-engine architecture** — Plotly.js, Vega-Lite and an R/ggplot2 bridge plug into the same spec contract ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). *(planned)*
+- **Map-linked interactivity** — select on the chart, see it highlighted on the canvas. *(planned)*
 - **Instant startup** — engines load lazily; the studio dock opens immediately and never slows QGIS down.
-- **Qt5 and Qt6 ready** — runs on QGIS 3.28+ and the QGIS 4 line.
+- **Qt5 and Qt6 ready** — runs on QGIS 3.28+ and the QGIS 4 line, with a WebEngine → WebKit → browser viewer fallback chain.
 
 ## 🚀 Installation
 
@@ -40,16 +43,21 @@ Requires QGIS 3.28 or newer. No external Python dependencies for the core studio
 
 ## 📖 Quick start
 
-1. Install 02viz and click the **02viz Studio** toolbar button.
-2. The studio dock opens on the right — this is the home of every chart you build.
-3. Chart building (data binding, engine and chart-type gallery) ships in the next releases; watch the [CHANGELOG](CHANGELOG.md).
+1. Install 02viz and click the **02viz Studio** toolbar button — the studio dock opens on the right.
+2. Pick a layer (or **Load external table…** for a CSV/XLSX), optionally tick *Only selected features*.
+3. Choose a chart type, set the X/Y fields and an aggregation if you want grouping.
+4. Hit **Render chart** — the interactive chart appears right in the dock.
+5. **Export HTML…** saves it as a single self-contained file; the chart toolbox saves PNG.
 
 ## ⚙️ Reference
 
 | Group | Component | What it does |
 |-------|-----------|--------------|
-| Studio | Studio dock | Hosts the chart builder: data binding, engine selection, chart gallery, live preview |
-| Studio | Toolbar action | Toggles the studio dock |
+| Data | Layer combo + selected-only | Binds any vector layer/table; respects canvas selection |
+| Data | Load external table… | Opens CSV/XLSX/ODS/GPKG tables via OGR and adds them to the layer list |
+| Chart | Type / Engine / X / Y / Aggregate / Bins | Spec builder: 6 chart types, 6 aggregations, histogram binning |
+| Output | Render chart | Renders interactive HTML in the embedded viewer (WebEngine → WebKit → browser) |
+| Output | Export HTML… | Saves the chart as one self-contained offline HTML file |
 
 ## 🧩 Part of the PlanX ecosystem
 

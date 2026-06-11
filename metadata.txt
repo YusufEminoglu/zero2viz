@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Elite geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.1.0
+version=0.2.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,4 +24,5 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.2.0 - First working chart studio: 6 chart types (bar, line, scatter, histogram, pie, box) rendered by a vendored ECharts engine, aggregation (count/sum/mean/median/min/max), selected-only mode, external CSV/XLSX tables, embedded viewer with browser fallback, one-file HTML export.
     0.1.0 - Initial scaffold: studio dock shell, toolbar action, plugin infrastructure.
