@@ -1,0 +1,27 @@
+[general]
+name=02viz - Geospatial Visualization Studio
+qgisMinimumVersion=3.28
+qgisMaximumVersion=4.99
+description=Elite geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
+version=0.1.0
+author=Yusuf Eminoglu
+email=yusuf.eminoglu@deu.edu.tr
+
+about=02viz turns QGIS into a full data visualization studio. Build interactive, publication-quality charts from vector layers, attribute tables or external files, with multiple rendering engines (Python, R and HTML/JavaScript chart libraries) behind a single studio dock. Charts stay linked to the map canvas, so selections flow both ways. Developed with feedback from educational workflows at Dokuz Eylul University, Department of City and Regional Planning.
+
+tracker=https://github.com/YusufEminoglu/02viz/issues
+repository=https://github.com/YusufEminoglu/02viz
+homepage=https://github.com/YusufEminoglu/02viz
+
+category=Vector
+tags=planx,charts,plots,graphs,dataviz,visualization,plotly,vega,echarts,statistics,dashboard,attribute table
+
+icon=icons/icon.png
+
+experimental=False
+deprecated=False
+hasProcessingProvider=no
+license=GPL-3
+
+changelog=
+    0.1.0 - Initial scaffold: studio dock shell, toolbar action, plugin infrastructure.
