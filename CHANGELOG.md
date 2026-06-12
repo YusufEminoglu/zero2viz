@@ -2,7 +2,9 @@
 
 ## [0.5.0] - 2026-06-12
 
-- Third engine: Vega-Lite (vendored, offline) with 9 chart types, full bidirectional map linking, engine-aware type availability; heatmap label contrast fixed on sequential ramps
+- **Third engine: Vega-Lite** — vendored `vega` + `vega-lite` (BSD-3, compiled in the page, no vega-embed), fully offline. Renders 9 of the 11 chart types from the same spec contract (treemap/sunburst are not part of the Vega-Lite grammar), including layered box plots from precomputed quartiles and labelled heatmaps. Chart→map clicks and map→chart cross-filter dimming work exactly as in the other engines.
+- **Engine-aware chart types** — engines declare what they can draw (`ChartEngine.supports`); the dock greys out unsupported types and jumps to the nearest supported one.
+- **Heatmap label contrast fixed in all engines** — on sequential ramps, low-value cells are light, so white labels were invisible there; white is now used only on dark cells (both extremes on diverging ramps, upper end on sequential ones).
 
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
