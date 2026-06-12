@@ -8,12 +8,43 @@ from .base import ChartEngine, read_web, theme_of, wrap_html
 
 _BODY = """
 var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
-chart.setOption(%(option)s);
+var OPT = %(option)s;
+chart.setOption(OPT);
 window.addEventListener("resize", function () { chart.resize(); });
 chart.on("click", function (p) {
   var ids = p.data && p.data.__ids;
   if (ids && ids.length) __o2vizSelect(ids);
 });
+// map → chart cross-filter: QGIS injects __o2vizHighlight(ids) on selection
+// change; items carrying __ids dim unless one of their features is selected.
+window.__o2vizHighlight = function (ids) {
+  try {
+    var want = null, i;
+    if (ids && ids.length) {
+      want = {};
+      for (i = 0; i < ids.length; i++) want[ids[i]] = true;
+    }
+    var series = OPT.series || [], touched = false;
+    for (var si = 0; si < series.length; si++) {
+      var d = series[si].data || [];
+      for (var di = 0; di < d.length; di++) {
+        var it = d[di];
+        if (!it || it.constructor !== Object || !it.__ids || !it.__ids.length) continue;
+        it.itemStyle = it.itemStyle || {};
+        if (want === null) {
+          delete it.itemStyle.opacity;  // notMerge redraw restores series defaults
+        } else {
+          var hit = false;
+          for (i = 0; i < it.__ids.length; i++) if (want[it.__ids[i]]) { hit = true; break; }
+          it.itemStyle.opacity = hit ? 1 : 0.16;
+        }
+        touched = true;
+      }
+    }
+    if (touched) chart.setOption(OPT, true);
+    window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
+  } catch (e) { /* highlight is best-effort */ }
+};
 window.__chartReady = true;
 """
 

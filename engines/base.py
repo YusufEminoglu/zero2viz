@@ -57,26 +57,30 @@ DEFAULT_THEME = "Studio Light"
 _WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 _FILE_CACHE: dict[str, str] = {}
 
-# Selection bridge bootstrap. Two transports:
-#  - QtWebKit: QGIS injects window.o2vizBridge directly (addToJavaScriptWindowObject)
-#  - QtWebEngine: qt.webChannelTransport + qwebchannel.js resolves the object
-# In a plain browser neither exists and clicks are simply inert.
+# Selection bridge bootstrap — title transport.
+#
+# QGIS ships a fragile QtWebKit fork: addToJavaScriptWindowObject crashes
+# with an access violation inside WebCore during page commit (observed on
+# QGIS 3.44 / Qt 5.15). QWebChannel only exists on WebEngine. The one
+# mechanism that is safe and identical on BOTH web stacks is the page
+# title: the chart encodes clicked feature ids into document.title and
+# the dock listens to the view's titleChanged signal. In a plain browser
+# the title blips and nothing else happens.
 BRIDGE_JS = """
 (function () {
-  if (window.qt && window.qt.webChannelTransport && window.QWebChannel) {
-    new QWebChannel(qt.webChannelTransport, function (channel) {
-      window.o2vizBridge = channel.objects.o2vizBridge;
-    });
-  }
+  var seq = 0;
   window.__o2vizSelect = function (ids) {
     try {
-      if (window.o2vizBridge && window.o2vizBridge.select && ids && ids.length) {
-        window.o2vizBridge.select(ids.filter(function (v) { return v !== null && v !== undefined; }).join(","));
-      }
+      if (!ids || !ids.length) return;
+      var clean = ids.filter(function (v) { return v !== null && v !== undefined; });
+      if (!clean.length) return;
+      seq += 1;
+      document.title = "o2viz-select:" + clean.join(",") + ":" + seq;
     } catch (e) { /* selection is best-effort */ }
   };
 })();
 """
+TITLE_PREFIX = "o2viz-select:"
 
 _HTML = """<!DOCTYPE html>
 <html>
@@ -87,7 +91,6 @@ _HTML = """<!DOCTYPE html>
   html, body {{ margin: 0; padding: 0; width: 100%; height: 100%; background: {bg}; }}
   #chart {{ width: 100%; height: 100%; }}
 </style>
-<script>{qwebchannel}</script>
 <script>{lib}</script>
 </head>
 <body>
@@ -112,7 +115,6 @@ def wrap_html(title: str, lib_js: str, body_js: str, theme: dict) -> str:
     return _HTML.format(
         title=title or "02viz chart",
         bg=theme.get("bg", "#ffffff"),
-        qwebchannel=read_web("qwebchannel.js"),
         lib=lib_js,
         bridge=BRIDGE_JS,
         body=body_js,

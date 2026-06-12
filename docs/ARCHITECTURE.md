@@ -1,11 +1,11 @@
 # 02viz architecture
 
 ```
-02viz/
+zero2viz/               # package dir (display name stays "02viz")
   main_plugin.py        # QGIS lifecycle: toolbar, menu, dock toggle
   dialogs/
     dock.py             # StudioDockWidget: builder UI + spec assembly
-    webview.py          # embedded viewer fallback chain + bridge attachment
+    webview.py          # embedded viewer fallback chain + title listener
     bridge.py           # SelectionBridge: chart click → canvas selection
   core/
     datasource.py       # layer → row-aligned columns (+feature ids); OGR tables
@@ -20,7 +20,6 @@
   web/
     echarts.min.js      # vendored, Apache-2.0
     plotly.min.js       # vendored, MIT
-    qwebchannel.js      # vendored, Qt BSD example — WebEngine bridge transport
 ```
 
 ## Flow
@@ -34,17 +33,22 @@
 3. The HTML is written to a temp file and shown in the best available web
    widget: QtWebEngine → QtWebKit → system browser.
 4. Charts are clickable: data items carry feature ids; the page calls
-   ``o2vizBridge.select(ids)`` — injected directly on QtWebKit, resolved
-   through a QWebChannel on QtWebEngine — and QGIS selects those features
-   on the canvas. In a plain browser the bridge is absent and clicks are
-   simply inert.
+   ``__o2vizSelect(ids)``, which encodes them into ``document.title``
+   (``"o2viz-select:<ids>:<seq>"``). The dock listens to the view's
+   ``titleChanged`` signal — identical API on QtWebKit and QtWebEngine —
+   and ``SelectionBridge`` selects those features on the canvas.
+   *Why not a JS↔Python object bridge?* QGIS's QtWebKit fork crashes
+   (access violation in WebCore) when ``addToJavaScriptWindowObject`` is
+   used, and ``QWebChannel`` only exists on WebEngine; the title is the
+   one transport both stacks share. In a plain browser the title blips
+   and clicks are otherwise inert.
 
 ## Hard rules
 
-- **Relative imports only.** The package name `02viz` starts with a digit;
-  `import 02viz` is a Python syntax error. QGIS loads plugins by string
-  (`__import__("02viz")`), which works — but any absolute self-import
-  would break the plugin.
+- **Relative imports only.** Kept as a hard convention from the era when
+  the package was named `02viz` (digit-first, unimportable by literal
+  statement; renamed to `zero2viz` because the QGIS Hub requires a PEP 8
+  package name). Relative imports also survive any future rename.
 - **No external Python dependencies.** Statistics are pure Python; chart
   libraries are vendored JS.
 - **Engines never touch Qt.** `build_html(spec) -> str` keeps every engine
@@ -59,5 +63,12 @@
 | Vega-Lite | vendored JS, declarative grammar | planned |
 | R / ggplot2 | subprocess bridge (optional, needs local R) | planned |
 
-Planned next: map→chart cross-filter highlighting, small-multiples
-dashboards, custom spec editor for power users, SVG/PDF export.
+Map→chart cross-filter shipped in v0.4.0: the dock pushes
+``__o2vizHighlight(ids)`` into the page (``run_js``: ``evaluateJavaScript``
+on WebKit, ``runJavaScript`` on WebEngine — the QGIS→JS direction is safe
+on both stacks) on every ``selectionChanged`` and on ``loadFinished``;
+items carrying ``__ids`` dim unless selected (ECharts per-item opacity,
+Plotly native ``selectedpoints``).
+
+Planned next: small-multiples dashboards, custom spec editor for power
+users, dashboard tile picker, SVG/PDF export.

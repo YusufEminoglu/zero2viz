@@ -45,7 +45,6 @@ _PAGE = """<!DOCTYPE html>
   .chart {{ width: 100%; height: 336px; }}
   footer {{ margin-top: 18px; color: {muted}; font-size: 12px; text-align: center; }}
 </style>
-<script>{qwebchannel}</script>
 <script>{lib}</script>
 </head>
 <body>
@@ -62,11 +61,13 @@ _PAGE = """<!DOCTYPE html>
 <script>
 {bridge}
 var OPTIONS = {options};
+var CHARTS = [];
 var els = document.querySelectorAll(".chart");
 for (var i = 0; i < els.length; i++) {{
   (function (el, opt) {{
     var c = echarts.init(el, null, {{ renderer: "canvas" }});
     c.setOption(opt);
+    CHARTS.push(c);
     c.on("click", function (p) {{
       var ids = p.data && p.data.__ids;
       if (ids && ids.length) __o2vizSelect(ids);
@@ -74,6 +75,37 @@ for (var i = 0; i < els.length; i++) {{
     window.addEventListener("resize", function () {{ c.resize(); }});
   }})(els[i], OPTIONS[i]);
 }}
+// map → chart cross-filter: dim items whose features are not selected.
+window.__o2vizHighlight = function (ids) {{
+  try {{
+    var want = null, i;
+    if (ids && ids.length) {{
+      want = {{}};
+      for (i = 0; i < ids.length; i++) want[ids[i]] = true;
+    }}
+    for (var ci = 0; ci < CHARTS.length; ci++) {{
+      var opt = OPTIONS[ci], touched = false, series = opt.series || [];
+      for (var si = 0; si < series.length; si++) {{
+        var d = series[si].data || [];
+        for (var di = 0; di < d.length; di++) {{
+          var it = d[di];
+          if (!it || it.constructor !== Object || !it.__ids || !it.__ids.length) continue;
+          it.itemStyle = it.itemStyle || {{}};
+          if (want === null) {{
+            delete it.itemStyle.opacity;
+          }} else {{
+            var hit = false;
+            for (i = 0; i < it.__ids.length; i++) if (want[it.__ids[i]]) {{ hit = true; break; }}
+            it.itemStyle.opacity = hit ? 1 : 0.16;
+          }}
+          touched = true;
+        }}
+      }}
+      if (touched) CHARTS[ci].setOption(opt, true);
+    }}
+    window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
+  }} catch (e) {{ /* highlight is best-effort */ }}
+}};
 window.__chartCount = OPTIONS.length;
 window.__chartReady = true;
 </script>
@@ -116,7 +148,6 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
         kpis=kpi_html,
         tiles=tiles_html,
         options=json.dumps(options, ensure_ascii=False),
-        qwebchannel=read_web("qwebchannel.js"),
         lib=read_web("echarts.min.js"),
         bridge=BRIDGE_JS,
         bg=theme["bg"], text=theme["text"], grid=theme["grid"],

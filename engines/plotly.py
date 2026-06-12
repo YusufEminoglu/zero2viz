@@ -17,6 +17,36 @@ gd.on("plotly_click", function (ev) {
   });
   if (ids.length) __o2vizSelect(ids);
 });
+// map → chart cross-filter via Plotly's native selection styling.
+// Pie traces are skipped: plotly has no per-slice selectedpoints.
+window.__o2vizHighlight = function (ids) {
+  try {
+    var want = null, i;
+    if (ids && ids.length) {
+      want = {};
+      for (i = 0; i < ids.length; i++) want[ids[i]] = true;
+    }
+    var indices = [], traceIdx = [];
+    (gd.data || []).forEach(function (tr, ti) {
+      if (!tr.customdata || tr.type === "pie") return;
+      traceIdx.push(ti);
+      if (want === null) { indices.push(null); return; }
+      var sel = [];
+      tr.customdata.forEach(function (cd, pi) {
+        for (var k = 0; k < (cd || []).length; k++) {
+          if (want[cd[k]]) { sel.push(pi); return; }
+        }
+      });
+      indices.push(sel);
+    });
+    if (traceIdx.length) {
+      Plotly.restyle(gd, {"selectedpoints": indices,
+                          "selected.marker.opacity": 1,
+                          "unselected.marker.opacity": 0.16}, traceIdx);
+    }
+    window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
+  } catch (e) { /* highlight is best-effort */ }
+};
 """
 
 

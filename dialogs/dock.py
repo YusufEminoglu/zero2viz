@@ -8,6 +8,7 @@ rendering goes through the engine registry, so engines never touch Qt.
 """
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import time
@@ -34,7 +35,11 @@ from ..engines import engines
 from ..engines.base import DEFAULT_THEME, THEMES
 from ..engines.dashboard import build_dashboard
 from .bridge import SelectionBridge
-from .webview import attach_bridge, create_chart_view, show_html_file
+from .webview import attach_title_listener, create_chart_view, run_js, show_html_file
+
+# above this many selected features, skip the cross-filter highlight (the
+# injected id list would dwarf any visual benefit)
+MAX_HIGHLIGHT_IDS = 20000
 
 _DOCK_QSS = """
 QWidget#o2vizRoot { background: #fbfbfd; }
@@ -111,7 +116,7 @@ class StudioDockWidget(QDockWidget):
         self._tmp_dir: str | None = None
         self._watched_layer = None
         self._suppress_refresh_until = 0.0
-        self.bridge = SelectionBridge(self)
+        self.bridge = SelectionBridge()
         self.bridge.on_selected = self._on_chart_drove_selection
         self._build_ui()
 
@@ -292,11 +297,31 @@ class StudioDockWidget(QDockWidget):
             layer.selectionChanged.connect(self._on_selection_changed)
 
     def _on_selection_changed(self, *_args) -> None:
-        if not self.auto_refresh.isChecked():
+        if self.auto_refresh.isChecked() and time.time() >= self._suppress_refresh_until:
+            QTimer.singleShot(120, self._render)
             return
-        if time.time() < self._suppress_refresh_until:
+        # no re-render — cross-filter instead: dim chart items whose
+        # features are not in the new canvas selection
+        QTimer.singleShot(60, self._push_highlight)
+
+    def _on_page_loaded(self, ok: bool) -> None:
+        if ok:
+            self._push_highlight()
+
+    def _push_highlight(self) -> None:
+        if self._view is None or not self.link_check.isChecked():
             return
-        QTimer.singleShot(120, self._render)
+        ids: list[int] = []
+        if self._watched_layer is not None:
+            try:
+                ids = list(self._watched_layer.selectedFeatureIds())
+            except RuntimeError:  # layer C++ object deleted
+                ids = []
+        if len(ids) > MAX_HIGHLIGHT_IDS:
+            ids = []
+        run_js(self._view_kind, self._view,
+               "window.__o2vizHighlight && window.__o2vizHighlight(%s);"
+               % (json.dumps(ids) if ids else "null"))
 
     def _on_chart_drove_selection(self) -> None:
         # a chart click is about to change the selection — don't re-render
@@ -543,7 +568,10 @@ class StudioDockWidget(QDockWidget):
         if self._view is None and self._view_kind is None:
             self._view_kind, self._view = create_chart_view(self)
             if self._view is not None:
-                attach_bridge(self._view_kind, self._view, self.bridge)
+                attach_title_listener(self._view_kind, self._view, self.bridge.handle_title)
+                # a fresh page should immediately reflect the current canvas
+                # selection (same signal on QWebView and QWebEngineView)
+                self._view.loadFinished.connect(self._on_page_loaded)
                 self._view_placeholder.hide()
                 self._view.setMinimumHeight(300)
                 self._view_slot.addWidget(self._view, 1)

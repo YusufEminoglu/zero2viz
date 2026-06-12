@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.0] - 2026-06-12
+
+- Map-to-chart cross-filter (canvas selection dims non-selected chart items, no re-render) + crash-safe title-transport selection bridge replacing QtWebKit object injection
+
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 

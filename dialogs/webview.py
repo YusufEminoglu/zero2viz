@@ -29,30 +29,41 @@ def create_chart_view(parent=None):
         return "browser", None
 
 
-def attach_bridge(kind: str, view, bridge) -> bool:
-    """Expose the SelectionBridge to the page as ``o2vizBridge``.
+def attach_title_listener(kind: str, view, callback) -> bool:
+    """Wire the chart→map selection transport: forward the page's
+    ``titleChanged`` notifications to ``callback`` (one ``str`` argument).
+
+    ``titleChanged`` exists with the same signature on both QWebView and
+    QWebEngineView, so this is the single code path for every QGIS build.
+    (Do NOT switch back to addToJavaScriptWindowObject — it crashes the
+    QtWebKit fork with an access violation during page commit.)
     Must be called once, before the first load. Returns True if wired."""
     if view is None:
         return False
     try:
+        view.titleChanged.connect(callback)
+        return True
+    except Exception as exc:
+        FALLBACK_LOG.append(f"title[{kind}]: {exc}")
+        return False
+
+
+def run_js(kind: str, view, code: str) -> bool:
+    """Run JS in the page (QGIS → chart direction, e.g. cross-filter
+    highlight). Safe on both stacks — unlike exposing Python objects to
+    the page, evaluating a string does not touch the WebKit fork's
+    broken object-injection path. Returns True if dispatched."""
+    if view is None:
+        return False
+    try:
         if kind == "webkit":
-            frame = view.page().mainFrame()
-
-            def _inject():
-                frame.addToJavaScriptWindowObject("o2vizBridge", bridge)
-
-            frame.javaScriptWindowObjectCleared.connect(_inject)
+            view.page().mainFrame().evaluateJavaScript(code)
             return True
         if kind == "webengine":
-            from qgis.PyQt.QtWebChannel import QWebChannel
-
-            channel = QWebChannel(view.page())
-            channel.registerObject("o2vizBridge", bridge)
-            view.page().setWebChannel(channel)
-            view._o2viz_channel = channel  # keep alive
+            view.page().runJavaScript(code)
             return True
     except Exception as exc:
-        FALLBACK_LOG.append(f"bridge[{kind}]: {exc}")
+        FALLBACK_LOG.append(f"runjs[{kind}]: {exc}")
     return False
 
 
