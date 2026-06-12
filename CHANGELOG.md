@@ -1,11 +1,11 @@
 # Changelog
 
-## [0.3.1] - 2026-06-12
-
-- Package directory renamed to zero2viz (QGIS Hub requires a PEP 8-compliant package name); display name and features unchanged
-
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
+
+## [0.3.1] - 2026-06-12
+
+- Package directory renamed from `02viz` to `zero2viz`: the QGIS Plugin Hub requires the zip's top-level directory to be a valid Python identifier (PEP 8), and the digit-first name was rejected at upload. The displayed plugin name, features and behaviour are unchanged.
 
 ## [0.3.0] - 2026-06-12
 
