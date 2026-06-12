@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.3.0
+version=0.3.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.3.1 - Package directory renamed to zero2viz to satisfy the QGIS Plugin Hub PEP 8 package-name requirement (the previous digit-first name was rejected at upload). Plugin display name, features and behaviour are unchanged.
     0.3.0 - One-click Explore: profile any layer into a complete interactive dashboard (KPI cards, auto-charts per field, Pearson correlation matrix, strongest-relationship scatter with trend, plain-English insights), exportable as a single HTML. Zero-based bar/area/histogram axes, heatmap label contrast, human number formatting.
     0.2.0 - Second engine (Plotly.js) + 5 new chart types (area, bubble, heatmap, treemap, sunburst) = 11 total. Chart-to-map selection: clicking a bar, slice or point selects the features on the canvas (WebKit and WebEngine bridges). Live mode re-renders on selection change. Group/color-by series, stacked bars and areas, Top-N with Other, value sorting, least-squares trend line, 4 themes.
     0.1.0 - Chart studio MVP: 6 chart types (bar, line, scatter, histogram, pie, box) rendered by a vendored ECharts engine, aggregation, selected-only mode, external CSV/XLSX tables, embedded viewer with browser fallback, one-file HTML export.

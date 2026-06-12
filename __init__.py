@@ -1,9 +1,10 @@
 """02viz - Geospatial Visualization Studio: QGIS plugin entry point.
 
-NOTE: this package name starts with a digit, so it can never be imported
-with a literal ``import 02viz`` statement. QGIS loads plugins by string
-(``__import__(packageName)``), which works fine — but every import inside
-this package MUST be relative (``from .module import X``).
+The package directory is ``zero2viz`` — the QGIS Plugin Hub requires the
+zip's top-level directory to be a valid Python identifier, so the original
+``02viz`` (digit-first) was rejected at upload. The displayed plugin name
+stays "02viz". Convention kept from the digit-first era: every import
+inside this package is relative (``from .module import X``).
 """
 from .main_plugin import O2VizPlugin
 
