@@ -198,13 +198,18 @@ class EChartsEngine(ChartEngine):
                 "textStyle": {"color": theme["text"]},
                 "inRange": {"color": ramp},
             }
-            # per-cell labels: white on intense cells, theme text near the middle
+            # per-cell labels: white only where the ramp is dark — both extremes
+            # on a diverging ramp, only the upper end on a sequential one
+            # (low sequential cells are near the background colour)
             mid = (vmin + vmax) / 2.0
             span = (vmax - vmin) or 1.0
             items = []
             for cell in data.get("cells", []):
                 v = cell[2]
-                intense = abs(v - mid) > span * 0.28
+                if data.get("diverging"):
+                    intense = abs(v - mid) > span * 0.28
+                else:
+                    intense = (v - vmin) > span * 0.72
                 txt = f"{v:,.0f}" if abs(v) >= 1000 else f"{v:.3g}"
                 items.append({"value": cell,
                               "label": {"color": "#ffffff" if intense else theme["text"],

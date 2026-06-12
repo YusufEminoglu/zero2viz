@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.0] - 2026-06-12
+
+- Third engine: Vega-Lite (vendored, offline) with 9 chart types, full bidirectional map linking, engine-aware type availability; heatmap label contrast fixed on sequential ramps
+
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 

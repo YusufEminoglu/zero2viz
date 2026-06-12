@@ -10,8 +10,9 @@ def engines():
     if _ENGINES is None:
         from .echarts import EChartsEngine
         from .plotly import PlotlyEngine
+        from .vegalite import VegaLiteEngine
 
-        _ENGINES = [EChartsEngine(), PlotlyEngine()]
+        _ENGINES = [EChartsEngine(), PlotlyEngine(), VegaLiteEngine()]
     return _ENGINES
 
 

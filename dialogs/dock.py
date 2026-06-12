@@ -187,6 +187,7 @@ class StudioDockWidget(QDockWidget):
         self.engine_combo = QComboBox()
         for eng in engines():
             self.engine_combo.addItem(eng.label, eng.id)
+        self.engine_combo.currentIndexChanged.connect(self._sync_engine_types)
         form.addRow("Engine", self.engine_combo)
 
         self.theme_combo = QComboBox()
@@ -327,6 +328,19 @@ class StudioDockWidget(QDockWidget):
         # a chart click is about to change the selection — don't re-render
         # the very chart the user is interacting with
         self._suppress_refresh_until = time.time() + 1.0
+
+    def _sync_engine_types(self, *_args) -> None:
+        """Grey out chart types the selected engine cannot draw
+        (e.g. Vega-Lite has no treemap/sunburst grammar)."""
+        eng = engines()[max(0, self.engine_combo.currentIndex())]
+        model = self.type_combo.model()
+        for i in range(self.type_combo.count()):
+            model.item(i).setEnabled(self.type_combo.itemData(i) in eng.supports)
+        if self.type_combo.currentData() not in eng.supports:
+            for i in range(self.type_combo.count()):
+                if self.type_combo.itemData(i) in eng.supports:
+                    self.type_combo.setCurrentIndex(i)
+                    break
 
     def _sync_controls(self) -> None:
         kind = self.type_combo.currentData()
@@ -588,6 +602,9 @@ class StudioDockWidget(QDockWidget):
             if spec is None:
                 return
             engine = engines()[max(0, self.engine_combo.currentIndex())]
+            if spec["type"] not in engine.supports:
+                self.set_status(f"{engine.label} cannot draw {spec['type']} charts")
+                return
             html = engine.build_html(spec)
         except Exception as exc:
             self.set_status(f"Chart failed: {exc}")

@@ -128,6 +128,7 @@ def theme_of(spec: dict) -> dict:
 class ChartEngine:
     id = "base"
     label = "Base"
+    supports = frozenset(CHART_TYPES)  # engines may declare a reduced set
 
     def build_html(self, spec: dict) -> str:
         raise NotImplementedError

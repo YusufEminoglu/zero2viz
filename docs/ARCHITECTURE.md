@@ -16,10 +16,13 @@ zero2viz/               # package dir (display name stays "02viz")
     base.py             # ChartEngine contract, spec schema, themes, HTML shell
     echarts.py          # Apache ECharts engine (canvas)
     plotly.py           # Plotly.js engine (SVG)
+    vegalite.py         # Vega-Lite engine (declarative grammar, canvas)
     dashboard.py        # profile → single-page dashboard (KPIs, insight chips, chart grid)
   web/
     echarts.min.js      # vendored, Apache-2.0
     plotly.min.js       # vendored, MIT
+    vega.min.js         # vendored, BSD-3
+    vega-lite.min.js    # vendored, BSD-3
 ```
 
 ## Flow
@@ -60,8 +63,12 @@ zero2viz/               # package dir (display name stays "02viz")
 |--------|------|--------|
 | ECharts | vendored JS, canvas | ✅ v0.2.0 |
 | Plotly.js | vendored JS, SVG | ✅ v0.2.0 |
-| Vega-Lite | vendored JS, declarative grammar | planned |
+| Vega-Lite | vendored JS (vega + vega-lite, no vega-embed), canvas | ✅ v0.5.0 — 9 of 11 types; treemap/sunburst are not in the VL grammar, so engines declare a `supports` set and the dock greys those types out |
 | R / ggplot2 | subprocess bridge (optional, needs local R) | planned |
+
+Vega-Lite gotcha: in a *layered* spec, a colour channel with `scale: null`
+crashes the cross-layer scale merge (`Cannot read properties of null`).
+Use filtered fixed-colour layers instead (see `_vl_heatmap`).
 
 Map→chart cross-filter shipped in v0.4.0: the dock pushes
 ``__o2vizHighlight(ids)`` into the page (``run_js``: ``evaluateJavaScript``

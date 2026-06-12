@@ -25,7 +25,7 @@ Charting in GIS has always meant exporting attribute tables to a spreadsheet, or
 
 - **One-click Explore** — pick a layer, press one button: 02viz profiles every field and builds a complete interactive dashboard — KPI cards, a chart per field, a Pearson correlation matrix, the strongest-relationship scatter with trend line, and plain-English insight chips ("Strongest link: pop ↔ income, r = -0.47").
 - **Eleven chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap and sunburst.
-- **Two rendering engines** — vendored Apache ECharts and Plotly.js behind one spec contract; switch engines with a combo box, everything works offline.
+- **Three rendering engines** — vendored Apache ECharts, Plotly.js and Vega-Lite behind one spec contract; switch engines with a combo box, everything works offline. The dock knows what each engine can draw and greys out the rest.
 - **Chart → map selection** — click a bar, slice or point and the matching features are selected on the canvas, on every QGIS web stack (crash-safe title transport, no QWebChannel needed).
 - **Map → chart cross-filter** — select features on the canvas and the chart instantly dims everything else, no re-render; works in single charts and across every dashboard tile.
 - **Live mode** — optionally re-render on every canvas selection change; "Only selected features" scopes any chart to your selection.
