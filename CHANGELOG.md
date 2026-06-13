@@ -3,6 +3,15 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.8.0] - 2026-06-13
+
+- **One dock, three tabs** — the studio is now organised as **Charts · Map diagrams · Labels**, all sharing a single layer selector above the tabs. Same purpose throughout — turn a layer's data into an elegant visual — across three output surfaces.
+- **Labels tab** — one click turns a field into well-placed, publication-grade labels with a preset (clean subtle-halo / strong halo / bold / plain), geometry-aware placement, built on native `QgsPalLayerSettings` (`core/labels.py`). Prints and exports like any QGIS labeling.
+- **Embedded colour editor** — the palette is now an **inline swatch strip** in the Charts tab: click a swatch to recolour it, `+`/`−` to resize the palette, any edit switches to a custom palette — no modal dialog. Added a **chart-title override** field. (The old pop-up palette editor is gone.)
+- **Optional advanced engine: matplotlib / seaborn** — a fourth engine renders the spec to **publication-grade static figures** (eleven chart types) and embeds them as a PNG in the same HTML shell, so the viewer and one-file export work unchanged. It appears in the engine picker; when its libraries are missing the dock offers a **one-click install** into the QGIS Python (`python -m pip install --user`, explicit consent only — `core/requirements.py`). The vendored JS engines stay zero-dependency and fully offline; this is the opt-in print/publication path (no chart→map interactivity on static images).
+- **Zero2Visual** — the plugin's motto (“from zero to elegant visuals, fast”) now reads in the dock header and About box; the Hub name and "02viz" branding are unchanged.
+- Verified headless: 86 checks on real QGIS Python (incl. the matplotlib engine across 11 types, on-canvas labels and the dependency detector) and 50 interactive chart pages in headless Chrome with zero JS exceptions; the matplotlib figures eyeballed.
+
 ## [0.7.0] - 2026-06-13
 
 - **Map diagrams (on-canvas charts)** — a new *Map diagrams…* dialog draws native QGIS **pie / bar / stacked-bar / text** diagrams on every feature, directly on the map canvas, sized in millimetres and coloured with the studio palette. Built on `QgsDiagramRenderer`, so the diagrams print, export to print layouts and follow the layer like any other symbology. Numeric fields are pre-ticked (identifier columns skipped); attribute-only tables are detected and declined.

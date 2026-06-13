@@ -4,22 +4,23 @@
 zero2viz/               # package dir (display name stays "02viz")
   main_plugin.py        # QGIS lifecycle: toolbar, menu, dock toggle
   dialogs/
-    dock.py             # StudioDockWidget: builder UI + spec assembly
+    dock.py             # StudioDockWidget: 3-tab dock (Charts/Diagrams/Labels) + spec assembly
     webview.py          # embedded viewer fallback chain + title listener
     bridge.py           # SelectionBridge: chart click → canvas selection
-    palette_editor.py   # custom colour palette editor (swatch dialog)
-    diagram_dialog.py   # "Map diagrams…" form over core/diagrams
   core/
     datasource.py       # layer → row-aligned columns (+feature ids); OGR tables
     stats.py            # pure-Python aggregation / histogram / boxplot / Pearson / KDE
     transform.py        # pivot, heatmap matrix, tree, top-N, sort, trend, band, violin, pareto
     profile.py          # one-click layer profiling → dashboard tiles + insights (skips id columns)
     diagrams.py         # on-canvas QgsDiagramRenderer (pie/bar/stacked/text per feature)
+    labels.py           # on-canvas QgsPalLayerSettings quick-label presets
+    requirements.py     # optional-dependency detection + on-demand pip install
   engines/
-    base.py             # ChartEngine contract, spec schema, themes, HTML shell
+    base.py             # ChartEngine contract (+available()), spec schema, themes, HTML shell
     echarts.py          # Apache ECharts engine (canvas)
     plotly.py           # Plotly.js engine (SVG)
     vegalite.py         # Vega-Lite engine (declarative grammar, canvas)
+    mpl.py              # optional matplotlib/seaborn engine → static base64-PNG HTML
     dashboard.py        # profile → single-page dashboard (KPIs, insight chips, chart grid)
   web/
     echarts.min.js      # vendored, Apache-2.0

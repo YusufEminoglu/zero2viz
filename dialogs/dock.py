@@ -14,23 +14,35 @@ import tempfile
 import time
 
 from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDockWidget,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
-from ..core import datasource, profile as profiler, stats, transform
+from ..core import (
+    datasource, diagrams, labels, profile as profiler, requirements, stats, transform,
+)
 from ..engines import engines
 from ..engines.base import DEFAULT_THEME, PALETTES, THEMES
 from ..engines.dashboard import build_dashboard
@@ -55,6 +67,13 @@ QFrame.o2vizCard {
 }
 QLabel.o2vizCardTitle { font-weight: 600; color: #16323f; }
 QLabel#o2vizStatus { color: #5b6b73; padding: 2px; }
+QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
+                   background: #ffffff; }
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 6px 15px;
+               margin-right: 2px; border-top-left-radius: 7px;
+               border-top-right-radius: 7px; }
+QTabBar::tab:selected { background: #ffffff; color: #16323f; font-weight: 600; }
+QTabBar::tab:hover { color: #16323f; }
 """
 _RENDER_BTN_QSS = (
     "QPushButton { background-color: #2a8f85; border: 1px solid #237a72;"
@@ -166,11 +185,33 @@ class StudioDockWidget(QDockWidget):
         title = QLabel("02viz")
         title.setObjectName("o2vizTitle")
         root.addWidget(title)
-        tagline = QLabel("Geospatial Visualization Studio")
+        tagline = QLabel("Zero2Visual · from zero to elegant visuals")
         tagline.setObjectName("o2vizTagline")
         root.addWidget(tagline)
 
-        # ── Data card ──
+        # the layer + scope are shared by all three surfaces (charts, on-canvas
+        # diagrams, labels), so the Data card lives above the tabs
+        root.addWidget(self._build_data_card())
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_charts_tab(), "Charts")
+        self.tabs.addTab(self._build_diagrams_tab(), "Map diagrams")
+        self.tabs.addTab(self._build_labels_tab(), "Labels")
+        root.addWidget(self.tabs, 1)
+
+        self.status = QLabel("Ready")
+        self.status.setObjectName("o2vizStatus")
+        root.addWidget(self.status)
+
+        self.setWidget(container)
+        self._on_layer_changed(self.layer_combo.currentLayer())
+        self._sync_engine_types()
+        self._sync_controls()
+        self._sync_swatches()
+
+    # ── shared Data card ──
+
+    def _build_data_card(self) -> QFrame:
         data_card, data_lay = self._card("Data")
         self.layer_combo = QgsMapLayerComboBox()
         self.layer_combo.setFilters(_vector_filter())
@@ -188,15 +229,16 @@ class StudioDockWidget(QDockWidget):
         ext_btn.setToolTip("Open a CSV/XLSX/ODS table — it joins the layer list above")
         ext_btn.clicked.connect(self._load_external)
         data_lay.addWidget(ext_btn)
-        diag_btn = QPushButton("Map diagrams… (on canvas)")
-        diag_btn.setToolTip(
-            "Draw a pie / bar / text diagram on every feature of this layer, "
-            "directly on the map canvas (QGIS native diagrams)")
-        diag_btn.clicked.connect(self._open_diagrams)
-        data_lay.addWidget(diag_btn)
-        root.addWidget(data_card)
+        return data_card
 
-        # ── Chart card ──
+    # ── Charts tab: the visualization studio ──
+
+    def _build_charts_tab(self) -> QWidget:
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 8, 0, 0)
+        outer.setSpacing(8)
+
         chart_card, chart_lay = self._card("Chart")
         form = QFormLayout()
         form.setHorizontalSpacing(8)
@@ -206,7 +248,11 @@ class StudioDockWidget(QDockWidget):
         # the user picks the renderer, then chooses from its supported types.
         self.engine_combo = QComboBox()
         for eng in engines():
-            self.engine_combo.addItem(eng.label, eng.id)
+            label = eng.label if eng.available() else f"{eng.label}  (install…)"
+            self.engine_combo.addItem(label, eng.id)
+        self.engine_combo.setToolTip(
+            "Vendored JS engines work offline with no setup; advanced engines "
+            "(matplotlib/seaborn) install on demand for publication-grade static charts")
         form.addRow("Engine", self.engine_combo)
 
         self.type_combo = QComboBox()
@@ -224,6 +270,7 @@ class StudioDockWidget(QDockWidget):
         for name in THEMES:
             self.theme_combo.addItem(name)
         self.theme_combo.setCurrentText(DEFAULT_THEME)
+        self.theme_combo.currentIndexChanged.connect(self._sync_swatches)
         form.addRow("Theme", self.theme_combo)
 
         self.palette_combo = QComboBox()
@@ -232,10 +279,23 @@ class StudioDockWidget(QDockWidget):
         self.palette_combo.addItem(CUSTOM_PALETTE_LABEL)
         self.palette_combo.setToolTip(
             "Series colours — overrides the theme palette in every engine. "
-            "Pick 'Custom…' to define your own.")
+            "Pick 'Custom…' or click a swatch to define your own.")
         # connect after populating so the addItem loop doesn't fire the handler
         self.palette_combo.currentIndexChanged.connect(self._on_palette_changed)
         form.addRow("Colors", self.palette_combo)
+
+        # inline, embedded swatch editor — click a swatch to recolour, +/− to
+        # resize the palette; any edit switches to a custom palette. No modal.
+        self._swatch_host = QWidget()
+        self._swatch_row = QHBoxLayout(self._swatch_host)
+        self._swatch_row.setContentsMargins(0, 0, 0, 0)
+        self._swatch_row.setSpacing(4)
+        form.addRow("", self._swatch_host)
+
+        self.title_edit = QLineEdit()
+        self.title_edit.setPlaceholderText("(layer name)")
+        self.title_edit.setToolTip("Override the chart title; empty uses the layer name")
+        form.addRow("Title", self.title_edit)
 
         self.x_combo = self._field_combo()
         form.addRow("X / Category", self.x_combo)
@@ -280,9 +340,8 @@ class StudioDockWidget(QDockWidget):
         flags.addWidget(self.link_check)
         chart_lay.addLayout(form)
         chart_lay.addLayout(flags)
-        root.addWidget(chart_card)
+        outer.addWidget(chart_card)
 
-        # ── Actions ──
         btn_row = QHBoxLayout()
         self.render_btn = QPushButton("Render chart")
         self.render_btn.setStyleSheet(_RENDER_BTN_QSS)
@@ -309,9 +368,8 @@ class StudioDockWidget(QDockWidget):
         self.browser_btn.setFixedWidth(34)
         self.browser_btn.clicked.connect(self._open_in_browser)
         btn_row.addWidget(self.browser_btn)
-        root.addLayout(btn_row)
+        outer.addLayout(btn_row)
 
-        # ── Viewer slot ──
         self._view_slot = QVBoxLayout()
         self._view_placeholder = QLabel(
             "Pick a layer, choose a chart type and hit Render."
@@ -319,22 +377,99 @@ class StudioDockWidget(QDockWidget):
         self._view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._view_placeholder.setStyleSheet("color: #8d99ae; padding: 22px;")
         self._view_slot.addWidget(self._view_placeholder)
-        root.addLayout(self._view_slot, 1)
+        outer.addLayout(self._view_slot, 1)
+        return tab
 
-        self.status = QLabel("Ready")
-        self.status.setObjectName("o2vizStatus")
-        root.addWidget(self.status)
+    # ── Map diagrams tab: native QGIS diagrams on every feature ──
 
-        self.setWidget(container)
-        self._on_layer_changed(self.layer_combo.currentLayer())
-        self._sync_engine_types()
-        self._sync_controls()
+    def _build_diagrams_tab(self) -> QWidget:
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 8, 0, 0)
+        outer.setSpacing(8)
+        card, c = self._card("Map diagrams — on canvas")
+        c.addWidget(QLabel(
+            "Draw a diagram on every feature, on the map canvas, "
+            "coloured with the studio palette."))
+        trow = QHBoxLayout()
+        trow.addWidget(QLabel("Type"))
+        self.diag_type_combo = QComboBox()
+        for key in diagrams.DIAGRAM_TYPES:
+            self.diag_type_combo.addItem(diagrams.DIAGRAM_LABELS[key], key)
+        trow.addWidget(self.diag_type_combo, 1)
+        c.addLayout(trow)
+        c.addWidget(QLabel("Fields (numeric — slices / bars):"))
+        self.diag_field_list = QListWidget()
+        self.diag_field_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection)
+        self.diag_field_list.setMaximumHeight(150)
+        c.addWidget(self.diag_field_list)
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Size (mm)"))
+        self.diag_size_spin = QDoubleSpinBox()
+        self.diag_size_spin.setRange(3.0, 60.0)
+        self.diag_size_spin.setValue(14.0)
+        srow.addWidget(self.diag_size_spin)
+        srow.addStretch(1)
+        c.addLayout(srow)
+        brow = QHBoxLayout()
+        diag_apply = QPushButton("Apply to layer")
+        diag_apply.setStyleSheet(_RENDER_BTN_QSS)
+        diag_apply.clicked.connect(self._apply_diagram)
+        brow.addWidget(diag_apply)
+        diag_clear = QPushButton("Clear")
+        diag_clear.setToolTip("Remove diagrams from this layer")
+        diag_clear.clicked.connect(self._clear_diagram)
+        brow.addWidget(diag_clear)
+        brow.addStretch(1)
+        c.addLayout(brow)
+        outer.addWidget(card)
+        outer.addStretch(1)
+        return tab
+
+    # ── Labels tab: quick, elegant feature labels ──
+
+    def _build_labels_tab(self) -> QWidget:
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 8, 0, 0)
+        outer.setSpacing(8)
+        card, c = self._card("Labels — quick & elegant")
+        c.addWidget(QLabel("One click turns a field into well-placed labels."))
+        form = QFormLayout()
+        self.label_field_combo = self._field_combo()
+        form.addRow("Label field", self.label_field_combo)
+        self.label_preset_combo = QComboBox()
+        for key, lbl in labels.PRESETS:
+            self.label_preset_combo.addItem(lbl, key)
+        form.addRow("Style", self.label_preset_combo)
+        self.label_size_spin = QDoubleSpinBox()
+        self.label_size_spin.setRange(5.0, 40.0)
+        self.label_size_spin.setValue(9.0)
+        form.addRow("Size (pt)", self.label_size_spin)
+        c.addLayout(form)
+        brow = QHBoxLayout()
+        lbl_apply = QPushButton("Apply to layer")
+        lbl_apply.setStyleSheet(_RENDER_BTN_QSS)
+        lbl_apply.clicked.connect(self._apply_labels)
+        brow.addWidget(lbl_apply)
+        lbl_clear = QPushButton("Clear")
+        lbl_clear.setToolTip("Remove labels from this layer")
+        lbl_clear.clicked.connect(self._clear_labels)
+        brow.addWidget(lbl_clear)
+        brow.addStretch(1)
+        c.addLayout(brow)
+        outer.addWidget(card)
+        outer.addStretch(1)
+        return tab
 
     # ───────────────────────── wiring ─────────────────────────
 
     def _on_layer_changed(self, layer) -> None:
-        for combo in (self.x_combo, self.y_combo, self.group_combo, self.value_combo):
+        for combo in (self.x_combo, self.y_combo, self.group_combo,
+                      self.value_combo, self.label_field_combo):
             combo.setLayer(layer)
+        self._refresh_diagram_fields(layer)
         self._watch_layer(layer)
 
     def _watch_layer(self, layer) -> None:
@@ -409,16 +544,92 @@ class StudioDockWidget(QDockWidget):
         self.stacked_check.setEnabled(stacked)
         self.trend_check.setEnabled(trend)
 
-    def _open_diagrams(self) -> None:
+    # ── Map diagrams tab handlers ──
+
+    def _refresh_diagram_fields(self, layer) -> None:
+        if not hasattr(self, "diag_field_list"):
+            return
+        self.diag_field_list.clear()
+        if layer is None:
+            return
+        for name in diagrams.numeric_field_names(layer):
+            item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.diag_field_list.addItem(item)
+
+    def _checked_diagram_fields(self) -> list[str]:
+        return [self.diag_field_list.item(i).text()
+                for i in range(self.diag_field_list.count())
+                if self.diag_field_list.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _apply_diagram(self) -> None:
         layer = self.layer_combo.currentLayer()
         if layer is None:
             self.set_status("Pick a layer first")
             return
-        from .diagram_dialog import MapDiagramDialog
+        fields = self._checked_diagram_fields()
+        if not fields:
+            self.set_status("Tick at least one numeric field for the diagram")
+            return
+        kind = self.diag_type_combo.currentData()
+        ok = diagrams.apply_diagram(
+            layer, kind=kind, fields=fields,
+            colors=list(self._current_theme()["palette"]),
+            size_mm=self.diag_size_spin.value())
+        if not ok:
+            self.set_status("Could not apply the diagram (no geometry?)")
+            return
+        self._refresh_canvas(layer)
+        self.set_status(
+            f"Applied {diagrams.DIAGRAM_LABELS[kind].lower()} diagram "
+            f"({len(fields)} field{'s' if len(fields) != 1 else ''}) on the canvas")
 
-        theme = self._current_theme()
-        dlg = MapDiagramDialog(layer, list(theme["palette"]), self.iface, self)
-        dlg.exec()
+    def _clear_diagram(self) -> None:
+        layer = self.layer_combo.currentLayer()
+        if layer is None:
+            return
+        diagrams.clear_diagram(layer)
+        self._refresh_canvas(layer)
+        self.set_status("Diagrams removed from this layer")
+
+    # ── Labels tab handlers ──
+
+    def _apply_labels(self) -> None:
+        layer = self.layer_combo.currentLayer()
+        if layer is None:
+            self.set_status("Pick a layer first")
+            return
+        field = self.label_field_combo.currentField()
+        if not field:
+            self.set_status("Pick a field to label")
+            return
+        ok = labels.apply_labels(
+            layer, field=field, preset=self.label_preset_combo.currentData(),
+            color=self._current_theme()["text"], size=self.label_size_spin.value())
+        if not ok:
+            self.set_status("Could not apply labels")
+            return
+        self._refresh_canvas(layer)
+        self.set_status(f"Labelled features by '{field}'")
+
+    def _clear_labels(self) -> None:
+        layer = self.layer_combo.currentLayer()
+        if layer is None:
+            return
+        labels.clear_labels(layer)
+        self._refresh_canvas(layer)
+        self.set_status("Labels removed from this layer")
+
+    def _refresh_canvas(self, layer) -> None:
+        try:
+            self.iface.layerTreeView().refreshLayerSymbology(layer.id())
+        except Exception:
+            pass
+        try:
+            self.iface.mapCanvas().refreshAllLayers()
+        except Exception:
+            pass
 
     def _load_external(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -461,7 +672,8 @@ class StudioDockWidget(QDockWidget):
             self.set_status("No rows (empty selection?)")
             return None
 
-        spec = {"type": kind, "title": layer.name(), "x_label": x, "y_label": y,
+        title = self.title_edit.text().strip() or layer.name()
+        spec = {"type": kind, "title": title, "x_label": x, "y_label": y,
                 "stacked": self.stacked_check.isChecked(),
                 "theme": self._current_theme()}
 
@@ -719,50 +931,102 @@ class StudioDockWidget(QDockWidget):
 
     # ───────────────────────── render / explore / export ─────────────────────────
 
-    # ───────────────────────── colours ─────────────────────────
+    # ───────────────────────── colours (embedded swatch editor) ─────────────────────────
 
-    def _on_palette_changed(self, idx: int) -> None:
-        if self.palette_combo.itemText(idx) == CUSTOM_PALETTE_LABEL:
-            if not self._open_palette_editor():
-                # cancelled with no custom palette defined — revert silently
-                self.palette_combo.blockSignals(True)
-                self.palette_combo.setCurrentIndex(self._prev_palette_index)
-                self.palette_combo.blockSignals(False)
-                return
-        self._prev_palette_index = self.palette_combo.currentIndex()
-
-    def _seed_palette(self) -> list[str]:
-        """The palette the editor should open with: the previously chosen
-        built-in palette, or the active theme's palette."""
-        prev = self.palette_combo.itemText(self._prev_palette_index)
-        pal = PALETTES.get(prev)
+    def _resolve_palette(self) -> list[str]:
+        """The colour list in effect: custom swatches, a chosen built-in
+        palette, or the active theme's palette."""
+        name = self.palette_combo.currentText()
+        if name == CUSTOM_PALETTE_LABEL and self._custom_palette:
+            return list(self._custom_palette)
+        pal = PALETTES.get(name)
         if pal:
             return list(pal)
         theme = THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
         return list(theme["palette"])
 
-    def _open_palette_editor(self) -> bool:
-        """Open the swatch editor. Returns True if a custom palette is set
-        afterwards (stay on 'Custom…'), False to revert the combo."""
-        from .palette_editor import PaletteEditor
+    def _on_palette_changed(self, idx: int) -> None:
+        # picking 'Custom…' with nothing defined yet seeds from what was showing
+        if (self.palette_combo.itemText(idx) == CUSTOM_PALETTE_LABEL
+                and not self._custom_palette):
+            prev = self.palette_combo.itemText(self._prev_palette_index)
+            seed = PALETTES.get(prev) or THEMES.get(
+                self.theme_combo.currentText(), THEMES[DEFAULT_THEME])["palette"]
+            self._custom_palette = list(seed)
+        self._prev_palette_index = self.palette_combo.currentIndex()
+        self._sync_swatches()
 
-        seed = list(self._custom_palette) if self._custom_palette else self._seed_palette()
-        dlg = PaletteEditor(seed, self)
-        if dlg.exec():
-            self._custom_palette = dlg.palette()
-            self.set_status(f"Custom palette: {len(self._custom_palette)} colours")
-            return True
-        return self._custom_palette is not None
+    def _enter_custom(self, colors: list[str]) -> None:
+        """Adopt ``colors`` as the custom palette and switch the combo to it."""
+        self._custom_palette = list(colors)
+        idx = self.palette_combo.findText(CUSTOM_PALETTE_LABEL)
+        self.palette_combo.blockSignals(True)
+        self.palette_combo.setCurrentIndex(idx)
+        self.palette_combo.blockSignals(False)
+        self._prev_palette_index = idx
+        self._sync_swatches()
+
+    def _sync_swatches(self, *_args) -> None:
+        if not hasattr(self, "_swatch_row"):
+            return
+        while self._swatch_row.count():
+            item = self._swatch_row.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        palette = self._resolve_palette()
+        for i, color in enumerate(palette):
+            sw = QPushButton()
+            sw.setFixedSize(20, 20)
+            sw.setCursor(Qt.CursorShape.PointingHandCursor)
+            sw.setToolTip(f"{color} — click to edit")
+            sw.setStyleSheet(
+                f"QPushButton {{ background: {color}; border: 1px solid #00000033;"
+                f" border-radius: 4px; }}"
+                f"QPushButton:hover {{ border: 2px solid #16323f; }}")
+            sw.clicked.connect(lambda _=False, idx=i: self._edit_swatch(idx))
+            self._swatch_row.addWidget(sw)
+        add = QPushButton("+")
+        add.setFixedSize(20, 20)
+        add.setToolTip("Add a colour")
+        add.clicked.connect(self._add_swatch)
+        self._swatch_row.addWidget(add)
+        rem = QPushButton("−")
+        rem.setFixedSize(20, 20)
+        rem.setToolTip("Remove the last colour")
+        rem.setEnabled(len(palette) > 1)
+        rem.clicked.connect(self._remove_swatch)
+        self._swatch_row.addWidget(rem)
+        self._swatch_row.addStretch(1)
+
+    def _edit_swatch(self, i: int) -> None:
+        base = self._resolve_palette()
+        if i >= len(base):
+            return
+        chosen = QColorDialog.getColor(QColor(base[i]), self, "Pick a colour")
+        if chosen.isValid():
+            base[i] = chosen.name()
+            self._enter_custom(base)
+            self.set_status("Custom palette updated")
+
+    def _add_swatch(self) -> None:
+        base = self._resolve_palette()
+        if len(base) >= 16:
+            return
+        chosen = QColorDialog.getColor(QColor("#2a8f85"), self, "Add a colour")
+        if chosen.isValid():
+            base.append(chosen.name())
+            self._enter_custom(base)
+
+    def _remove_swatch(self) -> None:
+        base = self._resolve_palette()
+        if len(base) > 1:
+            base.pop()
+            self._enter_custom(base)
 
     def _current_theme(self) -> dict:
         theme = THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
-        name = self.palette_combo.currentText()
-        if name == CUSTOM_PALETTE_LABEL and self._custom_palette:
-            return dict(theme, palette=list(self._custom_palette))
-        palette = PALETTES.get(name)
-        if palette:
-            theme = dict(theme, palette=list(palette))
-        return theme
+        return dict(theme, palette=self._resolve_palette())
 
     def _show_html(self, html: str, status: str) -> None:
         if self._tmp_dir is None:
@@ -806,11 +1070,13 @@ class StudioDockWidget(QDockWidget):
         self.set_status("Opened the current chart in your browser")
 
     def _render(self) -> None:
+        engine = engines()[max(0, self.engine_combo.currentIndex())]
+        if not self._ensure_engine_available(engine):
+            return
         try:
             spec = self._build_spec()
             if spec is None:
                 return
-            engine = engines()[max(0, self.engine_combo.currentIndex())]
             if spec["type"] not in engine.supports:
                 self.set_status(f"{engine.label} cannot draw {spec['type']} charts")
                 return
@@ -819,6 +1085,49 @@ class StudioDockWidget(QDockWidget):
             self.set_status(f"Chart failed: {exc}")
             return
         self._show_html(html, f"Rendered {spec['type']} · {engine.label}")
+
+    # ───────────────────────── advanced engine availability ─────────────────────────
+
+    def _refresh_engine_labels(self) -> None:
+        for i in range(self.engine_combo.count()):
+            eng = engines()[i]
+            label = eng.label if eng.available() else f"{eng.label}  (install…)"
+            self.engine_combo.setItemText(i, label)
+
+    def _ensure_engine_available(self, engine) -> bool:
+        """If an optional engine's libraries are missing, offer to install them
+        (explicit click only) into the QGIS Python. Returns True if usable."""
+        if engine.available():
+            return True
+        pkgs = requirements.ENGINE_PIP_REQUIREMENTS.get(engine.id, [])
+        missing = requirements.missing_packages(pkgs)
+        if not missing:
+            return True
+        cmd = " ".join(requirements.install_command(missing))
+        resp = QMessageBox.question(
+            self, "Install advanced engine",
+            f"<b>{engine.label}</b> needs: {', '.join(missing)}.<br><br>"
+            f"Install now into the QGIS Python (user site-packages)?<br>"
+            f"<code>{cmd}</code>",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            self.set_status(f"{engine.label} needs {', '.join(missing)}")
+            return False
+        self.set_status(f"Installing {', '.join(missing)} — this can take a minute…")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            ok, log = requirements.run_pip_install(missing)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if ok and engine.available():
+            self._refresh_engine_labels()
+            self.set_status(f"Installed {', '.join(missing)} — ready")
+            return True
+        QMessageBox.warning(self, "Install failed",
+                            (log or "pip failed")[-1600:])
+        self.set_status("Install failed — see the dialog")
+        return False
 
     def _explore(self) -> None:
         layer = self.layer_combo.currentLayer()

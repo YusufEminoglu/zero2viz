@@ -174,5 +174,12 @@ class ChartEngine:
     label = "Base"
     supports = frozenset(CHART_TYPES)  # engines may declare a reduced set
 
+    @classmethod
+    def available(cls) -> bool:
+        """Whether this engine can render now. Vendored JS engines are always
+        available; optional engines (matplotlib, R) override this with a
+        dependency check so the dock can offer to install what's missing."""
+        return True
+
     def build_html(self, spec: dict) -> str:
         raise NotImplementedError

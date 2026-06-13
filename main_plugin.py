@@ -113,9 +113,10 @@ class O2VizPlugin:
         QMessageBox.about(
             self.iface.mainWindow(),
             PLUGIN_TITLE,
-            "<h3>02viz</h3>"
-            "<p>Geospatial Visualization Studio — multi-engine charts "
-            "from QGIS layers and external data.</p>"
+            "<h3>02viz · Zero2Visual</h3>"
+            "<p><i>From zero to elegant visuals — fast.</i></p>"
+            "<p>Geospatial Visualization Studio — charts, on-canvas diagrams "
+            "and labels from QGIS layers and external data.</p>"
             "<p><a href='https://github.com/YusufEminoglu/zero2viz'>"
             "github.com/YusufEminoglu/zero2viz</a></p>",
         )
