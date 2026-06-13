@@ -10,7 +10,8 @@ Spec contract (produced by the dock, consumed by every engine):
     {
         "type": "bar" | "line" | "area" | "scatter" | "bubble" |
                 "histogram" | "pie" | "box" | "heatmap" |
-                "treemap" | "sunburst",
+                "treemap" | "sunburst" | "errorband" | "errorbar" |
+                "density" | "violin" | "radar" | "pareto",
         "title": str, "x_label": str, "y_label": str,
         "stacked": bool,                  # bar / area
         "theme": {"palette": [...], "bg": str, "text": str, "grid": str},
@@ -25,6 +26,12 @@ Spec contract (produced by the dock, consumed by every engine):
             # box:        "groups", "stats" ([min, q1, med, q3, max])
             # heatmap:    "x_cats", "y_cats", "cells" [[xi, yi, v]], "vmin", "vmax"
             # treemap / sunburst: "nodes" [{name, value, children?}]
+            # errorband / errorbar:
+            #   "categories", "series" [{"name", "mean", "lo", "hi", "ids"}]
+            # density:    "series" [{"name", "points": [[x, density]]}]
+            # violin:     "groups", "polygons" [[[x, y]...]], "medians"
+            # radar:      "axes", "maxes", "series" [{"name", "values"}]
+            # pareto:     "categories", "values", "cum" (0–100 %), "ids"
         },
     }
 
@@ -36,7 +43,8 @@ from __future__ import annotations
 import os
 
 CHART_TYPES = ("bar", "line", "area", "scatter", "bubble", "histogram",
-               "pie", "box", "heatmap", "treemap", "sunburst")
+               "pie", "box", "heatmap", "treemap", "sunburst",
+               "errorband", "errorbar", "density", "violin", "radar", "pareto")
 
 THEMES: dict[str, dict] = {
     "Studio Light": {"palette": ["#2a8f85", "#fa8e7a", "#16323f", "#7fd1c5",
@@ -53,6 +61,29 @@ THEMES: dict[str, dict] = {
                    "bg": "#ffffff", "text": "#001219", "grid": "#dddddd"},
 }
 DEFAULT_THEME = "Studio Light"
+
+# Colour palettes the user can swap in over any theme. ``None`` keeps the
+# theme's own palette. Every engine reads spec["theme"]["palette"], so one
+# override in the dock recolours ECharts, Plotly and Vega-Lite alike.
+PALETTES: dict[str, list[str] | None] = {
+    "Theme default": None,
+    "Vivid": ["#3a86ff", "#fb5607", "#06a77d", "#d62246", "#8338ec",
+              "#ffbe0b", "#118ab2", "#6c757d"],
+    "Colorblind safe": ["#0072b2", "#e69f00", "#009e73", "#cc79a7",
+                        "#56b4e9", "#d55e00", "#f0e442", "#999999"],
+    "Viridis": ["#440154", "#46327e", "#365c8d", "#277f8e", "#1fa187",
+                "#4ac16d", "#a0da39", "#fde725"],
+    "Sunset": ["#5c53a5", "#a059a0", "#ce6693", "#eb7f86", "#f8a07e",
+               "#fac484", "#f3e79b", "#8d99ae"],
+    "Ocean": ["#03045e", "#0077b6", "#00b4d8", "#90e0ef", "#2a9d8f",
+              "#197278", "#52b69a", "#8d99ae"],
+    "Earth": ["#606c38", "#bc6c25", "#283618", "#dda15e", "#7f5539",
+              "#a98467", "#936639", "#b6ad90"],
+    "Berry": ["#590d22", "#a4133c", "#ff4d6d", "#c9184a", "#ff8fa3",
+              "#7b2cbf", "#9d4edd", "#c77dff"],
+    "Grayscale print": ["#1a1a1a", "#4d4d4d", "#7a7a7a", "#a6a6a6",
+                        "#c9c9c9", "#333333", "#5f5f5f", "#8c8c8c"],
+}
 
 _WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 _FILE_CACHE: dict[str, str] = {}

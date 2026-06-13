@@ -7,7 +7,7 @@
 **Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.**
 
 [![QGIS](https://img.shields.io/badge/QGIS-3.28%2B-93b023?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/zero2viz/)
-[![Version](https://img.shields.io/github/v/tag/YusufEminoglu/02viz?label=version&color=blue)](https://github.com/YusufEminoglu/02viz/releases)
+[![Version](https://img.shields.io/github/v/tag/YusufEminoglu/zero2viz?label=version&color=blue)](https://github.com/YusufEminoglu/zero2viz/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](LICENSE)
 [![QGIS Plugin Hub](https://img.shields.io/badge/QGIS%20Hub-install-589632?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/zero2viz/)
 
@@ -24,14 +24,14 @@ Charting in GIS has always meant exporting attribute tables to a spreadsheet, or
 ## ✨ Features
 
 - **One-click Explore** — pick a layer, press one button: 02viz profiles every field and builds a complete interactive dashboard — KPI cards, a chart per field, a Pearson correlation matrix, the strongest-relationship scatter with trend line, and plain-English insight chips ("Strongest link: pop ↔ income, r = -0.47").
-- **Eleven chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap and sunburst.
+- **Seventeen chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap, sunburst, mean ± σ band, mean ± σ bars, density (KDE), violin, radar/spider and Pareto (80/20).
 - **Three rendering engines** — vendored Apache ECharts, Plotly.js and Vega-Lite behind one spec contract; switch engines with a combo box, everything works offline. The dock knows what each engine can draw and greys out the rest.
 - **Chart → map selection** — click a bar, slice or point and the matching features are selected on the canvas, on every QGIS web stack (crash-safe title transport, no QWebChannel needed).
 - **Map → chart cross-filter** — select features on the canvas and the chart instantly dims everything else, no re-render; works in single charts and across every dashboard tile.
 - **Live mode** — optionally re-render on every canvas selection change; "Only selected features" scopes any chart to your selection.
-- **Built-in data shaping** — aggregation (count/sum/mean/median/min/max), group/color-by field, Top-N with "Other" collapse, value sorting, least-squares trend line, histogram binning and box-plot quartiles — all pure Python, no pandas/numpy needed.
+- **Built-in data shaping & statistics** — aggregation (count/sum/mean/median/min/max), group/color-by field, Top-N with "Other" collapse, value sorting, least-squares trend line, histogram binning, box-plot quartiles, sample standard deviation, Silverman-bandwidth Gaussian KDE and cumulative shares — all pure Python, no pandas/numpy needed.
 - **Layers and beyond** — chart any vector layer or attribute table, or load external CSV/XLSX/ODS tables straight into the studio.
-- **Four themes** — Studio Light, Ink Dark, Soft Pastel, Bold Print; consistent across both engines.
+- **Four themes, eight palettes** — Studio Light, Ink Dark, Soft Pastel and Bold Print themes, plus a Colors selector with 8 curated palettes (Vivid, Colorblind safe, Viridis, Sunset, Ocean, Earth, Berry, Grayscale print) that override the theme palette identically in every engine.
 - **One-file export** — every chart saves as a single self-contained interactive HTML; PNG export via the chart toolbox.
 - **Qt5 and Qt6 ready** — runs on QGIS 3.28+ and the QGIS 4 line, with a WebEngine → WebKit → browser viewer fallback chain.
 
@@ -39,7 +39,7 @@ Charting in GIS has always meant exporting attribute tables to a spreadsheet, or
 
 **From the QGIS Plugin Hub (recommended):** `Plugins → Manage and Install Plugins…` → search for **"02viz"** → *Install*.
 
-**From a release zip:** download the latest zip from [Releases](https://github.com/YusufEminoglu/02viz/releases) → `Plugins → Install from ZIP`.
+**From a release zip:** download the latest zip from [Releases](https://github.com/YusufEminoglu/zero2viz/releases) → `Plugins → Install from ZIP`.
 
 Requires QGIS 3.28 or newer. No external Python dependencies for the core studio.
 
@@ -58,7 +58,7 @@ Requires QGIS 3.28 or newer. No external Python dependencies for the core studio
 | Data | Layer combo + selected-only | Binds any vector layer/table; respects canvas selection |
 | Data | Live: redraw on selection | Re-renders the chart whenever the layer selection changes |
 | Data | Load external table… | Opens CSV/XLSX/ODS/GPKG tables via OGR and adds them to the layer list |
-| Chart | Type / Engine / Theme | 11 chart types × 2 engines (ECharts, Plotly) × 4 themes |
+| Chart | Type / Engine / Theme / Colors | 17 chart types × 3 engines (ECharts, Plotly, Vega-Lite) × 4 themes × 8 palettes |
 | Chart | X / Y / Group / Value-Size | Field bindings; Group splits colored series, Value drives bubble size, heatmap cells and treemap weights |
 | Chart | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
 | Chart | Stacked / Trend line / Click selects | Stack bars+areas, least-squares trend, chart→map selection toggle |
@@ -80,4 +80,4 @@ Requires QGIS 3.28 or newer. No external Python dependencies for the core studio
 
 ## 📜 License & author
 
-GPL-3.0 © [Yusuf Eminoğlu](https://github.com/YusufEminoglu) — bug reports and feature requests welcome in [Issues](https://github.com/YusufEminoglu/02viz/issues).
+GPL-3.0 © [Yusuf Eminoğlu](https://github.com/YusufEminoglu) — bug reports and feature requests welcome in [Issues](https://github.com/YusufEminoglu/zero2viz/issues).

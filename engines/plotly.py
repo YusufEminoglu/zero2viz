@@ -50,6 +50,12 @@ window.__o2vizHighlight = function (ids) {
 """
 
 
+def _rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 class PlotlyEngine(ChartEngine):
     id = "plotly"
     label = "Plotly"
@@ -184,6 +190,119 @@ class PlotlyEngine(ChartEngine):
                            "parents": parents, "values": values,
                            "branchvalues": "total",
                            "marker": {"line": {"color": theme["bg"], "width": 1.5}}})
+
+        elif kind in ("errorband", "errorbar"):
+            xy_layout()
+            cats = data.get("categories", [])
+            for si, s in enumerate(data.get("series", [])):
+                color = theme["palette"][si % len(theme["palette"])]
+                mean, lo, hi = s.get("mean", []), s.get("lo", []), s.get("hi", [])
+                if kind == "errorband":
+                    traces.append({"type": "scatter", "mode": "lines", "x": cats,
+                                   "y": hi, "line": {"width": 0, "color": color},
+                                   "hoverinfo": "skip", "showlegend": False})
+                    traces.append({"type": "scatter", "mode": "lines", "x": cats,
+                                   "y": lo, "line": {"width": 0, "color": color},
+                                   "fill": "tonexty",
+                                   "fillcolor": _rgba(color, 0.18),
+                                   "hoverinfo": "skip", "showlegend": False})
+                    traces.append({"type": "scatter", "mode": "lines+markers",
+                                   "name": s.get("name", ""), "x": cats, "y": mean,
+                                   "customdata": s.get("ids") or [],
+                                   "line": {"color": color, "width": 2.5}})
+                else:
+                    traces.append({
+                        "type": "bar", "name": s.get("name", ""), "x": cats,
+                        "y": mean, "customdata": s.get("ids") or [],
+                        "marker": {"color": color},
+                        "error_y": {
+                            "type": "data", "symmetric": False,
+                            "array": [None if (h is None or mean[i] is None)
+                                      else h - mean[i] for i, h in enumerate(hi)],
+                            "arrayminus": [None if (l is None or mean[i] is None)
+                                           else mean[i] - l for i, l in enumerate(lo)],
+                            "color": theme["text"], "thickness": 1.6, "width": 5,
+                        }})
+            if kind == "errorbar":
+                layout["barmode"] = "group"
+
+        elif kind == "density":
+            xy_layout()
+            for si, s in enumerate(data.get("series", [])):
+                color = theme["palette"][si % len(theme["palette"])]
+                pts = s.get("points", [])
+                traces.append({"type": "scatter", "mode": "lines",
+                               "name": s.get("name", ""),
+                               "x": [p[0] for p in pts], "y": [p[1] for p in pts],
+                               "line": {"color": color, "width": 2,
+                                        "shape": "spline"},
+                               "fill": "tozeroy",
+                               "fillcolor": _rgba(color, 0.3)})
+
+        elif kind == "violin":
+            xy_layout()
+            groups = data.get("groups", [])
+            medians = data.get("medians", [])
+            for i, g in enumerate(groups):
+                color = theme["palette"][i % len(theme["palette"])]
+                poly = data.get("polygons", [])[i]
+                traces.append({"type": "scatter", "mode": "lines", "name": g,
+                               "x": [p[0] for p in poly] + [poly[0][0]],
+                               "y": [p[1] for p in poly] + [poly[0][1]],
+                               "fill": "toself", "fillcolor": _rgba(color, 0.45),
+                               "line": {"color": color, "width": 1.2},
+                               "hoverinfo": "name", "showlegend": False})
+            traces.append({"type": "scatter", "mode": "markers", "name": "median",
+                           "x": list(range(len(groups))), "y": medians,
+                           "marker": {"color": theme["text"], "size": 7},
+                           "hovertemplate": "median %{y}<extra></extra>",
+                           "showlegend": False})
+            layout["xaxis"]["tickvals"] = list(range(len(groups)))
+            layout["xaxis"]["ticktext"] = groups
+            layout["xaxis"]["range"] = [-0.7, len(groups) - 0.3]
+
+        elif kind == "radar":
+            axes = data.get("axes", [])
+            maxes = data.get("maxes", []) or [1.0] * len(axes)
+            for s in data.get("series", []):
+                vals = s.get("values", [])
+                # normalise per axis so mixed units share one polar scale
+                r = [0 if (v is None or maxes[i] == 0) else v / maxes[i]
+                     for i, v in enumerate(vals)]
+                traces.append({"type": "scatterpolar",
+                               "r": r + r[:1], "theta": axes + axes[:1],
+                               "name": s.get("name", ""), "fill": "toself",
+                               "opacity": 0.7,
+                               "text": [f"{v:g}" if v is not None else ""
+                                        for v in vals] + [""],
+                               "hovertemplate": "%{theta}: %{text}<extra>%{fullData.name}</extra>"})
+            layout["polar"] = {
+                "bgcolor": theme["bg"],
+                "radialaxis": {"visible": True, "range": [0, 1],
+                               "showticklabels": False,
+                               "gridcolor": theme["grid"]},
+                "angularaxis": {"gridcolor": theme["grid"],
+                                "linecolor": theme["grid"]},
+            }
+
+        elif kind == "pareto":
+            xy_layout()
+            ids = data.get("ids") or [[]] * len(data.get("categories", []))
+            traces.append({"type": "bar", "name": spec.get("y_label", "value"),
+                           "x": data.get("categories", []),
+                           "y": data.get("values", []), "customdata": ids,
+                           "marker": {"color": theme["palette"][0]}})
+            traces.append({"type": "scatter", "mode": "lines+markers",
+                           "name": "cumulative %",
+                           "x": data.get("categories", []),
+                           "y": data.get("cum", []), "yaxis": "y2",
+                           "line": {"color": theme["palette"][2 % len(theme["palette"])],
+                                    "width": 2.5}})
+            layout["yaxis2"] = dict(axis_style, overlaying="y", side="right",
+                                    range=[0, 105], ticksuffix=" %",
+                                    showgrid=False)
+            layout["margin"]["r"] = 70
+            layout["showlegend"] = False
 
         else:
             raise ValueError(f"Unsupported chart type: {kind}")

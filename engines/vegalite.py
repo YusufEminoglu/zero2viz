@@ -63,7 +63,8 @@ def _axis_x(label: str, angle: int = -30) -> dict:
 class VegaLiteEngine(ChartEngine):
     id = "vegalite"
     label = "Vega-Lite"
-    supports = frozenset(set(CHART_TYPES) - {"treemap", "sunburst"})
+    # no treemap/sunburst (not in the grammar) and no radar (no polar coords)
+    supports = frozenset(set(CHART_TYPES) - {"treemap", "sunburst", "radar"})
 
     def build_html(self, spec: dict) -> str:
         vl = self.vl_spec(spec)
@@ -276,6 +277,181 @@ class VegaLiteEngine(ChartEngine):
              "encoding": {"x": x,
                           "y": {"field": "med", "type": "quantitative", "title": y_title}}},
         ]}
+
+    # — uncertainty / distribution family —
+
+    def _band_rows(self, data: dict) -> list[dict]:
+        rows = []
+        for s in data.get("series", []):
+            name = s.get("name", "")
+            ids = s.get("ids") or []
+            for i, cat in enumerate(data.get("categories", [])):
+                if i >= len(s.get("mean", [])) or s["mean"][i] is None:
+                    continue
+                rows.append({"c": cat, "s": name, "m": s["mean"][i],
+                             "lo": s["lo"][i], "hi": s["hi"][i],
+                             "__ids": ids[i] if i < len(ids) else []})
+        return rows
+
+    def _vl_errorband(self, spec, data, theme):
+        rows = self._band_rows(data)
+        multi = len(data.get("series", [])) > 1
+        x = _axis_x(spec.get("x_label", ""))
+        color = {"field": "s", "type": "nominal", "sort": None, "title": None}
+        band = {"mark": {"type": "area", "opacity": 0.18, "interpolate": "monotone"},
+                "encoding": {"x": x,
+                             "y": {"field": "lo", "type": "quantitative",
+                                   "title": spec.get("y_label", "") or None,
+                                   "scale": {"zero": False}},
+                             "y2": {"field": "hi"}}}
+        line = {"mark": {"type": "line", "point": True, "strokeWidth": 2.5,
+                         "interpolate": "monotone"},
+                "encoding": {"x": x,
+                             "y": {"field": "m", "type": "quantitative",
+                                   "title": spec.get("y_label", "") or None},
+                             "tooltip": [{"field": "c", "title": spec.get("x_label") or "category"},
+                                         {"field": "m", "title": "mean"},
+                                         {"field": "lo", "title": "-1σ"},
+                                         {"field": "hi", "title": "+1σ"}]}}
+        if multi:
+            band["encoding"]["color"] = color
+            line["encoding"]["color"] = dict(color)
+        else:
+            band["mark"]["color"] = theme["palette"][0]
+            line["mark"]["color"] = theme["palette"][0]
+        return {"data": {"values": rows}, "layer": [band, line]}
+
+    def _vl_errorbar(self, spec, data, theme):
+        rows = self._band_rows(data)
+        multi = len(data.get("series", [])) > 1
+        x = _axis_x(spec.get("x_label", ""))
+        color = {"field": "s", "type": "nominal", "sort": None, "title": None}
+        offset = {"field": "s", "sort": None}
+        bar = {"mark": {"type": "bar"},
+               "encoding": {"x": x,
+                            "y": {"field": "m", "type": "quantitative",
+                                  "title": spec.get("y_label", "") or None},
+                            "tooltip": [{"field": "c", "title": spec.get("x_label") or "category"},
+                                        {"field": "m", "title": "mean"},
+                                        {"field": "lo", "title": "-1σ"},
+                                        {"field": "hi", "title": "+1σ"}]}}
+        rule = {"mark": {"type": "rule", "strokeWidth": 1.6, "color": theme["text"]},
+                "encoding": {"x": x,
+                             "y": {"field": "lo", "type": "quantitative",
+                                   "title": spec.get("y_label", "") or None},
+                             "y2": {"field": "hi"}}}
+        if multi:
+            bar["encoding"]["color"] = color
+            bar["encoding"]["xOffset"] = offset
+            rule["encoding"]["xOffset"] = dict(offset)
+        else:
+            bar["mark"]["color"] = theme["palette"][0]
+        return {"data": {"values": rows}, "layer": [bar, rule]}
+
+    def _vl_density(self, spec, data, theme):
+        rows = []
+        for s in data.get("series", []):
+            for p in s.get("points", []):
+                rows.append({"x": p[0], "d": p[1], "s": s.get("name", ""),
+                             "__ids": []})
+        multi = len(data.get("series", [])) > 1
+        enc = {
+            "x": {"field": "x", "type": "quantitative",
+                  "title": spec.get("x_label", "") or None,
+                  "scale": {"zero": False}},
+            # stack=None: stacked areas impute 0 at every other series' grid
+            # x, turning smooth KDE curves into a sawtooth
+            "y": {"field": "d", "type": "quantitative", "title": "density",
+                  "stack": None},
+            "tooltip": [{"field": "x", "title": spec.get("x_label") or "x"},
+                        {"field": "d", "title": "density", "format": ".4f"}],
+        }
+        mark = {"type": "area", "line": True, "opacity": 0.3,
+                "interpolate": "monotone"}
+        if multi:
+            enc["color"] = {"field": "s", "type": "nominal", "sort": None,
+                            "title": None}
+        else:
+            mark["color"] = theme["palette"][0]
+        return {"data": {"values": rows}, "mark": mark, "encoding": enc}
+
+    def _vl_violin(self, spec, data, theme):
+        groups = data.get("groups", [])
+        rows = []
+        for i, g in enumerate(groups):
+            poly = data.get("polygons", [])[i]
+            half = len(poly) // 2
+            # the polygon is left side + reversed right side: re-pair into
+            # (xl, xr) per y sample for a ranged-area mark
+            for j in range(half):
+                left = poly[j]
+                right = poly[len(poly) - 1 - j]
+                rows.append({"g": g, "y": left[1], "xl": left[0], "xr": right[0],
+                             "__ids": []})
+        med_rows = [{"g": g, "x": i, "med": m, "__ids": []}
+                    for i, (g, m) in enumerate(zip(groups,
+                                                   data.get("medians", [])))]
+        names = json.dumps(groups, ensure_ascii=False)
+        x_axis = {"title": spec.get("x_label", "") or None, "grid": False,
+                  "values": list(range(len(groups))),
+                  "labelExpr": f"{names}[datum.value] || ''", "labelAngle": -30}
+        return {"layer": [
+            {"data": {"values": rows},
+             "mark": {"type": "area", "opacity": 0.55, "interpolate": "monotone"},
+             "encoding": {
+                 "x": {"field": "xl", "type": "quantitative", "axis": x_axis,
+                       "scale": {"domain": [-0.7, max(0.3, len(groups) - 0.3)]}},
+                 "x2": {"field": "xr"},
+                 # NO "order" channel here: with one, vega facets the path
+                 # per order value and every violin degenerates to a 0-size
+                 # path. Default y-sort is what a ranged area needs anyway.
+                 "y": {"field": "y", "type": "quantitative",
+                       "title": spec.get("y_label", "") or None,
+                       "scale": {"zero": False}},
+                 "color": {"field": "g", "type": "nominal", "sort": None,
+                           "legend": None},
+                 "tooltip": [{"field": "g", "title": "group"}],
+             }},
+            {"data": {"values": med_rows},
+             "mark": {"type": "point", "filled": True, "size": 55,
+                      "color": theme["text"]},
+             "encoding": {
+                 "x": {"field": "x", "type": "quantitative", "axis": x_axis,
+                       "scale": {"domain": [-0.7, max(0.3, len(groups) - 0.3)]}},
+                 "y": {"field": "med", "type": "quantitative",
+                       "title": spec.get("y_label", "") or None},
+                 "tooltip": [{"field": "g", "title": "group"},
+                             {"field": "med", "title": "median"}],
+             }},
+        ]}
+
+    def _vl_pareto(self, spec, data, theme):
+        ids = data.get("ids") or [[]] * len(data.get("categories", []))
+        rows = [{"c": c, "v": v, "cum": data.get("cum", [])[i],
+                 "__ids": ids[i]}
+                for i, (c, v) in enumerate(zip(data.get("categories", []),
+                                               data.get("values", [])))]
+        x = _axis_x(spec.get("x_label", ""))
+        return {"data": {"values": rows},
+                "resolve": {"scale": {"y": "independent"}},
+                "layer": [
+                    {"mark": {"type": "bar", "color": theme["palette"][0]},
+                     "encoding": {
+                         "x": x,
+                         "y": {"field": "v", "type": "quantitative",
+                               "title": spec.get("y_label", "") or None},
+                         "opacity": _OPACITY,
+                         "tooltip": [{"field": "c", "title": spec.get("x_label") or "category"},
+                                     {"field": "v", "title": spec.get("y_label") or "value"},
+                                     {"field": "cum", "title": "cumulative %"}]}},
+                    {"mark": {"type": "line", "point": True, "strokeWidth": 2.5,
+                              "color": theme["palette"][2 % len(theme["palette"])]},
+                     "encoding": {
+                         "x": dict(x),
+                         "y": {"field": "cum", "type": "quantitative",
+                               "title": "cumulative %",
+                               "scale": {"domain": [0, 105]}}}},
+                ]}
 
     def _vl_heatmap(self, spec, data, theme):
         vmin, vmax = data.get("vmin", 0), data.get("vmax", 1)

@@ -32,7 +32,7 @@ from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
 from ..core import datasource, profile as profiler, stats, transform
 from ..engines import engines
-from ..engines.base import DEFAULT_THEME, THEMES
+from ..engines.base import DEFAULT_THEME, PALETTES, THEMES
 from ..engines.dashboard import build_dashboard
 from .bridge import SelectionBridge
 from .webview import attach_title_listener, create_chart_view, run_js, show_html_file
@@ -72,6 +72,12 @@ CHART_TYPES = [
     ("heatmap", "Heatmap (matrix)"),
     ("treemap", "Treemap"),
     ("sunburst", "Sunburst"),
+    ("errorband", "Mean ± σ band"),
+    ("errorbar", "Mean ± σ bars"),
+    ("density", "Density (KDE)"),
+    ("violin", "Violin plot"),
+    ("radar", "Radar / spider"),
+    ("pareto", "Pareto (80/20)"),
 ]
 
 # which controls matter per chart type:
@@ -88,6 +94,12 @@ _CONTROLS = {
     "heatmap":   (True,  False, True,  True,  False, False, False, False),
     "treemap":   (False, True,  True,  True,  False, False, False, False),
     "sunburst":  (False, True,  True,  True,  False, False, False, False),
+    "errorband": (True,  True,  False, False, False, False, False, False),
+    "errorbar":  (True,  True,  False, False, False, False, False, False),
+    "density":   (False, True,  False, False, False, False, False, False),
+    "violin":    (True,  True,  False, False, False, False, False, False),
+    "radar":     (True,  True,  False, True,  False, False, False, False),
+    "pareto":    (True,  False, False, True,  False, True,  False, False),
 }
 
 
@@ -195,6 +207,13 @@ class StudioDockWidget(QDockWidget):
             self.theme_combo.addItem(name)
         self.theme_combo.setCurrentText(DEFAULT_THEME)
         form.addRow("Theme", self.theme_combo)
+
+        self.palette_combo = QComboBox()
+        for name in PALETTES:
+            self.palette_combo.addItem(name)
+        self.palette_combo.setToolTip(
+            "Series colours — overrides the theme palette in every engine")
+        form.addRow("Colors", self.palette_combo)
 
         self.x_combo = self._field_combo()
         form.addRow("X / Category", self.x_combo)
@@ -398,7 +417,7 @@ class StudioDockWidget(QDockWidget):
 
         spec = {"type": kind, "title": layer.name(), "x_label": x, "y_label": y,
                 "stacked": self.stacked_check.isChecked(),
-                "theme": THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])}
+                "theme": self._current_theme()}
 
         builder = getattr(self, f"_spec_{kind}", None)
         data = builder(spec, cols, fids, x=x, y=y, group=group, value=value, agg=agg)
@@ -511,23 +530,27 @@ class StudioDockWidget(QDockWidget):
         cats, vals, ids = transform.topn_collapse(cats, vals, ids, self.topn_spin.value())
         return {"categories": cats, "values": vals, "ids": ids}
 
+    def _group_buckets(self, source: list | None, values: list, fallback: str):
+        """Bucket ``values`` by ``source`` keys (first-appearance order);
+        a single bucket named ``fallback`` when there is no grouping field."""
+        if source is None:
+            return [fallback], {fallback: values}
+        buckets: dict[str, list] = {}
+        order: list[str] = []
+        for i, raw in enumerate(source):
+            key = transform._key(raw)
+            if key not in buckets:
+                buckets[key] = []
+                order.append(key)
+            buckets[key].append(values[i])
+        return order, buckets
+
     def _spec_box(self, spec, cols, fids, *, x, y, group, value, agg):
         if not y:
             self.set_status("Box plot needs a Y field (numeric)")
             return None
         source = cols[group] if group else (cols[x] if x else None)
-        if source is not None:
-            buckets: dict[str, list] = {}
-            order: list[str] = []
-            for i, raw in enumerate(source):
-                key = transform._key(raw)
-                if key not in buckets:
-                    buckets[key] = []
-                    order.append(key)
-                buckets[key].append(cols[y][i])
-        else:
-            order = [y]
-            buckets = {y: cols[y]}
+        order, buckets = self._group_buckets(source, cols[y], y)
         groups, box = [], []
         for key in order:
             st = stats.boxplot_stats(buckets[key])
@@ -566,10 +589,96 @@ class StudioDockWidget(QDockWidget):
 
     _spec_sunburst = _spec_treemap
 
+    def _spec_errorband(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x or not y:
+            self.set_status("Mean ± σ needs an X category and a numeric Y field")
+            return None
+        cats, series = transform.band_rows(cols[x], cols[y],
+                                           cols[group] if group else None, fids)
+        if not series:
+            self.set_status(f"No numeric values in '{y}'")
+            return None
+        spec["y_label"] = f"mean({y}) ± 1σ"
+        return {"categories": cats, "series": series}
+
+    _spec_errorbar = _spec_errorband
+
+    def _spec_density(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("Density needs a numeric X field")
+            return None
+        order, buckets = self._group_buckets(cols[group] if group else None,
+                                             cols[x], x)
+        series = []
+        for key in order:
+            pts = stats.kde_points(buckets[key])
+            if pts:
+                series.append({"name": key, "points": pts})
+        if not series:
+            self.set_status(f"Need at least 2 distinct numeric values in '{x}'")
+            return None
+        spec["y_label"] = "density"
+        return {"series": series}
+
+    def _spec_violin(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not y:
+            self.set_status("Violin needs a numeric Y field")
+            return None
+        source = cols[group] if group else (cols[x] if x else None)
+        order, buckets = self._group_buckets(source, cols[y], y)
+        groups, polygons, medians = transform.violin_rows(order, buckets)
+        if not groups:
+            self.set_status(
+                f"Violin needs ≥ 2 distinct numeric '{y}' values per group")
+            return None
+        return {"groups": groups, "polygons": polygons, "medians": medians}
+
+    def _spec_radar(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("Radar needs an X / Category field for the axes")
+            return None
+        how = self._agg_or(agg, "mean")
+        if how != "count" and not y:
+            self.set_status(f"Aggregation '{how}' needs a Y field")
+            return None
+        spec["y_label"] = f"{how}({y})" if how != "count" else "count"
+        if group:
+            axes, raw = transform.pivot_rows(cols[x], cols[group],
+                                             cols.get(y, []), fids, how)
+            series = [{"name": s["name"], "values": s["values"]} for s in raw]
+        else:
+            axes, vals, _ids = transform.group_rows(cols[x], cols.get(y, []),
+                                                    fids, how)
+            series = [{"name": spec["y_label"], "values": vals}]
+        if len(axes) < 3:
+            self.set_status("Radar needs at least 3 categories on X")
+            return None
+        return {"axes": axes, "series": series,
+                "maxes": transform.radar_axis_maxes(series)}
+
+    def _spec_pareto(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("Pareto needs an X / Category field")
+            return None
+        how = self._agg_or(agg, "count")
+        if how != "count" and not y:
+            self.set_status(f"Aggregation '{how}' needs a Y field")
+            return None
+        spec["y_label"] = f"{how}({y})" if how != "count" else "count"
+        cats, vals, ids = transform.group_rows(cols[x], cols.get(y, []), fids, how)
+        cats, vals, ids = transform.topn_collapse(cats, vals, ids,
+                                                  self.topn_spin.value())
+        cats, vals, cum, ids = transform.pareto_rows(cats, vals, ids)
+        return {"categories": cats, "values": vals, "cum": cum, "ids": ids}
+
     # ───────────────────────── render / explore / export ─────────────────────────
 
     def _current_theme(self) -> dict:
-        return THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
+        theme = THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
+        palette = PALETTES.get(self.palette_combo.currentText())
+        if palette:
+            theme = dict(theme, palette=list(palette))
+        return theme
 
     def _show_html(self, html: str, status: str) -> None:
         if self._tmp_dir is None:

@@ -106,6 +106,48 @@ def pearson(xs: list, ys: list) -> float | None:
     return sxy / math.sqrt(sxx * syy)
 
 
+def mean_std(values: list) -> tuple[float, float] | None:
+    """(mean, sample std). std is 0 for n < 2; None if nothing numeric."""
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if not nums:
+        return None
+    mean = sum(nums) / len(nums)
+    if len(nums) < 2:
+        return mean, 0.0
+    var = sum((v - mean) ** 2 for v in nums) / (len(nums) - 1)
+    return mean, math.sqrt(var)
+
+
+def kde_points(values: list, points: int = 80) -> list[list[float]]:
+    """Gaussian KDE sampled on a regular grid → [[x, density], ...].
+
+    Silverman bandwidth; the grid extends one bandwidth past the data so
+    curves taper to ~zero. Pure Python on purpose (Hub-safe, no numpy).
+    """
+    nums = sorted(v for v in (to_float(x) for x in values) if v is not None)
+    n = len(nums)
+    if n < 2 or nums[0] == nums[-1]:
+        return []
+    mean = sum(nums) / n
+    std = math.sqrt(sum((v - mean) ** 2 for v in nums) / (n - 1))
+    q1 = nums[int(0.25 * (n - 1))]
+    q3 = nums[int(0.75 * (n - 1))]
+    iqr = q3 - q1
+    spread = min(std, iqr / 1.34) if iqr > 0 else std
+    bw = 0.9 * spread * n ** -0.2
+    if bw <= 0:
+        return []
+    lo, hi = nums[0] - bw, nums[-1] + bw
+    step = (hi - lo) / max(1, points - 1)
+    norm = 1.0 / (n * bw * math.sqrt(2 * math.pi))
+    out = []
+    for i in range(points):
+        x = lo + i * step
+        dens = sum(math.exp(-0.5 * ((x - v) / bw) ** 2) for v in nums) * norm
+        out.append([x, dens])
+    return out
+
+
 def boxplot_stats(values: list) -> list[float] | None:
     """[min, Q1, median, Q3, max] with linear-interpolation quartiles."""
     nums = sorted(v for v in (to_float(x) for x in values) if v is not None)

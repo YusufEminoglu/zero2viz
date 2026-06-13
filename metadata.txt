@@ -3,15 +3,15 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.5.0
+version=0.6.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
-about=02viz turns QGIS into a full data visualization studio. One click on Explore profiles any layer into a complete interactive dashboard with KPI cards, auto-generated charts, a correlation matrix and plain-English insights. Eleven chart types (bar, line, area, scatter, bubble, histogram, pie, box, heatmap, treemap, sunburst) rendered by three vendored engines (Apache ECharts, Plotly.js and Vega-Lite), fully offline. Charts and the map stay linked in both directions: click a bar, slice or point and the matching features are selected on the canvas; select features on the canvas and the chart instantly dims everything else (or fully re-renders in live mode). Built-in aggregation, group/color-by series, Top-N, sorting and trend lines; chart vector layers, attribute tables or external CSV/XLSX files; export any chart as a single interactive HTML file. Developed with feedback from educational workflows at Dokuz Eylul University, Department of City and Regional Planning.
+about=02viz turns QGIS into a full data visualization studio. One click on Explore profiles any layer into a complete interactive dashboard with KPI cards, auto-generated charts, a correlation matrix and plain-English insights. Seventeen chart types (bar, line, area, scatter, bubble, histogram, pie, box, heatmap, treemap, sunburst, mean ± σ band, mean ± σ bars, density KDE, violin, radar and Pareto) rendered by three vendored engines (Apache ECharts, Plotly.js and Vega-Lite), fully offline. Eight color palettes (including a colorblind-safe one) override the theme palette in every engine. Charts and the map stay linked in both directions: click a bar, slice or point and the matching features are selected on the canvas; select features on the canvas and the chart instantly dims everything else (or fully re-renders in live mode). Built-in aggregation, group/color-by series, Top-N, sorting, trend lines, sample standard deviation, Silverman-bandwidth KDE and cumulative shares (all pure Python); chart vector layers, attribute tables or external CSV/XLSX files; export any chart as a single interactive HTML file. Developed with feedback from educational workflows at Dokuz Eylul University, Department of City and Regional Planning.
 
-tracker=https://github.com/YusufEminoglu/02viz/issues
-repository=https://github.com/YusufEminoglu/02viz
-homepage=https://github.com/YusufEminoglu/02viz
+tracker=https://github.com/YusufEminoglu/zero2viz/issues
+repository=https://github.com/YusufEminoglu/zero2viz
+homepage=https://github.com/YusufEminoglu/zero2viz
 
 category=Vector
 tags=planx,charts,plots,graphs,dataviz,visualization,plotly,vega,echarts,statistics,dashboard,attribute table
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.6.0 - Six advanced chart types (17 total): Mean ± σ band (line with shaded ±1 standard-deviation envelope), Mean ± σ bars (bars with std-dev whiskers), Density (Gaussian KDE, optionally one curve per group), Violin (mirrored KDE shapes with median dots), Radar/spider (multi-axis comparison with per-axis scaling) and Pareto 80/20 (descending bars + cumulative-share line on a second axis). All statistics computed in pure Python; rendered by all three engines from one spec (radar is greyed out for Vega-Lite, no polar grammar). New Colors selector with 8 curated palettes (Vivid, Colorblind safe, Viridis, Sunset, Ocean, Earth, Berry, Grayscale print) that override the theme palette identically in every engine, single charts and Explore dashboards alike.
     0.5.0 - Third engine: Vega-Lite (vendored vega + vega-lite, BSD-3) renders 9 of the 11 chart types from the same spec contract, with full chart-to-map clicks and map-to-chart cross-filter dimming; the dock greys out chart types an engine cannot draw. Heatmap label contrast fixed on sequential ramps in all engines (white labels only on dark cells).
     0.4.0 - Map-to-chart cross-filter: selecting features on the canvas instantly dims non-selected items in the chart and in every dashboard tile, without a re-render. Crash-safe selection bridge: chart clicks now reach QGIS through the page title (titleChanged) instead of object injection, fixing an access-violation crash in QGIS builds that ship the legacy QtWebKit stack; the chart-to-map link now works identically on WebKit and WebEngine.
     0.3.1 - Package directory renamed to zero2viz to satisfy the QGIS Plugin Hub PEP 8 package-name requirement (the previous digit-first name was rejected at upload). Plugin display name, features and behaviour are unchanged.

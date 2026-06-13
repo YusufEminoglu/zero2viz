@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from .stats import _median, to_float
+from .stats import _median, kde_points, mean_std, to_float
 
 SORT_MODES = ("natural", "value_desc", "value_asc")
 
@@ -189,6 +189,98 @@ def sort_cats(cats: list[str], vals: list[float], ids: list[list] | None, mode: 
                    reverse=(mode == "value_desc"))
     return ([cats[i] for i in order], [vals[i] for i in order],
             [ids[i] for i in order] if ids is not None else None)
+
+
+def band_rows(xs: list, ys: list, groups: list | None, fids: list, k: float = 1.0):
+    """Mean ± k·std per category (optionally per group) for error band/bar
+    charts → (categories, [{name, mean, lo, hi, ids}])."""
+    cat_order: list[str] = []
+    ser_order: list[str] = []
+    nums: dict[tuple, list[float]] = {}
+    ids: dict[tuple, list] = {}
+    for i, x in enumerate(xs):
+        cx = _key(x)
+        cs = _key(groups[i]) if groups and i < len(groups) else ""
+        if cx not in cat_order:
+            cat_order.append(cx)
+        if cs not in ser_order:
+            ser_order.append(cs)
+        cell = (cs, cx)
+        if cell not in nums:
+            nums[cell] = []
+            ids[cell] = []
+        ids[cell].append(fids[i] if i < len(fids) else None)
+        f = to_float(ys[i]) if i < len(ys) else None
+        if f is not None:
+            nums[cell].append(f)
+    out = []
+    for cs in ser_order:
+        means, los, his, id_rows = [], [], [], []
+        for cx in cat_order:
+            ms = mean_std(nums.get((cs, cx), []))
+            if ms is None:
+                means.append(None)
+                los.append(None)
+                his.append(None)
+            else:
+                means.append(ms[0])
+                los.append(ms[0] - k * ms[1])
+                his.append(ms[0] + k * ms[1])
+            id_rows.append(ids.get((cs, cx), []))
+        if any(m is not None for m in means):
+            out.append({"name": cs, "mean": means, "lo": los, "hi": his,
+                        "ids": id_rows})
+    return (cat_order, out) if out else ([], [])
+
+
+def violin_rows(order: list[str], buckets: dict[str, list], points: int = 60,
+                half_width: float = 0.42):
+    """KDE violin shapes on a numeric axis: group i sits at x = i and its
+    density is mirrored into a closed polygon of at most ``half_width``
+    → (groups, polygons, medians). Groups too small for a KDE are dropped."""
+    groups, polygons, medians = [], [], []
+    for key in order:
+        kde = kde_points(buckets[key], points)
+        if not kde:
+            continue
+        peak = max(d for _, d in kde) or 1.0
+        i = len(groups)
+        left = [[i - half_width * d / peak, y] for y, d in kde]
+        right = [[i + half_width * d / peak, y] for y, d in kde]
+        polygons.append(left + right[::-1])
+        nums = sorted(v for v in (to_float(x) for x in buckets[key]) if v is not None)
+        groups.append(key)
+        medians.append(_median(nums))
+    return groups, polygons, medians
+
+
+def pareto_rows(cats: list[str], vals: list[float], ids: list[list] | None):
+    """Sort descending and add the cumulative share (0–100 %)
+    → (categories, values, cum, ids)."""
+    order = sorted(range(len(cats)), key=lambda i: vals[i], reverse=True)
+    cats = [cats[i] for i in order]
+    vals = [vals[i] for i in order]
+    ids = [ids[i] for i in order] if ids is not None else None
+    total = sum(vals) or 1.0
+    cum, running = [], 0.0
+    for v in vals:
+        running += v
+        cum.append(round(100.0 * running / total, 2))
+    return cats, vals, cum, ids
+
+
+def radar_axis_maxes(series: list[dict], pad: float = 1.05) -> list[float]:
+    """Per-axis maxima (padded) so every engine scales radar axes alike."""
+    if not series:
+        return []
+    n = max(len(s.get("values", [])) for s in series)
+    maxes = []
+    for i in range(n):
+        vals = [s["values"][i] for s in series
+                if i < len(s.get("values", [])) and s["values"][i] is not None]
+        peak = max((abs(v) for v in vals), default=1.0) or 1.0
+        maxes.append(peak * pad)
+    return maxes
 
 
 def linreg_endpoints(points: list) -> list | None:

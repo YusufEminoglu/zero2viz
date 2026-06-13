@@ -1,13 +1,20 @@
 # Changelog
 
+All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
+
+## [0.6.0] - 2026-06-12
+
+- **Six new advanced chart types** (17 total): **Mean ± σ band** (line with a shaded ±1 standard-deviation envelope), **Mean ± σ bars** (bars with std-dev whiskers), **Density (KDE)** (Gaussian kernel density curves, optionally one per group), **Violin plot** (mirrored KDE shapes with median dots), **Radar / spider** (multi-axis comparison with per-axis scaling) and **Pareto (80/20)** (descending bars plus a cumulative-share line on a second axis). All statistics — sample standard deviation, Silverman-bandwidth KDE, violin polygons, cumulative shares — are computed in pure Python and rendered by all three engines from one spec; only radar is greyed out for Vega-Lite (the grammar has no polar coordinates).
+- **Color palettes** — a new *Colors* selector with 8 curated palettes (Vivid, Colorblind safe, Viridis, Sunset, Ocean, Earth, Berry, Grayscale print). The chosen palette overrides the theme palette identically in ECharts, Plotly and Vega-Lite, for single charts and Explore dashboards alike.
+- Engine correctness fixes caught during visual verification: ECharts custom-series whiskers and violins now set explicit axis extents (custom series don't drive autoscaling, so +σ caps and violin tails were clipped) and error whiskers use a contrasting colour; Vega-Lite multi-series density sets `stack: null` (stacked-area zero-imputation turned smooth KDE curves into a sawtooth) and the violin ranged area dropped its `order` channel (it faceted every violin into degenerate per-row paths).
+- Verified headless: 71 checks on real QGIS Python and 50 chart pages in headless Chrome with zero JS exceptions; every new engine×type screenshot eyeballed.
+
 ## [0.5.0] - 2026-06-12
 
 - **Third engine: Vega-Lite** — vendored `vega` + `vega-lite` (BSD-3, compiled in the page, no vega-embed), fully offline. Renders 9 of the 11 chart types from the same spec contract (treemap/sunburst are not part of the Vega-Lite grammar), including layered box plots from precomputed quartiles and labelled heatmaps. Chart→map clicks and map→chart cross-filter dimming work exactly as in the other engines.
 - **Engine-aware chart types** — engines declare what they can draw (`ChartEngine.supports`); the dock greys out unsupported types and jumps to the nearest supported one.
 - **Heatmap label contrast fixed in all engines** — on sequential ramps, low-value cells are light, so white labels were invisible there; white is now used only on dark cells (both extremes on diverging ramps, upper end on sequential ones).
-
-All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
 ## [0.4.0] - 2026-06-12
 
