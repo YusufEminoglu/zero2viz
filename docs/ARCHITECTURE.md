@@ -7,11 +7,14 @@ zero2viz/               # package dir (display name stays "02viz")
     dock.py             # StudioDockWidget: builder UI + spec assembly
     webview.py          # embedded viewer fallback chain + title listener
     bridge.py           # SelectionBridge: chart click → canvas selection
+    palette_editor.py   # custom colour palette editor (swatch dialog)
+    diagram_dialog.py   # "Map diagrams…" form over core/diagrams
   core/
     datasource.py       # layer → row-aligned columns (+feature ids); OGR tables
-    stats.py            # pure-Python aggregation / histogram / boxplot / Pearson
-    transform.py        # pivot, heatmap matrix, tree, top-N, sort, trend, bubble sizes
-    profile.py          # one-click layer profiling → dashboard tiles + insights
+    stats.py            # pure-Python aggregation / histogram / boxplot / Pearson / KDE
+    transform.py        # pivot, heatmap matrix, tree, top-N, sort, trend, band, violin, pareto
+    profile.py          # one-click layer profiling → dashboard tiles + insights (skips id columns)
+    diagrams.py         # on-canvas QgsDiagramRenderer (pie/bar/stacked/text per feature)
   engines/
     base.py             # ChartEngine contract, spec schema, themes, HTML shell
     echarts.py          # Apache ECharts engine (canvas)
@@ -63,8 +66,13 @@ zero2viz/               # package dir (display name stays "02viz")
 |--------|------|--------|
 | ECharts | vendored JS, canvas | ✅ v0.2.0 |
 | Plotly.js | vendored JS, SVG | ✅ v0.2.0 |
-| Vega-Lite | vendored JS (vega + vega-lite, no vega-embed), canvas | ✅ v0.5.0 — 9 of 11 types; treemap/sunburst are not in the VL grammar, so engines declare a `supports` set and the dock greys those types out |
+| Vega-Lite | vendored JS (vega + vega-lite, no vega-embed), canvas | ✅ v0.5.0 — 14 of 17 types; treemap/sunburst (no grammar) and radar (no polar coords) are excluded via each engine's `supports` set, and the dock greys those types out |
 | R / ggplot2 | subprocess bridge (optional, needs local R) | planned |
+
+On-canvas diagrams (v0.7.0) are a separate path from the web engines:
+`core/diagrams.py` attaches a `QgsSingleCategoryDiagramRenderer`
+(pie/histogram/stacked-bar/text) straight to the layer, so they render,
+print and export through QGIS itself — no web stack, no spec.
 
 Vega-Lite gotcha: in a *layered* spec, a colour channel with `scale: null`
 crashes the cross-layer scale merge (`Cannot read properties of null`).

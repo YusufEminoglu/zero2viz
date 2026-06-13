@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from .base import CHART_TYPES, ChartEngine, read_web, theme_of, wrap_html
+from .base import CHART_TYPES, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 _BODY = """
 var SPEC = %(spec)s;
@@ -28,7 +28,10 @@ function render() {
   view.runAsync().then(function () { window.__chartReady = true; });
 }
 render();
-window.addEventListener("resize", function () { if (view) { view.resize(); view.runAsync(); } });
+function __o2vizFit() { try { if (view) { view.resize(); view.runAsync(); } } catch (e) {} }
+window.addEventListener("resize", __o2vizFit);
+// re-fit once the embedded view settles (see base.py note on 0-height init)
+[60, 240, 600].forEach(function (ms) { setTimeout(__o2vizFit, ms); });
 // map → chart cross-filter: rows carrying __ids dim unless selected.
 window.__o2vizHighlight = function (ids) {
   try {
@@ -98,12 +101,16 @@ class VegaLiteEngine(ChartEngine):
         t, g = theme["text"], theme["grid"]
         return {
             "background": theme["bg"],
-            "font": "Segoe UI, system-ui, sans-serif",
+            "font": FONT_FAMILY,
             "range": {"category": theme["palette"]},
             "axis": {"labelColor": t, "titleColor": t, "gridColor": g,
-                     "domainColor": g, "tickColor": g},
+                     "gridDash": [3, 3], "gridOpacity": 0.7,
+                     "domainColor": g, "tickColor": g, "labelFontSize": 11},
+            "axisX": {"grid": False},   # no vertical chart-junk lines (Tableau)
+            "axisY": {"grid": True},
             "legend": {"labelColor": t, "titleColor": t},
-            "title": {"color": t, "fontSize": 16},
+            "title": {"color": t, "fontSize": 17, "fontWeight": 600,
+                      "anchor": "middle"},
             "view": {"stroke": None},
         }
 

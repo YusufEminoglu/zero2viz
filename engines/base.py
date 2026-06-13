@@ -46,6 +46,12 @@ CHART_TYPES = ("bar", "line", "area", "scatter", "bubble", "histogram",
                "pie", "box", "heatmap", "treemap", "sunburst",
                "errorband", "errorbar", "density", "violin", "radar", "pareto")
 
+# One typographic voice across all three engines — a clean system UI stack so
+# charts read like publication / Tableau-grade figures, not default-library
+# output. Every engine references this.
+FONT_FAMILY = ("Segoe UI, system-ui, -apple-system, BlinkMacSystemFont, "
+               "Roboto, Helvetica, Arial, sans-serif")
+
 THEMES: dict[str, dict] = {
     "Studio Light": {"palette": ["#2a8f85", "#fa8e7a", "#16323f", "#7fd1c5",
                                  "#f4a261", "#8d99ae", "#e76f51", "#bdb8b0"],
@@ -119,8 +125,15 @@ _HTML = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>{title}</title>
 <style>
-  html, body {{ margin: 0; padding: 0; width: 100%; height: 100%; background: {bg}; }}
-  #chart {{ width: 100%; height: 100%; }}
+  html, body {{ margin: 0; padding: 0; width: 100%; height: 100%;
+               position: relative; overflow: hidden; background: {bg}; }}
+  /* absolute inset (not height:100%) so the chart always has a definite box
+     even before the embedded QWebEngine view settles its first layout pass —
+     ECharts/Plotly/Vega measure the container at init and would otherwise
+     capture a height of 0 and paint blank (the bug that made charts appear on
+     export-to-browser but stay empty in the dock). */
+  #chart {{ position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            width: auto; height: auto; }}
 </style>
 <script>{lib}</script>
 </head>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 
-from .base import ChartEngine, read_web, theme_of, wrap_html
+from .base import FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 _BODY = """
 var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
@@ -50,7 +50,12 @@ if (OPT.__xnames && OPT.xAxis && OPT.xAxis.type === "value") {
   };
 }
 chart.setOption(OPT);
-window.addEventListener("resize", function () { chart.resize(); });
+// re-measure once the embedded view has settled its size (see base.py note):
+// a single init can capture a 0-height container in QWebEngine and paint blank.
+function __o2vizFit() { try { chart.resize(); } catch (e) {} }
+window.addEventListener("resize", __o2vizFit);
+if (window.requestAnimationFrame) requestAnimationFrame(__o2vizFit);
+[60, 240, 600].forEach(function (ms) { setTimeout(__o2vizFit, ms); });
 chart.on("click", function (p) {
   var ids = p.data && p.data.__ids;
   if (ids && ids.length) __o2vizSelect(ids);
@@ -89,21 +94,43 @@ window.__chartReady = true;
 """
 
 
+def _tooltip(theme: dict, trigger: str = "item") -> dict:
+    """A clean, card-like tooltip (soft shadow, rounded) shared by every
+    chart — the small touches that read as publication-grade."""
+    dark = theme["bg"].lower() in ("#131c21",)
+    return {"trigger": trigger,
+            "backgroundColor": "#1b262c" if dark else "#ffffff",
+            "borderColor": theme["grid"], "borderWidth": 1,
+            "textStyle": {"color": theme["text"], "fontFamily": FONT_FAMILY},
+            "axisPointer": {"lineStyle": {"color": theme["grid"]},
+                            "crossStyle": {"color": theme["grid"]}},
+            "extraCssText": ("box-shadow:0 2px 12px rgba(0,0,0,0.14);"
+                             "border-radius:7px;padding:8px 11px;")}
+
+
 def _axis(theme: dict, name: str, kind: str = "value", data=None, rotate: int = 0,
           zero: bool = False) -> dict:
     ax = {"type": kind, "name": name, "nameLocation": "middle",
-          "nameGap": 38 if kind == "category" else 42,
-          "nameTextStyle": {"color": theme["text"]},
-          "axisLabel": {"color": theme["text"]},
-          "axisLine": {"lineStyle": {"color": theme["grid"]}},
-          "splitLine": {"lineStyle": {"color": theme["grid"]}}}
+          "nameGap": 38 if kind == "category" else 46,
+          "nameTextStyle": {"color": theme["text"], "fontFamily": FONT_FAMILY},
+          "axisLabel": {"color": theme["text"], "fontFamily": FONT_FAMILY,
+                        "hideOverlap": True},
+          "axisLine": {"lineStyle": {"color": theme["grid"]}}}
     if kind == "category":
         ax["data"] = data or []
+        # no vertical chart-junk lines; keep a subtle baseline + aligned ticks
+        ax["splitLine"] = {"show": False}
+        ax["axisTick"] = {"alignWithLabel": True, "lineStyle": {"color": theme["grid"]}}
         if rotate:
             ax["axisLabel"]["rotate"] = rotate
     else:
         # bars/areas must start at zero or relative sizes lie to the reader
         ax["scale"] = not zero
+        # Tableau-style value axis: no axis line/ticks, faint dashed grid only
+        ax["axisLine"] = {"show": False}
+        ax["axisTick"] = {"show": False}
+        ax["splitLine"] = {"lineStyle": {"color": theme["grid"],
+                                         "type": "dashed", "opacity": 0.7}}
     return ax
 
 
@@ -146,20 +173,21 @@ class EChartsEngine(ChartEngine):
         option: dict = {
             "color": theme["palette"],
             "backgroundColor": theme["bg"],
-            "textStyle": {"color": theme["text"]},
+            "textStyle": {"color": theme["text"], "fontFamily": FONT_FAMILY},
             "title": {"text": spec.get("title", ""), "left": "center",
-                      "textStyle": {"color": theme["text"], "fontSize": 16}},
-            "tooltip": {"trigger": "item"},
+                      "textStyle": {"color": theme["text"], "fontSize": 17,
+                                    "fontWeight": 600, "fontFamily": FONT_FAMILY}},
+            "tooltip": _tooltip(theme, "item"),
             "toolbox": {"feature": {"saveAsImage": {"name": "02viz_chart"},
                                     "dataZoom": {}, "restore": {}}},
         }
-        grid = {"left": 64, "right": 30, "bottom": 64, "top": 70, "containLabel": False}
+        grid = {"left": 64, "right": 30, "bottom": 64, "top": 72, "containLabel": False}
 
         if kind in ("bar", "line", "area", "histogram"):
             series_in = data.get("series") or [{"name": spec.get("y_label", "value"),
                                                 "values": data.get("values", []),
                                                 "ids": data.get("ids")}]
-            option["tooltip"] = {"trigger": "axis"}
+            option["tooltip"] = _tooltip(theme, "axis")
             option["grid"] = grid
             option["xAxis"] = _axis(theme, spec.get("x_label", ""), "category",
                                     data.get("categories", []),
@@ -177,10 +205,14 @@ class EChartsEngine(ChartEngine):
                 if kind in ("line", "area"):
                     item["smooth"] = True
                     item["symbolSize"] = 7
+                    item["lineStyle"] = {"width": 2.6}
                 if kind == "area":
-                    item["areaStyle"] = {"opacity": 0.35}
+                    item["areaStyle"] = {"opacity": 0.32}
                 if spec.get("stacked") and kind in ("bar", "area"):
                     item["stack"] = "total"
+                # subtle rounded bar tops read as polished, not default-library
+                if kind in ("bar", "histogram") and not spec.get("stacked"):
+                    item["itemStyle"] = {"borderRadius": [4, 4, 0, 0]}
                 out.append(item)
             option["series"] = out
 
@@ -392,7 +424,7 @@ class EChartsEngine(ChartEngine):
                                           for s in series_in]}]
 
         elif kind == "pareto":
-            option["tooltip"] = {"trigger": "axis"}
+            option["tooltip"] = _tooltip(theme, "axis")
             option["grid"] = dict(grid, right=64)
             option["xAxis"] = _axis(theme, spec.get("x_label", ""), "category",
                                     data.get("categories", []), rotate=30)

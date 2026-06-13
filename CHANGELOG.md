@@ -3,6 +3,16 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-06-13
+
+- **Map diagrams (on-canvas charts)** — a new *Map diagrams…* dialog draws native QGIS **pie / bar / stacked-bar / text** diagrams on every feature, directly on the map canvas, sized in millimetres and coloured with the studio palette. Built on `QgsDiagramRenderer`, so the diagrams print, export to print layouts and follow the layer like any other symbology. Numeric fields are pre-ticked (identifier columns skipped); attribute-only tables are detected and declined.
+- **Custom colour palettes** — the *Colors* selector gains a **Custom…** entry that opens a swatch editor (add / remove / recolour via the system colour picker, seeded from the active palette). The result is written straight into the theme palette, so it recolours ECharts, Plotly and Vega-Lite identically — single charts and Explore dashboards alike.
+- **Fixed: charts blank in the dock but fine on export** — the embedded viewer gave the chart container no definite height until after its first layout pass, so ECharts/Plotly/Vega measured a height of 0 and painted nothing (while export-to-browser worked). The chart box is now absolutely sized and re-fits once the view settles; the dock also nudges a resize on load. Added an **↗ open-in-browser** escape hatch and surfaced the active web backend (webengine / webkit) in the status line.
+- **Engine-first workflow** — the dock now asks for the **Engine first**, then the chart **Type**, with unsupported types greyed out for the chosen renderer from the start.
+- **Explore ignores identifier columns** — `fid`, `id`, `gid`, `oid`, `uuid`, `objectid`, `*_id`, and provider primary keys are no longer profiled into meaningless histograms or count bars on the dashboard.
+- **Publication-grade visual polish** — one shared type system across all three engines, soft dashed horizontal gridlines (no vertical chart-junk), clean card-style tooltips, rounded bar tops and minimal value axes — output reads at Tableau quality.
+- Verified headless: 73 checks on real QGIS Python (incl. the on-canvas diagram renderer and the identifier-column filter) and 50 chart pages in headless Chrome with zero JS exceptions; the polished output eyeballed across engines and themes.
+
 ## [0.6.0] - 2026-06-12
 
 - **Six new advanced chart types** (17 total): **Mean ± σ band** (line with a shaded ±1 standard-deviation envelope), **Mean ± σ bars** (bars with std-dev whiskers), **Density (KDE)** (Gaussian kernel density curves, optionally one per group), **Violin plot** (mirrored KDE shapes with median dots), **Radar / spider** (multi-axis comparison with per-axis scaling) and **Pareto (80/20)** (descending bars plus a cumulative-share line on a second axis). All statistics — sample standard deviation, Silverman-bandwidth KDE, violin polygons, cumulative shares — are computed in pure Python and rendered by all three engines from one spec; only radar is greyed out for Vega-Lite (the grammar has no polar coordinates).

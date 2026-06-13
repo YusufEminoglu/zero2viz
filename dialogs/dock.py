@@ -41,6 +41,9 @@ from .webview import attach_title_listener, create_chart_view, run_js, show_html
 # injected id list would dwarf any visual benefit)
 MAX_HIGHLIGHT_IDS = 20000
 
+# sentinel entry in the Colors combo that opens the custom palette editor
+CUSTOM_PALETTE_LABEL = "Custom…"
+
 _DOCK_QSS = """
 QWidget#o2vizRoot { background: #fbfbfd; }
 QLabel#o2vizTitle { font-size: 18px; font-weight: 700; color: #16323f; }
@@ -125,9 +128,12 @@ class StudioDockWidget(QDockWidget):
         self._view = None
         self._view_slot: QVBoxLayout | None = None
         self._last_html: str | None = None
+        self._last_path: str | None = None
         self._tmp_dir: str | None = None
         self._watched_layer = None
         self._suppress_refresh_until = 0.0
+        self._custom_palette: list[str] | None = None
+        self._prev_palette_index = 0
         self.bridge = SelectionBridge()
         self.bridge.on_selected = self._on_chart_drove_selection
         self._build_ui()
@@ -182,6 +188,12 @@ class StudioDockWidget(QDockWidget):
         ext_btn.setToolTip("Open a CSV/XLSX/ODS table — it joins the layer list above")
         ext_btn.clicked.connect(self._load_external)
         data_lay.addWidget(ext_btn)
+        diag_btn = QPushButton("Map diagrams… (on canvas)")
+        diag_btn.setToolTip(
+            "Draw a pie / bar / text diagram on every feature of this layer, "
+            "directly on the map canvas (QGIS native diagrams)")
+        diag_btn.clicked.connect(self._open_diagrams)
+        data_lay.addWidget(diag_btn)
         root.addWidget(data_card)
 
         # ── Chart card ──
@@ -190,17 +202,23 @@ class StudioDockWidget(QDockWidget):
         form.setHorizontalSpacing(8)
         form.setVerticalSpacing(6)
 
+        # Engine first: the engine decides which chart types are drawable, so
+        # the user picks the renderer, then chooses from its supported types.
+        self.engine_combo = QComboBox()
+        for eng in engines():
+            self.engine_combo.addItem(eng.label, eng.id)
+        form.addRow("Engine", self.engine_combo)
+
         self.type_combo = QComboBox()
         for key, label in CHART_TYPES:
             self.type_combo.addItem(label, key)
         self.type_combo.currentIndexChanged.connect(self._sync_controls)
         form.addRow("Type", self.type_combo)
 
-        self.engine_combo = QComboBox()
-        for eng in engines():
-            self.engine_combo.addItem(eng.label, eng.id)
+        # wire the engine→type filter only now that type_combo exists
+        # (engine_combo was populated above without a connected slot, so no
+        # premature fire while type_combo was still missing)
         self.engine_combo.currentIndexChanged.connect(self._sync_engine_types)
-        form.addRow("Engine", self.engine_combo)
 
         self.theme_combo = QComboBox()
         for name in THEMES:
@@ -211,8 +229,12 @@ class StudioDockWidget(QDockWidget):
         self.palette_combo = QComboBox()
         for name in PALETTES:
             self.palette_combo.addItem(name)
+        self.palette_combo.addItem(CUSTOM_PALETTE_LABEL)
         self.palette_combo.setToolTip(
-            "Series colours — overrides the theme palette in every engine")
+            "Series colours — overrides the theme palette in every engine. "
+            "Pick 'Custom…' to define your own.")
+        # connect after populating so the addItem loop doesn't fire the handler
+        self.palette_combo.currentIndexChanged.connect(self._on_palette_changed)
         form.addRow("Colors", self.palette_combo)
 
         self.x_combo = self._field_combo()
@@ -279,6 +301,14 @@ class StudioDockWidget(QDockWidget):
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_html)
         btn_row.addWidget(self.export_btn, 1)
+        self.browser_btn = QPushButton("↗")
+        self.browser_btn.setToolTip(
+            "Open the current chart in your system web browser "
+            "(use this if the embedded panel stays blank)")
+        self.browser_btn.setEnabled(False)
+        self.browser_btn.setFixedWidth(34)
+        self.browser_btn.clicked.connect(self._open_in_browser)
+        btn_row.addWidget(self.browser_btn)
         root.addLayout(btn_row)
 
         # ── Viewer slot ──
@@ -297,6 +327,7 @@ class StudioDockWidget(QDockWidget):
 
         self.setWidget(container)
         self._on_layer_changed(self.layer_combo.currentLayer())
+        self._sync_engine_types()
         self._sync_controls()
 
     # ───────────────────────── wiring ─────────────────────────
@@ -326,6 +357,10 @@ class StudioDockWidget(QDockWidget):
 
     def _on_page_loaded(self, ok: bool) -> None:
         if ok:
+            # nudge the chart to re-measure now that the view is laid out —
+            # the engine bodies also self-fit, this covers the first paint
+            run_js(self._view_kind, self._view,
+                   "window.dispatchEvent(new Event('resize'));")
             self._push_highlight()
 
     def _push_highlight(self) -> None:
@@ -373,6 +408,17 @@ class StudioDockWidget(QDockWidget):
         self.sort_combo.setEnabled(topn_sort)
         self.stacked_check.setEnabled(stacked)
         self.trend_check.setEnabled(trend)
+
+    def _open_diagrams(self) -> None:
+        layer = self.layer_combo.currentLayer()
+        if layer is None:
+            self.set_status("Pick a layer first")
+            return
+        from .diagram_dialog import MapDiagramDialog
+
+        theme = self._current_theme()
+        dlg = MapDiagramDialog(layer, list(theme["palette"]), self.iface, self)
+        dlg.exec()
 
     def _load_external(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -673,9 +719,47 @@ class StudioDockWidget(QDockWidget):
 
     # ───────────────────────── render / explore / export ─────────────────────────
 
+    # ───────────────────────── colours ─────────────────────────
+
+    def _on_palette_changed(self, idx: int) -> None:
+        if self.palette_combo.itemText(idx) == CUSTOM_PALETTE_LABEL:
+            if not self._open_palette_editor():
+                # cancelled with no custom palette defined — revert silently
+                self.palette_combo.blockSignals(True)
+                self.palette_combo.setCurrentIndex(self._prev_palette_index)
+                self.palette_combo.blockSignals(False)
+                return
+        self._prev_palette_index = self.palette_combo.currentIndex()
+
+    def _seed_palette(self) -> list[str]:
+        """The palette the editor should open with: the previously chosen
+        built-in palette, or the active theme's palette."""
+        prev = self.palette_combo.itemText(self._prev_palette_index)
+        pal = PALETTES.get(prev)
+        if pal:
+            return list(pal)
+        theme = THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
+        return list(theme["palette"])
+
+    def _open_palette_editor(self) -> bool:
+        """Open the swatch editor. Returns True if a custom palette is set
+        afterwards (stay on 'Custom…'), False to revert the combo."""
+        from .palette_editor import PaletteEditor
+
+        seed = list(self._custom_palette) if self._custom_palette else self._seed_palette()
+        dlg = PaletteEditor(seed, self)
+        if dlg.exec():
+            self._custom_palette = dlg.palette()
+            self.set_status(f"Custom palette: {len(self._custom_palette)} colours")
+            return True
+        return self._custom_palette is not None
+
     def _current_theme(self) -> dict:
         theme = THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
-        palette = PALETTES.get(self.palette_combo.currentText())
+        name = self.palette_combo.currentText()
+        if name == CUSTOM_PALETTE_LABEL and self._custom_palette:
+            return dict(theme, palette=list(self._custom_palette))
+        palette = PALETTES.get(name)
         if palette:
             theme = dict(theme, palette=list(palette))
         return theme
@@ -687,6 +771,7 @@ class StudioDockWidget(QDockWidget):
         with open(path, "w", encoding="utf-8") as f:
             f.write(html)
         self._last_html = html
+        self._last_path = path
 
         if self._view is None and self._view_kind is None:
             self._view_kind, self._view = create_chart_view(self)
@@ -702,8 +787,23 @@ class StudioDockWidget(QDockWidget):
                          if self.link_check.isChecked() else None)
         embedded = show_html_file(self._view_kind, self._view, path)
         self.export_btn.setEnabled(True)
-        where = "" if embedded else " (no web view in this QGIS build — opened in your browser)"
+        self.browser_btn.setEnabled(True)
+        if embedded:
+            where = f" · {self._view_kind}"
+        else:
+            where = " (no embedded web view in this QGIS build — opened in your browser)"
         self.set_status(status + where)
+
+    def _open_in_browser(self) -> None:
+        """Escape hatch: show the last chart in the system browser. Always
+        works, even when the embedded QWebEngine view paints blank."""
+        if not self._last_path or not os.path.exists(self._last_path):
+            if not self._last_html:
+                return
+            self._show_html(self._last_html, "Reopened")  # rebuilds the temp file
+        import webbrowser
+        webbrowser.open("file:///" + self._last_path.replace("\\", "/"))
+        self.set_status("Opened the current chart in your browser")
 
     def _render(self) -> None:
         try:

@@ -8,6 +8,8 @@ so the whole pipeline is testable headless.
 """
 from __future__ import annotations
 
+import re
+
 from . import datasource, stats, transform
 
 MAX_FIELDS = 30          # safety on very wide tables
@@ -16,6 +18,19 @@ MAX_NUM_CHARTS = 6       # histograms for numeric fields
 MAX_CATS_SHOWN = 12      # top-N per categorical bar
 MAX_SCATTER_POINTS = 3000
 HIST_BINS = 14
+
+# Identifier-like field names carry no analytical meaning — a histogram of
+# gid 1..N or a bar of unique uuids is pure noise on a dashboard. Skip them.
+_ID_NAME_RE = re.compile(
+    r"^(f?id|gid|oid|ogc_fid|object_?id|row_?id|pk\w*|uu?id|guid|"
+    r"globalid|index)$|(_id|_fid|_oid|_uid|_uuid|_guid|_key|_pk)$",
+    re.IGNORECASE,
+)
+
+
+def _is_id_name(name: str) -> bool:
+    """True for fid / id / gid / uuid / objectid / *_id … style fields."""
+    return bool(_ID_NAME_RE.search((name or "").strip()))
 
 
 def _classify(values: list) -> str:
@@ -52,7 +67,21 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None)
     cols, fids = datasource.columns_with_ids(layer, field_names, selected_only)
     n_rows = len(fids)
 
-    kinds = {name: _classify(cols[name]) for name in field_names}
+    # provider primary-key columns are identifiers by definition (GPKG fid,
+    # PostGIS id…) even when their name doesn't look like one
+    pk_names: set[str] = set()
+    try:
+        all_fields = layer.fields()
+        pk_names = {all_fields[i].name() for i in layer.primaryKeyAttributes()}
+    except Exception:
+        pk_names = set()
+
+    def _kind(name: str) -> str:
+        if _is_id_name(name) or name in pk_names:
+            return "skip"
+        return _classify(cols[name])
+
+    kinds = {name: _kind(name) for name in field_names}
     cat_fields = [n for n in field_names if kinds[n] == "categorical"]
     num_fields = [n for n in field_names if kinds[n] == "numeric"]
 

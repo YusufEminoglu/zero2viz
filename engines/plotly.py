@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 
-from .base import ChartEngine, read_web, theme_of, wrap_html
+from .base import FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 _BODY = """
 var gd = document.getElementById("chart");
 Plotly.newPlot(gd, %(traces)s, %(layout)s, {responsive: true, displaylogo: false})
-  .then(function () { window.__chartReady = true; });
+  .then(function () {
+    window.__chartReady = true;
+    // re-fit once the embedded view settles (see base.py note on 0-height init)
+    function __o2vizFit() { try { Plotly.Plots.resize(gd); } catch (e) {} }
+    [60, 240, 600].forEach(function (ms) { setTimeout(__o2vizFit, ms); });
+  });
 gd.on("plotly_click", function (ev) {
   var ids = [];
   (ev.points || []).forEach(function (p) {
@@ -73,26 +78,36 @@ class PlotlyEngine(ChartEngine):
         kind = spec["type"]
         data = spec.get("data", {})
         theme = theme_of(spec)
+        dark = theme["bg"].lower() in ("#131c21",)
         layout: dict = {
-            "title": {"text": spec.get("title", ""), "x": 0.5,
-                      "font": {"color": theme["text"], "size": 16}},
+            "title": {"text": spec.get("title", ""), "x": 0.5, "xanchor": "center",
+                      "font": {"color": theme["text"], "size": 17,
+                               "family": FONT_FAMILY}},
             "colorway": theme["palette"],
             "paper_bgcolor": theme["bg"],
             "plot_bgcolor": theme["bg"],
-            "font": {"color": theme["text"]},
-            "margin": {"l": 70, "r": 30, "t": 60, "b": 70},
+            "font": {"color": theme["text"], "family": FONT_FAMILY},
+            "margin": {"l": 70, "r": 30, "t": 64, "b": 72},
+            "hoverlabel": {"bgcolor": "#1b262c" if dark else "#ffffff",
+                           "bordercolor": theme["grid"],
+                           "font": {"color": theme["text"], "family": FONT_FAMILY}},
         }
-        axis_style = {"gridcolor": theme["grid"], "linecolor": theme["grid"],
-                      "zerolinecolor": theme["grid"]}
+        # faint dotted grid, no hard axis spikes — the Tableau-grade default
+        axis_style = {"gridcolor": theme["grid"], "griddash": "dot",
+                      "linecolor": theme["grid"], "zerolinecolor": theme["grid"],
+                      "ticks": "outside", "tickcolor": theme["grid"]}
 
-        def xy_layout():
-            layout["xaxis"] = dict(axis_style, title={"text": spec.get("x_label", "")})
+        def xy_layout(cat_x: bool = False):
+            xa = dict(axis_style, title={"text": spec.get("x_label", "")})
+            if cat_x:  # categorical x: drop vertical grid lines (chart junk)
+                xa["showgrid"] = False
+            layout["xaxis"] = xa
             layout["yaxis"] = dict(axis_style, title={"text": spec.get("y_label", "")})
 
         traces: list[dict] = []
 
         if kind in ("bar", "line", "area", "histogram"):
-            xy_layout()
+            xy_layout(cat_x=True)
             series_in = data.get("series") or [{"name": spec.get("y_label", "value"),
                                                 "values": data.get("values", []),
                                                 "ids": data.get("ids")}]
@@ -147,7 +162,7 @@ class PlotlyEngine(ChartEngine):
                            "marker": {"line": {"color": theme["bg"], "width": 2}}})
 
         elif kind == "box":
-            xy_layout()
+            xy_layout(cat_x=True)
             groups = data.get("groups", [])
             stats = data.get("stats", [])
             traces.append({
@@ -192,7 +207,7 @@ class PlotlyEngine(ChartEngine):
                            "marker": {"line": {"color": theme["bg"], "width": 1.5}}})
 
         elif kind in ("errorband", "errorbar"):
-            xy_layout()
+            xy_layout(cat_x=True)
             cats = data.get("categories", [])
             for si, s in enumerate(data.get("series", [])):
                 color = theme["palette"][si % len(theme["palette"])]
@@ -286,7 +301,7 @@ class PlotlyEngine(ChartEngine):
             }
 
         elif kind == "pareto":
-            xy_layout()
+            xy_layout(cat_x=True)
             ids = data.get("ids") or [[]] * len(data.get("categories", []))
             traces.append({"type": "bar", "name": spec.get("y_label", "value"),
                            "x": data.get("categories", []),
