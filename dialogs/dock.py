@@ -308,6 +308,19 @@ class StudioDockWidget(QDockWidget):
         self.value_combo.setToolTip("Bubble size, heatmap cell value or treemap weight")
         form.addRow("Value / Size", self.value_combo)
 
+        self.animate_combo = self._field_combo()
+        self.animate_combo.setToolTip(
+            "Play the chart through this field's values — a bar-chart race, "
+            "Gapminder bubbles, composition over the years. ECharts / Plotly; "
+            "bar · line · area · scatter · bubble · pie.")
+        form.addRow("Animate by ▶", self.animate_combo)
+        self.speed_combo = QComboBox()
+        for _lbl, _ms in (("Slow", 1600), ("Medium", 900), ("Fast", 450)):
+            self.speed_combo.addItem(_lbl, _ms)
+        self.speed_combo.setCurrentIndex(1)
+        self.speed_combo.setToolTip("Animation speed (time spent on each frame)")
+        form.addRow("Play speed", self.speed_combo)
+
         self.agg_combo = QComboBox()
         self.agg_combo.addItems(list(stats.AGGREGATIONS))
         form.addRow("Aggregate", self.agg_combo)
@@ -467,7 +480,7 @@ class StudioDockWidget(QDockWidget):
 
     def _on_layer_changed(self, layer) -> None:
         for combo in (self.x_combo, self.y_combo, self.group_combo,
-                      self.value_combo, self.label_field_combo):
+                      self.value_combo, self.animate_combo, self.label_field_combo):
             combo.setLayer(layer)
         self._refresh_diagram_fields(layer)
         self._watch_layer(layer)
@@ -530,6 +543,7 @@ class StudioDockWidget(QDockWidget):
                 if self.type_combo.itemData(i) in eng.supports:
                     self.type_combo.setCurrentIndex(i)
                     break
+        self._sync_animate()
 
     def _sync_controls(self) -> None:
         kind = self.type_combo.currentData()
@@ -543,6 +557,17 @@ class StudioDockWidget(QDockWidget):
         self.sort_combo.setEnabled(topn_sort)
         self.stacked_check.setEnabled(stacked)
         self.trend_check.setEnabled(trend)
+        self._sync_animate()
+
+    def _sync_animate(self, *_args) -> None:
+        """The play axis only lights up when the chosen engine can animate the
+        chosen chart type (ECharts / Plotly · bar·line·area·scatter·bubble·pie)."""
+        if not hasattr(self, "animate_combo"):
+            return
+        eng = engines()[max(0, self.engine_combo.currentIndex())]
+        on = self.type_combo.currentData() in eng.animates
+        self.animate_combo.setEnabled(on)
+        self.speed_combo.setEnabled(on)
 
     # ── Map diagrams tab handlers ──
 
@@ -652,14 +677,17 @@ class StudioDockWidget(QDockWidget):
             self.set_status("Pick a layer first")
             return None
         kind = self.type_combo.currentData()
+        eng = engines()[max(0, self.engine_combo.currentIndex())]
         x = self.x_combo.currentField()
         y = self.y_combo.currentField()
         group = self.group_combo.currentField() if self.group_combo.isEnabled() else ""
         value = self.value_combo.currentField() if self.value_combo.isEnabled() else ""
+        animate = (self.animate_combo.currentField()
+                   if self.animate_combo.isEnabled() else "")
         agg = self.agg_combo.currentText()
         sel = self.selected_only.isChecked()
 
-        fields = [f for f in {x, y, group, value} if f]
+        fields = [f for f in {x, y, group, value, animate} if f]
         if not fields:
             self.set_status("Pick at least an X field")
             return None
@@ -682,6 +710,13 @@ class StudioDockWidget(QDockWidget):
         if data is None:
             return None
         spec["data"] = data
+        if animate and kind in eng.animates:
+            frames = self._build_frames(
+                spec, cols, fids, kind=kind, x=x, y=y, group=group,
+                value=value, agg=agg, frame_field=animate)
+            if frames is None:
+                return None  # _build_frames sets the status
+            spec["frames"] = frames
         return spec
 
     # — per-type builders: return the spec["data"] dict, or None + status —
@@ -928,6 +963,43 @@ class StudioDockWidget(QDockWidget):
                                                   self.topn_spin.value())
         cats, vals, cum, ids = transform.pareto_rows(cats, vals, ids)
         return {"categories": cats, "values": vals, "cum": cum, "ids": ids}
+
+    # ───────────────────────── animation (play axis) ─────────────────────────
+
+    def _build_frames(self, spec, cols, fids, *, kind, x, y, group, value, agg,
+                      frame_field):
+        """Assemble the ``frames`` block for an animated chart. Validates the
+        field roles, then delegates the slicing/alignment to the pure
+        :func:`transform.build_frames` (so it stays testable headless)."""
+        if kind in ("bar", "line", "area", "pie"):
+            how = self._agg_or(agg, "count")
+            if how != "count" and not y:
+                self.set_status(f"Aggregation '{how}' needs a Y field")
+                return None
+            spec["y_label"] = f"{how}({y})" if how != "count" else "count"
+            single = spec["y_label"]
+        elif kind in ("scatter", "bubble"):
+            if not x or not y:
+                self.set_status("This chart needs numeric X and Y fields")
+                return None
+            if kind == "bubble" and not value:
+                self.set_status("Bubble chart needs a Value / Size field")
+                return None
+            how, single = "count", (spec.get("y_label") or "points")
+        else:
+            return None
+
+        built = transform.build_frames(
+            kind, cols, fids, cols.get(frame_field, []),
+            x=x, y=y, group=group, value=value, how=how, single_name=single)
+        if built is None:
+            self.set_status("Animate-by needs ≥ 2 frames with chartable data")
+            return None
+        labels, datas, union, bounds = built
+        spec["data"] = datas[0]
+        return {"field": frame_field, "labels": labels, "datas": datas,
+                "categories": union, "bounds": bounds,
+                "interval": self.speed_combo.currentData() or 900}
 
     # ───────────────────────── render / explore / export ─────────────────────────
 

@@ -1,7 +1,19 @@
 # Changelog
 
+## [0.9.0] - 2026-06-16
+
+- Animated charts (play axis): bar-chart race, Gapminder bubbles and trends over a time field in ECharts and Plotly (bar/line/area/scatter/bubble/pie), with axes and colours stable across frames and items still clickable to the map; pure-Python frame builder, offline.
+
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
+
+## [0.9.0] - 2026-06-16
+
+- **Animated charts — a play axis.** Pick an *Animate by ▶* field (typically a year or sequence) and the chart plays through that field's values: a **bar-chart race**, **Gapminder-style bubbles**, or composition/trends unfolding over time. Available for **bar, line, area, scatter, bubble and pie** in the two interactive engines — **ECharts** (a timeline with auto-play) and **Plotly** (a slider with play / pause). A *Play speed* control sets the pace; the play axis greys out for engines and chart types that cannot animate (Vega-Lite, matplotlib, and types like box/heatmap/violin), consistent with the existing engine-first gating.
+- **Things animate in place, not jump.** Every frame shares one axis: categories are merged into a stable, deterministically ordered union (a district keeps its slot and colour), the value axis is fixed to the global range across all frames, bubble sizes are scaled once globally so a value maps to the same radius throughout, and grouped series keep a consistent colour order. The current frame is shown as a subtitle (ECharts) and on the slider (Plotly).
+- **Still linked to the map.** Animated bars and points carry their feature ids per frame, so clicking one during playback still selects the matching features on the canvas (cross-filter dimming pauses while animating, since each frame redraws the whole chart).
+- **No new dependencies.** The frame builder is pure Python (`transform.build_frames` / `frame_groups` / `union_categories` / `align_values`); the vendored ECharts and Plotly engines do the rest entirely offline, and an animated chart still exports as one self-contained HTML file (with its play controls) like any other.
+- Verified headless: real-QGIS checks for the frame builder (numeric/lexicographic frame ordering, union axis, global bounds, per-frame ids) and 12 animated engine×type pages, plus 12 animated pages in headless Chrome — auto-play stepping, slider/play controls present, zero JS exceptions; the bar-chart race, Gapminder bubbles, animated pie and lines eyeballed. No regression in the 48 static pages.
 
 ## [0.8.0] - 2026-06-13
 

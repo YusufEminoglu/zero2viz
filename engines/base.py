@@ -33,6 +33,18 @@ Spec contract (produced by the dock, consumed by every engine):
             # radar:      "axes", "maxes", "series" [{"name", "values"}]
             # pareto:     "categories", "values", "cum" (0–100 %), "ids"
         },
+
+        # optional — turns the chart into an animation (a "play axis"):
+        "frames": {
+            "field": str,            # the field driving the animation (a label)
+            "labels": [...],         # ordered frame labels (e.g. years)
+            "datas": [ <data dict>, ... ],  # one per frame, same schema as "data"
+            "categories": [...] | None,     # union axis (categorical types)
+            "bounds": {"x": [lo, hi] | None, "y": [lo, hi] | None} | None,
+            "interval": int,         # ms per frame
+        },
+        # "data" is set to the first frame so engines that cannot animate
+        # still render a sensible static chart.
     }
 
 Feature ids ("ids" / point fid) make charts clickable: the embedded
@@ -45,6 +57,12 @@ import os
 CHART_TYPES = ("bar", "line", "area", "scatter", "bubble", "histogram",
                "pie", "box", "heatmap", "treemap", "sunburst",
                "errorband", "errorbar", "density", "violin", "radar", "pareto")
+
+# chart types that can be animated over a "play axis" (a time / sequence
+# field). These carry one value-or-point per category/feature, so a frame is
+# just the same chart rebuilt for that frame's rows — stable axis, animated
+# data. Box/heatmap/treemap/violin/… have no such clean per-frame mapping.
+ANIMATABLE = frozenset(("bar", "line", "area", "scatter", "bubble", "pie"))
 
 # One typographic voice across all three engines — a clean system UI stack so
 # charts read like publication / Tableau-grade figures, not default-library
@@ -173,6 +191,7 @@ class ChartEngine:
     id = "base"
     label = "Base"
     supports = frozenset(CHART_TYPES)  # engines may declare a reduced set
+    animates = frozenset()             # chart types this engine can animate
 
     @classmethod
     def available(cls) -> bool:

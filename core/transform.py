@@ -316,3 +316,163 @@ def bubble_sizes(values: list, lo: float = 6.0, hi: float = 38.0) -> list[float]
         else:
             out.append(lo + (hi - lo) * math.sqrt((v - vmin) / (vmax - vmin)))
     return out
+
+
+# ─────────────────────────── animation (play axis) ───────────────────────────
+#
+# A "play axis" turns a single field (typically a year or sequence) into the
+# frames of an animation. Everything here is pure Python: the dock slices a
+# layer's rows per frame, runs the ordinary per-type builders on each slice,
+# then uses these helpers to give every frame a *stable* axis — the same
+# category order and the same colour per series — so categories animate in
+# place (bar-chart race, Gapminder bubbles) instead of jumping around.
+
+
+def frame_groups(frame_col: list):
+    """Partition row indices by their value in ``frame_col`` and order the
+    distinct frames like a time axis: numerically when every frame value is a
+    number (so 2000, 2001, … 2010 — not 2000, 2001, 2010, 2002 …), otherwise
+    lexicographically. → ``(frame_labels, [row_indices_per_frame])``."""
+    order: list[str] = []
+    buckets: dict[str, list[int]] = {}
+    for i, v in enumerate(frame_col):
+        k = _key(v)
+        if k not in buckets:
+            buckets[k] = []
+            order.append(k)
+        buckets[k].append(i)
+    nums = [to_float(k) for k in order]
+    if order and all(n is not None for n in nums):
+        order = [k for _, k in sorted(zip(nums, order), key=lambda p: p[0])]
+    else:
+        order = sorted(order)
+    return order, [buckets[k] for k in order]
+
+
+def union_categories(cat_lists: list) -> list[str]:
+    """Merge the category lists of every frame into one stable, deterministic
+    axis (numeric-aware), so each category keeps its slot — and therefore its
+    colour and position — for the whole animation."""
+    seen: set = set()
+    merged: list[str] = []
+    for lst in cat_lists:
+        for c in lst:
+            if c not in seen:
+                seen.add(c)
+                merged.append(c)
+    nums = [to_float(c) for c in merged]
+    if merged and all(n is not None for n in nums):
+        return [c for _, c in sorted(zip(nums, merged), key=lambda p: p[0])]
+    return sorted(merged)
+
+
+def align_values(target: list, cats: list, values: list, ids: list | None = None):
+    """Re-index one frame's ``(cats → values[, ids])`` onto the ``target``
+    category order; a category missing from this frame becomes 0 (empty id
+    list). → ``(values, ids_or_None)`` both aligned to ``target``."""
+    pos = {c: i for i, c in enumerate(cats)}
+    out_v = [0.0] * len(target)
+    out_i = [[] for _ in target] if ids is not None else None
+    for j, c in enumerate(target):
+        i = pos.get(c)
+        if i is not None:
+            out_v[j] = values[i] if i < len(values) else 0.0
+            if out_i is not None and i < len(ids):
+                out_i[j] = ids[i]
+    return out_v, out_i
+
+
+def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
+                 x: str, y: str, group: str, value: str, how: str,
+                 single_name: str = "points"):
+    """Pure animation builder: slice the row-aligned ``cols`` by ``frame_col``
+    and rebuild ``kind`` for every frame, with a stable category/series order
+    (union) and a global value range.
+
+    → ``(labels, datas, union_categories_or_None, bounds_or_None)`` where each
+    ``datas[i]`` is a per-frame ``spec["data"]`` dict, or ``None`` when there
+    are fewer than two frames / no chartable data to animate."""
+    labels, idx_per = frame_groups(frame_col)
+    if len(labels) < 2:
+        return None
+
+    def sub(name, idxs):
+        col = cols.get(name, [])
+        return [col[i] for i in idxs]
+
+    datas: list[dict] = []
+    union = None
+    bounds = None
+
+    if kind in ("bar", "line", "area", "pie"):
+        use_group = bool(group) and kind != "pie"
+        raw = []
+        for idxs in idx_per:
+            ff = [fids[i] for i in idxs]
+            if use_group:
+                cats, series = pivot_rows(sub(x, idxs), sub(group, idxs),
+                                          sub(y, idxs), ff, how)
+            else:
+                cats, vals, ids = group_rows(sub(x, idxs), sub(y, idxs), ff, how)
+                series = [{"name": single_name, "values": vals, "ids": ids}]
+            raw.append((cats, series))
+        union = union_categories([c for c, _s in raw])
+        names: list[str] = []
+        for _c, series in raw:
+            for s in series:
+                if s["name"] not in names:
+                    names.append(s["name"])
+        all_vals: list[float] = []
+        for cats, series in raw:
+            by_name = {s["name"]: s for s in series}
+            aligned = []
+            for nm in names:
+                s = by_name.get(nm)
+                if s is None:
+                    aligned.append({"name": nm, "values": [0.0] * len(union),
+                                    "ids": [[] for _ in union]})
+                else:
+                    vv, ii = align_values(union, cats, s["values"], s.get("ids"))
+                    aligned.append({"name": nm, "values": vv, "ids": ii})
+            all_vals.extend(v for s in aligned for v in s["values"])
+            if kind == "pie":
+                datas.append({"categories": union, "values": aligned[0]["values"],
+                              "ids": aligned[0]["ids"]})
+            else:
+                datas.append({"categories": union, "series": aligned})
+        if all_vals:
+            bounds = {"y": [min(all_vals + [0.0]), max(all_vals + [0.0])]}
+
+    elif kind in ("scatter", "bubble"):
+        # bubble radii are scaled once, globally, so a value maps to the same
+        # size in every frame
+        sizes = (bubble_sizes(cols[value])
+                 if (kind == "bubble" and value) else [None] * len(fids))
+        names = []
+        for i in range(len(fids)):
+            key = _key(cols[group][i]) if group else single_name
+            if key not in names:
+                names.append(key)
+        xs_all: list[float] = []
+        ys_all: list[float] = []
+        for idxs in idx_per:
+            buckets: dict[str, list] = {nm: [] for nm in names}
+            for i in idxs:
+                xf = to_float(cols[x][i])
+                yf = to_float(cols[y][i])
+                if xf is None or yf is None:
+                    continue
+                key = _key(cols[group][i]) if group else single_name
+                buckets[key].append([xf, yf, sizes[i], fids[i]])
+                xs_all.append(xf)
+                ys_all.append(yf)
+            datas.append({"series": [{"name": nm, "points": buckets[nm]}
+                                     for nm in names], "trend": None})
+        if not xs_all:
+            return None
+        bounds = {"x": [min(xs_all), max(xs_all)],
+                  "y": [min(ys_all), max(ys_all)]}
+    else:
+        return None
+
+    return labels, datas, union, bounds

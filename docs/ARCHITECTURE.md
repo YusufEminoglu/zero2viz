@@ -10,7 +10,7 @@ zero2viz/               # package dir (display name stays "02viz")
   core/
     datasource.py       # layer → row-aligned columns (+feature ids); OGR tables
     stats.py            # pure-Python aggregation / histogram / boxplot / Pearson / KDE
-    transform.py        # pivot, heatmap matrix, tree, top-N, sort, trend, band, violin, pareto
+    transform.py        # pivot, heatmap, tree, top-N, sort, trend, band, violin, pareto, animation frames
     profile.py          # one-click layer profiling → dashboard tiles + insights (skips id columns)
     diagrams.py         # on-canvas QgsDiagramRenderer (pie/bar/stacked/text per feature)
     labels.py           # on-canvas QgsPalLayerSettings quick-label presets
@@ -86,5 +86,31 @@ on both stacks) on every ``selectionChanged`` and on ``loadFinished``;
 items carrying ``__ids`` dim unless selected (ECharts per-item opacity,
 Plotly native ``selectedpoints``).
 
+## Animation (play axis) — v0.9.0
+
+A chart becomes an animation when the spec carries an optional ``frames``
+block (see the contract in ``engines/base.py``). The dock slices the
+layer's rows by an "Animate by" field into an ordered play axis
+(``transform.frame_groups`` — numeric-aware so years sort 2000, 2001,
+2002…), rebuilds the chart for each frame with the ordinary per-type
+transforms, then gives every frame a **stable** axis:
+``union_categories`` merges the categories so a bar keeps its slot and
+colour, ``align_values`` re-indexes each frame onto that union (missing →
+0), and a global value range fixes the value axis. Bubble sizes are scaled
+once over all rows so a value maps to the same radius in every frame. All
+of this is pure Python in ``transform.build_frames`` (testable headless).
+
+Each engine declares an ``animates`` set (``base.ANIMATABLE`` =
+bar/line/area/scatter/bubble/pie for ECharts and Plotly; empty for
+Vega-Lite and matplotlib). When ``spec["frames"]`` is present and the type
+is animatable, ECharts wraps the per-frame options in a ``timeline``
+(auto-play) and Plotly emits ``frames`` + a ``slider`` and play/pause
+``updatemenus``; otherwise the engines render ``spec["data"]`` (frame 0)
+as a normal static chart, so nothing breaks for the other engines. Items
+keep their feature ids per frame, so animated bars/points still drive
+chart→map selection; the map→chart highlight is a no-op while animating
+(every frame redraws the whole trace set).
+
 Planned next: small-multiples dashboards, custom spec editor for power
-users, dashboard tile picker, SVG/PDF export.
+users, dashboard tile picker, SVG/PDF export, animation on the Explore
+dashboard tiles.

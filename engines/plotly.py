@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from .base import FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import ANIMATABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 _BODY = """
 var gd = document.getElementById("chart");
@@ -54,6 +54,26 @@ window.__o2vizHighlight = function (ids) {
 };
 """
 
+# animated figure (play axis): data + layout + frames, with a slider and
+# play/pause buttons baked into the layout. Cross-filter highlighting is
+# disabled while animating (the frames already redraw the whole trace set).
+_ANIM_BODY = """
+var gd = document.getElementById("chart");
+var FIG = {"data": %(data)s, "layout": %(layout)s, "frames": %(frames)s};
+Plotly.newPlot(gd, FIG, {responsive: true, displaylogo: false}).then(function () {
+  window.__o2vizFrameCount = (FIG.frames || []).length;
+  window.__chartReady = true;
+  function __o2vizFit() { try { Plotly.Plots.resize(gd); } catch (e) {} }
+  [60, 240, 600].forEach(function (ms) { setTimeout(__o2vizFit, ms); });
+});
+gd.on("plotly_click", function (ev) {
+  var ids = [];
+  (ev.points || []).forEach(function (p) { if (p.customdata) ids = ids.concat(p.customdata); });
+  if (ids.length) __o2vizSelect(ids);
+});
+window.__o2vizHighlight = function () { /* cross-filter paused during animation */ };
+"""
+
 
 def _rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
@@ -64,13 +84,86 @@ def _rgba(hex_color: str, alpha: float) -> str:
 class PlotlyEngine(ChartEngine):
     id = "plotly"
     label = "Plotly"
+    animates = ANIMATABLE
 
     def build_html(self, spec: dict) -> str:
-        traces, layout = self._figure(spec)
-        body = _BODY % {"traces": json.dumps(traces, ensure_ascii=False),
-                        "layout": json.dumps(layout, ensure_ascii=False)}
+        if spec.get("frames") and spec["type"] in self.animates:
+            traces, layout, frames = self._animated_figure(spec)
+            body = _ANIM_BODY % {"data": json.dumps(traces, ensure_ascii=False),
+                                 "layout": json.dumps(layout, ensure_ascii=False),
+                                 "frames": json.dumps(frames, ensure_ascii=False)}
+        else:
+            traces, layout = self._figure(spec)
+            body = _BODY % {"traces": json.dumps(traces, ensure_ascii=False),
+                            "layout": json.dumps(layout, ensure_ascii=False)}
         return wrap_html(spec.get("title", ""), read_web("plotly.min.js"),
                          body, theme_of(spec))
+
+    # ───────────────────────── animation (play axis) ─────────────────────────
+
+    def _animated_figure(self, spec: dict):
+        """→ (initial traces, layout with slider + play/pause, frames)."""
+        frames = spec["frames"]
+        static = {k: v for k, v in spec.items() if k != "frames"}
+        labels = [str(x) for x in frames.get("labels", [])]
+        interval = int(frames.get("interval", 900))
+        trans = min(interval // 2, 400)
+
+        traces, layout = self._figure(dict(static, data=frames["datas"][0]))
+        self._fix_ranges(layout, spec["type"], frames.get("bounds"))
+
+        pframes = []
+        for i, fdata in enumerate(frames["datas"]):
+            ftr, _ = self._figure(dict(static, data=fdata))
+            pframes.append({"name": labels[i], "data": ftr})
+
+        anim_args = {"mode": "immediate", "fromcurrent": True,
+                     "frame": {"duration": interval, "redraw": True},
+                     "transition": {"duration": trans}}
+        pause_args = {"mode": "immediate", "frame": {"duration": 0, "redraw": False},
+                      "transition": {"duration": 0}}
+        steps = [{"label": lbl, "method": "animate",
+                  "args": [[lbl], {"mode": "immediate",
+                                   "frame": {"duration": interval, "redraw": True},
+                                   "transition": {"duration": trans}}]}
+                 for lbl in labels]
+        field = frames.get("field", "")
+        layout["sliders"] = [{
+            "active": 0, "x": 0.08, "y": 0, "len": 0.92, "pad": {"t": 32, "b": 8},
+            "currentvalue": {"prefix": f"{field}: " if field else "",
+                             "font": {"size": 14}, "xanchor": "left"},
+            "transition": {"duration": trans}, "steps": steps}]
+        layout["updatemenus"] = [{
+            "type": "buttons", "direction": "left", "showactive": False,
+            "x": 0.08, "y": 0, "xanchor": "right", "yanchor": "top",
+            "pad": {"t": 32, "r": 12},
+            "buttons": [
+                {"label": "▶", "method": "animate", "args": [None, anim_args]},
+                {"label": "❚❚", "method": "animate", "args": [[None], pause_args]},
+            ]}]
+        layout["margin"]["b"] = max(layout["margin"].get("b", 72), 110)
+        return traces, layout, pframes
+
+    def _fix_ranges(self, layout: dict, kind: str, bounds) -> None:
+        """Lock axis ranges to the global extent so frames don't rescale."""
+        if not bounds:
+            return
+
+        def pad(rng, zero=False):
+            lo, hi = rng
+            if zero:
+                lo = min(0.0, lo)
+            span = (hi - lo) or abs(hi) or 1.0
+            base = lo if (zero and lo == 0) else lo - span * 0.05
+            return [base, hi + span * 0.05]
+
+        if kind in ("scatter", "bubble"):
+            if bounds.get("x"):
+                layout["xaxis"]["range"] = pad(bounds["x"])
+            if bounds.get("y"):
+                layout["yaxis"]["range"] = pad(bounds["y"])
+        elif kind in ("bar", "line", "area") and bounds.get("y"):
+            layout["yaxis"]["range"] = pad(bounds["y"], zero=kind in ("bar", "area"))
 
     # ───────────────────── figure builder ─────────────────────
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 
-from .base import FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import ANIMATABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 _BODY = """
 var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
@@ -90,6 +90,8 @@ window.__o2vizHighlight = function (ids) {
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
   } catch (e) { /* highlight is best-effort */ }
 };
+// number of animation frames (0 = static chart) — read by the render harness
+window.__o2vizFrameCount = (OPT.options && OPT.options.length) || 0;
 window.__chartReady = true;
 """
 
@@ -153,9 +155,13 @@ def _with_ids(values: list, ids: list | None) -> list:
 class EChartsEngine(ChartEngine):
     id = "echarts"
     label = "ECharts"
+    animates = ANIMATABLE
 
     def build_html(self, spec: dict) -> str:
-        option = self.option(spec)
+        if spec.get("frames") and spec["type"] in self.animates:
+            option = self._timeline_option(spec)
+        else:
+            option = self.option(spec)
         return wrap_html(spec.get("title", ""), read_web("echarts.min.js"),
                          _BODY % {"option": json.dumps(option, ensure_ascii=False)},
                          theme_of(spec))
@@ -163,6 +169,71 @@ class EChartsEngine(ChartEngine):
     def option(self, spec: dict) -> dict:
         """Public: the ECharts option for a spec (reused by the dashboard)."""
         return self._option(spec)
+
+    # ───────────────────────── animation (timeline) ─────────────────────────
+
+    def _timeline_option(self, spec: dict) -> dict:
+        """Wrap the per-frame options in an ECharts ``timeline`` (play axis).
+
+        Every frame is the ordinary single-chart option rebuilt for that
+        frame's data; the baseOption holds the shared axes/title and a value
+        axis fixed to the global range, so categories animate in place."""
+        frames = spec["frames"]
+        theme = theme_of(spec)
+        static = {k: v for k, v in spec.items() if k != "frames"}
+
+        base = self._option(static)  # spec["data"] is already frame 0 (union-aligned)
+        self._stabilise_axes(base, spec["type"], frames.get("bounds"))
+        if isinstance(base.get("grid"), dict):
+            base["grid"]["bottom"] = max(base["grid"].get("bottom", 64), 96)
+
+        labels = [str(x) for x in frames.get("labels", [])]
+        field = frames.get("field", "")
+        options = []
+        for i, fdata in enumerate(frames["datas"]):
+            opt = self._option(dict(static, data=fdata))
+            entry = {"series": opt["series"]}
+            if field:
+                entry["title"] = {"subtext": f"{field}: {labels[i]}",
+                                  "subtextStyle": {"color": theme["text"],
+                                                   "fontSize": 13}}
+            options.append(entry)
+
+        accent = theme["palette"][0]
+        base["timeline"] = {
+            "show": True, "axisType": "category", "data": labels,
+            "autoPlay": True, "loop": True, "rewind": False,
+            "playInterval": int(frames.get("interval", 900)),
+            "currentIndex": 0, "left": 30, "right": 30, "bottom": 8,
+            "label": {"color": theme["text"], "fontFamily": FONT_FAMILY},
+            "lineStyle": {"color": theme["grid"]},
+            "itemStyle": {"color": theme["grid"]},
+            "checkpointStyle": {"color": accent, "borderColor": accent},
+            "controlStyle": {"color": theme["text"], "borderColor": theme["text"]},
+            "progress": {"itemStyle": {"color": accent},
+                         "lineStyle": {"color": accent}},
+            "emphasis": {"controlStyle": {"color": accent, "borderColor": accent}},
+        }
+        if field:
+            base.setdefault("title", {})["subtext"] = f"{field}: {labels[0]}"
+        return {"baseOption": base, "options": options}
+
+    def _stabilise_axes(self, option: dict, kind: str, bounds) -> None:
+        """Fix the value axis (and, for scatter/bubble, both axes) to the
+        global range so the chart doesn't rescale on every frame."""
+        if not bounds:
+            return
+        if kind in ("scatter", "bubble"):
+            for key, rng in (("xAxis", bounds.get("x")), ("yAxis", bounds.get("y"))):
+                if rng and isinstance(option.get(key), dict):
+                    lo, hi = _padded_range(rng[0], rng[1])
+                    option[key].update(min=lo, max=hi, scale=False)
+        elif bounds.get("y") and isinstance(option.get("yAxis"), dict):
+            lo, hi = bounds["y"]
+            zero = kind in ("bar", "area")
+            _, hi_p = _padded_range(min(lo, 0.0) if zero else lo, hi)
+            option["yAxis"].update(max=hi_p, scale=False,
+                                   min=0 if zero else _padded_range(lo, hi)[0])
 
     # ───────────────────── option builder ─────────────────────
 

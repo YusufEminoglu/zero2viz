@@ -26,6 +26,7 @@
 - **One dock, three tabs** — **Charts** (interactive web charts), **Map diagrams** (native diagrams on every feature) and **Labels** (quick elegant labels), all sharing one layer selector.
 - **One-click Explore** — pick a layer, press one button: 02viz profiles every field and builds a complete interactive dashboard — KPI cards, a chart per field, a Pearson correlation matrix, the strongest-relationship scatter with trend line, and plain-English insight chips ("Strongest link: pop ↔ income, r = -0.47"). Identifier columns (fid/id/gid/uuid) are skipped.
 - **Seventeen chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap, sunburst, mean ± σ band, mean ± σ bars, density (KDE), violin, radar/spider and Pareto (80/20).
+- **Animated charts — a play axis** — pick a time or sequence field and any **bar, line, area, scatter, bubble or pie** chart plays through it: a **bar-chart race**, **Gapminder-style bubbles**, composition or trends unfolding over the years. An auto-play timeline (ECharts) or a slider with play/pause (Plotly), with categories, colours and axes held steady across frames so things animate *in place* — and animated bars/points still click to select features on the map. Pure Python, fully offline, and the animation exports in the one-file HTML.
 - **Four engines, engine-first** — pick the renderer, then choose from the chart types it can draw; the rest grey out. Three are vendored and fully offline (Apache ECharts, Plotly.js, Vega-Lite); the optional **matplotlib / seaborn** engine renders publication-grade *static* figures and installs on demand (auto-detected, one-click pip install — the core studio stays dependency-free).
 - **Map diagrams on the canvas** — native QGIS **pie / bar / stacked-bar / text** diagrams on every feature, sized in millimetres and coloured with the studio palette. They print and export to layout like any symbology.
 - **Quick, elegant labels** — turn any field into well-placed labels with a preset (clean subtle-halo / strong halo / bold / plain), geometry-aware placement, built on native QGIS labeling.
@@ -40,6 +41,12 @@
 - **Qt5 and Qt6 ready** — runs on QGIS 3.28+ and the QGIS 4 line, with a WebEngine → WebKit → browser viewer fallback chain.
 
 ## 🖼️ Gallery
+
+**Animated charts — a play axis.** Pick a year (or any sequence) field and the chart plays through it, with axes and colours held steady so categories animate in place:
+
+| Bar-chart race (ECharts timeline) | Gapminder bubbles (Plotly slider) |
+|:---:|:---:|
+| <img src="docs/anim-bar-race.png" width="420" alt="Animated bar-chart race over years"/> | <img src="docs/anim-bubble.png" width="420" alt="Animated Gapminder-style bubble chart over years"/> |
 
 A few of the seventeen chart types, rendered offline by the vendored JS engines and styled for publication:
 
@@ -78,6 +85,7 @@ Requires QGIS 3.28 or newer. **No external Python dependencies for the core stud
 | Data (shared) | Load external table… | Opens CSV/XLSX/ODS/GPKG tables via OGR and adds them to the layer list |
 | Charts | Engine / Type / Theme / Colors | 4 engines (ECharts, Plotly, Vega-Lite + optional matplotlib) × 17 types × 4 themes × 8 palettes + inline custom swatches |
 | Charts | X / Y / Group / Value-Size / Title | Field bindings + a chart-title override; Group splits colored series, Value drives bubble size, heatmap cells and treemap weights |
+| Charts | Animate by ▶ / Play speed | Play a bar/line/area/scatter/bubble/pie chart through a time or sequence field — bar-chart race, Gapminder bubbles, composition over years (ECharts timeline / Plotly slider) |
 | Charts | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
 | Charts | Render / ✨ Explore / Export / ↗ | Render to the embedded viewer (WebEngine → WebKit → browser), one-click Explore dashboard, one-file HTML export, open-in-browser fallback |
 | Map diagrams | Type / Fields / Size | Native QGIS pie/bar/stacked/text diagrams on every feature, on the canvas |
