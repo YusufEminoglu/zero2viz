@@ -1,9 +1,5 @@
 # Changelog
 
-## [0.9.0] - 2026-06-16
-
-- Animated charts (play axis): bar-chart race, Gapminder bubbles and trends over a time field in ECharts and Plotly (bar/line/area/scatter/bubble/pie), with axes and colours stable across frames and items still clickable to the map; pure-Python frame builder, offline.
-
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
