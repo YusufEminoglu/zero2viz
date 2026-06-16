@@ -50,11 +50,19 @@ def _placement_for(layer):
     return over  # polygons: centroid
 
 
-def apply_labels(layer, *, field: str, preset: str = "clean",
-                 color: str = "#16323f", size: float = 9.0,
-                 halo_color: str = "#ffffff") -> bool:
-    """Label ``layer`` by ``field`` with a preset text style. Returns success."""
-    if not field or field not in label_field_names(layer):
+def apply_labels(layer, *, field: str = "", expression: str = "",
+                 preset: str = "clean", color: str = "#16323f",
+                 size: float = 9.0, halo_color: str = "#ffffff") -> bool:
+    """Label ``layer`` with a preset text style. Returns success.
+
+    Pass ``expression`` (a QGIS expression — ``round("pop", 1)``,
+    ``concat(name, char(10), …)``, ``wordwrap(…)`` …) to label by a formatted /
+    multi-line value, or ``field`` to label by a single field verbatim. When
+    both are given the expression wins. See :func:`core.expressions.label_expression`.
+    """
+    expr = (expression or "").strip()
+    use_expr = bool(expr)
+    if not use_expr and (not field or field not in label_field_names(layer)):
         return False
 
     fmt = QgsTextFormat()
@@ -74,7 +82,8 @@ def apply_labels(layer, *, field: str, preset: str = "clean",
         fmt.setBuffer(buf)
 
     pal = QgsPalLayerSettings()
-    pal.fieldName = field
+    pal.fieldName = expr if use_expr else field
+    pal.isExpression = use_expr
     pal.enabled = True
     try:
         pal.placement = _placement_for(layer)

@@ -37,6 +37,8 @@ except (ImportError, AttributeError):  # pragma: no cover - QGIS 4 scoped enums
     from qgis.core import Qgis
     _MM = Qgis.RenderUnit.Millimeters
 
+from . import expressions
+
 # diagram-type key → factory; "bar" is QGIS's histogram (side-by-side bars)
 DIAGRAM_TYPES = ("pie", "bar", "stacked", "text")
 DIAGRAM_LABELS = {
@@ -102,22 +104,32 @@ def numeric_field_names(layer) -> list[str]:
 
 def apply_diagram(layer, *, kind: str, fields: list[str], colors: list[str],
                   size_mm: float = 14.0, opacity: float = 1.0,
-                  text_color: str = "#16323f", line_color: str = "#ffffff") -> bool:
+                  text_color: str = "#16323f", line_color: str = "#ffffff",
+                  normalize: str = "none", stats: dict | None = None) -> bool:
     """Attach a diagram renderer to ``layer``. Returns True on success.
 
     ``fields`` are the numeric attributes that become slices / bars;
     ``colors`` recolours them in order (cycled if shorter than ``fields``).
+
+    ``normalize`` (``none`` | ``minmax`` | ``zscore`` | ``log``) rewrites each
+    category as a normalising QGIS *expression* using ``stats`` — a
+    ``{field: {min, max, mean, std}}`` map computed by the dock — so fields on
+    very different scales become comparable in a pie / bar instead of one
+    field dwarfing the rest. ``none`` keeps the raw field values.
     """
     if not fields or not layer_has_geometry(layer):
         return False
     palette = colors or ["#2a8f85"]
+    stats = stats or {}
 
     settings = QgsDiagramSettings()
     settings.enabled = True
     settings.sizeType = _MM
     settings.size = QSizeF(size_mm, size_mm)
     settings.font = QFont("Segoe UI", 8)
-    settings.categoryAttributes = [f'"{name}"' for name in fields]
+    settings.categoryAttributes = [
+        expressions.normalize_expression(name, normalize, stats.get(name))
+        for name in fields]
     try:  # categoryLabels exists on recent QGIS; harmless to skip otherwise
         settings.categoryLabels = list(fields)
     except Exception:

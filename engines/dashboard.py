@@ -38,6 +38,25 @@ _PAGE = """<!DOCTYPE html>
   .kpi .v {{ font-size: 24px; font-weight: 700; color: {accent}; }}
   .kpi .l {{ font-size: 12px; color: {muted}; margin-top: 2px;
              text-transform: uppercase; letter-spacing: 0.8px; }}
+  details.fields {{ background: {card}; border: 1px solid {grid}; border-radius: 12px;
+                    padding: 6px 16px 14px; margin: 0 0 18px; }}
+  details.fields > summary {{ cursor: pointer; font-weight: 600; padding: 8px 0;
+                              font-size: 14px; list-style: none; }}
+  details.fields > summary::-webkit-details-marker {{ display: none; }}
+  details.fields > summary::before {{ content: "▸ "; color: {accent}; }}
+  details.fields[open] > summary::before {{ content: "▾ "; }}
+  table.fields {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+  table.fields th {{ text-align: left; color: {muted}; font-weight: 600;
+                     padding: 6px 10px; border-bottom: 1px solid {grid};
+                     text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }}
+  table.fields td {{ padding: 6px 10px; border-bottom: 1px solid {grid}; }}
+  table.fields tr:last-child td {{ border-bottom: 0; }}
+  .pill {{ font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }}
+  .pill.numeric {{ background: rgba(42,143,133,0.16); color: {accent}; }}
+  .pill.categorical {{ background: rgba(244,162,97,0.18); color: #b9701f; }}
+  .pill.id, .pill.text {{ background: rgba(141,153,174,0.18); color: {muted}; }}
+  .miss-ok {{ color: {muted}; }}
+  .miss-hi {{ color: #d6604d; font-weight: 600; }}
   .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
            gap: 14px; }}
   .tile {{ background: {card}; border: 1px solid {grid}; border-radius: 12px;
@@ -55,6 +74,7 @@ _PAGE = """<!DOCTYPE html>
     <ul class="insights">{insights}</ul>
   </header>
   <div class="kpis">{kpis}</div>
+  {fields_table}
   <div class="grid">{tiles}</div>
   <footer>built with 02viz — Geospatial Visualization Studio · charts are interactive, clicks select features in QGIS</footer>
 </div>
@@ -119,6 +139,30 @@ def _card_color(theme: dict) -> str:
     return "#1b262c" if theme["bg"].lower() in ("#131c21",) else "#ffffff"
 
 
+def _fields_table(field_rows: list, esc) -> str:
+    """A collapsible <details> table: field · type · missing % · distinct ·
+    summary. Returns '' when the profile carries no field rows."""
+    if not field_rows:
+        return ""
+    body = []
+    for f in field_rows:
+        miss = f.get("missing", 0.0)
+        cls = "miss-hi" if miss >= 30.0 else "miss-ok"
+        body.append(
+            f'<tr><td><b>{esc(str(f.get("name", "")))}</b></td>'
+            f'<td><span class="pill {esc(str(f.get("type", "")))}">'
+            f'{esc(str(f.get("type", "")))}</span></td>'
+            f'<td class="{cls}">{miss:g}%</td>'
+            f'<td>{f.get("distinct", 0):,}</td>'
+            f'<td>{esc(str(f.get("summary", "")))}</td></tr>')
+    return (
+        f'<details class="fields"><summary>Field summary — {len(field_rows)} '
+        f'fields (type · missing · distinct · range/top)</summary>'
+        f'<table class="fields"><thead><tr><th>Field</th><th>Type</th>'
+        f'<th>Missing</th><th>Distinct</th><th>Summary</th></tr></thead>'
+        f'<tbody>{"".join(body)}</tbody></table></details>')
+
+
 def build_dashboard(profile: dict, theme: dict | None = None) -> str:
     theme = theme or THEMES[DEFAULT_THEME]
     esc = html_escape.escape
@@ -146,6 +190,7 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
         meta=esc(profile.get("meta", "")),
         insights=insight_html,
         kpis=kpi_html,
+        fields_table=_fields_table(profile.get("fields", []), esc),
         tiles=tiles_html,
         options=json.dumps(options, ensure_ascii=False),
         lib=read_web("echarts.min.js"),

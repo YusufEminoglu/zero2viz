@@ -24,12 +24,13 @@
 ## ✨ Features
 
 - **One dock, three tabs** — **Charts** (interactive web charts), **Map diagrams** (native diagrams on every feature) and **Labels** (quick elegant labels), all sharing one layer selector.
-- **One-click Explore** — pick a layer, press one button: 02viz profiles every field and builds a complete interactive dashboard — KPI cards, a chart per field, a Pearson correlation matrix, the strongest-relationship scatter with trend line, and plain-English insight chips ("Strongest link: pop ↔ income, r = -0.47"). Identifier columns (fid/id/gid/uuid) are skipped.
+- **One-click Explore** — pick a layer, press one button: 02viz profiles every field and builds a complete interactive dashboard — KPI cards (with overall **completeness**), a collapsible **field-summary table** (type · missing % · distinct · range/top), a chart per field, a **normalised box plot** putting every numeric field on one comparable 0–1 axis, a Pearson correlation matrix, the strongest-relationship scatter with trend line, and plain-English insight chips — dominant category, range, **skew with a log-transform hint**, **outliers**, near-constant and mostly-empty fields, notable correlations. Identifier columns (fid/id/gid/uuid) are skipped.
+- **Built-in guide + smart suggestions, fully offline** — a **❔ Guide** button opens a designed, self-contained HTML user guide (every feature, the normalisation modes, copy-ready label-expression recipes, and prompts for an external AI assistant), and a **💡 Suggest** button reads the active layer's fields to configure and render the most insightful chart for you — telling you *why*. No account, no internet, no new dependencies.
 - **Seventeen chart types, zero setup** — bar (grouped/stacked), line, area, scatter, bubble, histogram, pie/donut, box plot, heatmap, treemap, sunburst, mean ± σ band, mean ± σ bars, density (KDE), violin, radar/spider and Pareto (80/20).
 - **Animated charts — a play axis** — pick a time or sequence field and any **bar, line, area, scatter, bubble or pie** chart plays through it: a **bar-chart race**, **Gapminder-style bubbles**, composition or trends unfolding over the years. An auto-play timeline (ECharts) or a slider with play/pause (Plotly), with categories, colours and axes held steady across frames so things animate *in place* — and animated bars/points still click to select features on the map. Pure Python, fully offline, and the animation exports in the one-file HTML.
 - **Four engines, engine-first** — pick the renderer, then choose from the chart types it can draw; the rest grey out. Three are vendored and fully offline (Apache ECharts, Plotly.js, Vega-Lite); the optional **matplotlib / seaborn** engine renders publication-grade *static* figures and installs on demand (auto-detected, one-click pip install — the core studio stays dependency-free).
-- **Map diagrams on the canvas** — native QGIS **pie / bar / stacked-bar / text** diagrams on every feature, sized in millimetres and coloured with the studio palette. They print and export to layout like any symbology.
-- **Quick, elegant labels** — turn any field into well-placed labels with a preset (clean subtle-halo / strong halo / bold / plain), geometry-aware placement, built on native QGIS labeling.
+- **Map diagrams on the canvas, with normalisation** — native QGIS **pie / bar / stacked-bar / text** diagrams on every feature, sized in millimetres and coloured with the studio palette. Optionally **normalise** the fields — **Min–max (0–1)**, **Z-score** or **Log** — so a pie or bar compares fields on very different scales fairly instead of one big-number field swamping the rest (min/max/mean/std are computed from the features and baked into the diagram expressions — nothing is written to your data). They print and export to layout like any symbology.
+- **Expression-driven labels** — turn fields into well-placed labels with a preset (clean subtle-halo / strong halo / bold / plain) and **format them without leaving the dock**: round numbers, thousands separators, a prefix/suffix or units, change case, word-wrap, stack a **second field on its own line**, or type **any QGIS expression** — with a live preview and a first-feature sample. Built on native QGIS labeling.
 - **Publication-grade output** — one type system, soft dashed gridlines, clean card tooltips, rounded bars and minimal axes across every engine — charts read at Tableau quality.
 - **Chart → map selection** — click a bar, slice or point and the matching features are selected on the canvas, on every QGIS web stack (crash-safe title transport, no QWebChannel needed).
 - **Map → chart cross-filter** — select features on the canvas and the chart instantly dims everything else, no re-render; works in single charts and across every dashboard tile.
@@ -72,9 +73,9 @@ Requires QGIS 3.28 or newer. **No external Python dependencies for the core stud
 
 1. Install 02viz and click the **02viz Studio** toolbar button — the studio dock opens on the right.
 2. Pick a layer (or **Load external table…** for a CSV/XLSX), optionally tick *Only selected features*.
-3. On the **Charts** tab pick the engine and chart type, set the X/Y fields and an aggregation if you want grouping.
+3. On the **Charts** tab pick the engine and chart type, set the X/Y fields and an aggregation if you want grouping — or press **💡 Suggest** to let 02viz configure the best chart for your fields.
 4. Hit **Render chart** — the interactive chart appears right in the dock.
-5. **Export HTML…** saves it as a single self-contained file; the chart toolbox saves PNG. The **Map diagrams** and **Labels** tabs draw straight onto the canvas.
+5. **Export HTML…** saves it as a single self-contained file; the chart toolbox saves PNG. The **Map diagrams** (with Min–max / Z-score / Log normalisation) and **Labels** (round / multi-line / expressions) tabs draw straight onto the canvas. New to it all? Open **❔ Guide**.
 
 ## ⚙️ Reference
 
@@ -87,9 +88,10 @@ Requires QGIS 3.28 or newer. **No external Python dependencies for the core stud
 | Charts | X / Y / Group / Value-Size / Title | Field bindings + a chart-title override; Group splits colored series, Value drives bubble size, heatmap cells and treemap weights |
 | Charts | Animate by ▶ / Play speed | Play a bar/line/area/scatter/bubble/pie chart through a time or sequence field — bar-chart race, Gapminder bubbles, composition over years (ECharts timeline / Plotly slider) |
 | Charts | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
-| Charts | Render / ✨ Explore / Export / ↗ | Render to the embedded viewer (WebEngine → WebKit → browser), one-click Explore dashboard, one-file HTML export, open-in-browser fallback |
-| Map diagrams | Type / Fields / Size | Native QGIS pie/bar/stacked/text diagrams on every feature, on the canvas |
-| Labels | Field / Style / Size | Quick clean/halo/bold/plain labels via native QGIS labeling |
+| Charts | Render / 💡 Suggest / ✨ Explore / Export / ↗ | Render to the embedded viewer (WebEngine → WebKit → browser), one-click chart suggestion, one-click Explore dashboard, one-file HTML export, open-in-browser fallback |
+| Header | ❔ Guide | Full offline user guide with per-layer suggestions and copy-ready expression/AI-prompt recipes |
+| Map diagrams | Type / Fields / Size / **Normalize** | Native QGIS pie/bar/stacked/text diagrams on every feature; Normalize = None / Min–max (0–1) / Z-score / Log makes differently-scaled fields comparable |
+| Labels | Field / Second line / Decimals / Thousands / Prefix-Suffix / Case / Wrap / Expression / Style / Size | Formatted, multi-line, expression-driven labels via native QGIS labeling, with a live preview |
 
 ## 🧩 Part of the PlanX ecosystem
 

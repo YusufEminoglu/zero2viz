@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
-"""02viz studio dock — the chart builder.
+"""02viz studio dock — charts, map diagrams and labels under one roof.
 
-Data card (layer / selected-only / external table) + Chart card (type,
-engine, theme, fields, aggregation, shaping) + embedded viewer with a
-chart→map selection bridge. Spec assembly lives in ``_build_spec``;
-rendering goes through the engine registry, so engines never touch Qt.
+A shared Data card (layer / selected-only / external table) above three tabs:
+**Charts** (engine/type/theme/fields/shaping → embedded viewer with a
+chart→map selection bridge; spec assembly in ``_build_spec``), **Map
+diagrams** (native on-canvas diagrams with optional normalisation) and
+**Labels** (expression-driven, formatted, multi-line labels). A header
+**Guide** button shows the offline user guide and **Suggest** asks the
+offline assistant for the best chart. Rendering goes through the engine
+registry, so engines never touch Qt; the pure logic lives in ``core``.
 """
 from __future__ import annotations
 
@@ -41,11 +45,13 @@ from qgis.PyQt.QtWidgets import (
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
 from ..core import (
-    datasource, diagrams, labels, profile as profiler, requirements, stats, transform,
+    assistant, datasource, diagrams, expressions, labels,
+    profile as profiler, requirements, stats, transform,
 )
 from ..engines import engines
 from ..engines.base import DEFAULT_THEME, PALETTES, THEMES, webkit_fallback_page
 from ..engines.dashboard import build_dashboard
+from ..engines.guide import build_guide_html
 from .bridge import SelectionBridge
 from .webview import attach_title_listener, create_chart_view, run_js, show_html_file
 
@@ -239,12 +245,24 @@ class StudioDockWidget(QDockWidget):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
+        head_row = QHBoxLayout()
+        head_text = QVBoxLayout()
+        head_text.setSpacing(0)
         title = QLabel("02viz")
         title.setObjectName("o2vizTitle")
-        root.addWidget(title)
+        head_text.addWidget(title)
         tagline = QLabel("Zero2Visual · from zero to elegant visuals")
         tagline.setObjectName("o2vizTagline")
-        root.addWidget(tagline)
+        head_text.addWidget(tagline)
+        head_row.addLayout(head_text)
+        head_row.addStretch(1)
+        self.guide_btn = QPushButton("❔ Guide")
+        self.guide_btn.setToolTip(
+            "Open the full 02viz user guide — what every part does and how to "
+            "get a great result (with suggestions for the current layer)")
+        self.guide_btn.clicked.connect(self._open_guide)
+        head_row.addWidget(self.guide_btn, 0, Qt.AlignmentFlag.AlignTop)
+        root.addLayout(head_row)
 
         # the layer + scope are shared by all three surfaces (charts, on-canvas
         # diagrams, labels), so the Data card lives above the tabs
@@ -422,6 +440,12 @@ class StudioDockWidget(QDockWidget):
         self.render_btn.setStyleSheet(_RENDER_BTN_QSS)
         self.render_btn.clicked.connect(self._render)
         btn_row.addWidget(self.render_btn, 2)
+        self.suggest_btn = QPushButton("💡 Suggest")
+        self.suggest_btn.setToolTip(
+            "Let 02viz pick the most insightful chart for this layer's fields, "
+            "configure the controls and render it")
+        self.suggest_btn.clicked.connect(self._suggest_chart)
+        btn_row.addWidget(self.suggest_btn, 1)
         self.explore_btn = QPushButton("✨ Explore layer")
         self.explore_btn.setToolTip(
             "One click: profile every field and build a full interactive dashboard")
@@ -487,6 +511,25 @@ class StudioDockWidget(QDockWidget):
         srow.addWidget(self.diag_size_spin)
         srow.addStretch(1)
         c.addLayout(srow)
+
+        nrow = QHBoxLayout()
+        nrow.addWidget(QLabel("Normalize"))
+        self.diag_norm_combo = QComboBox()
+        for key in expressions.NORMALIZE_MODES:
+            self.diag_norm_combo.addItem(expressions.NORMALIZE_LABELS[key], key)
+        self.diag_norm_combo.setToolTip(
+            "Make differently-scaled fields comparable on every feature. "
+            "Raw values let a big-number field swamp the rest; Min–max (0–1) is "
+            "the safe default, Z-score standardises, Log compresses heavy tails.")
+        self.diag_norm_combo.currentIndexChanged.connect(self._sync_diag_hint)
+        self.diag_type_combo.currentIndexChanged.connect(self._sync_diag_hint)
+        nrow.addWidget(self.diag_norm_combo, 1)
+        c.addLayout(nrow)
+        self.diag_hint = QLabel("")
+        self.diag_hint.setWordWrap(True)
+        self.diag_hint.setStyleSheet("color: #6b7a82; font-size: 11px;")
+        c.addWidget(self.diag_hint)
+
         brow = QHBoxLayout()
         diag_apply = QPushButton("Apply to layer")
         diag_apply.setStyleSheet(_RENDER_BTN_QSS)
@@ -502,27 +545,107 @@ class StudioDockWidget(QDockWidget):
         outer.addStretch(1)
         return tab
 
-    # ── Labels tab: quick, elegant feature labels ──
+    # ── Labels tab: format, round & multi-line feature labels ──
 
     def _build_labels_tab(self) -> QWidget:
         tab = QWidget()
         outer = QVBoxLayout(tab)
         outer.setContentsMargins(0, 8, 0, 0)
         outer.setSpacing(8)
-        card, c = self._card("Labels — quick & elegant")
-        c.addWidget(QLabel("One click turns a field into well-placed labels."))
+        card, c = self._card("Labels — format, round & multi-line")
+        c.addWidget(QLabel(
+            "Turn fields into well-placed labels — round numbers, stack a second "
+            "line, add units, or write your own expression."))
         form = QFormLayout()
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(6)
+
         self.label_field_combo = self._field_combo()
+        self.label_field_combo.fieldChanged.connect(self._sync_label_preview)
         form.addRow("Label field", self.label_field_combo)
+
+        self.label_field2_combo = self._field_combo()
+        self.label_field2_combo.setToolTip(
+            "Optional — shown on a second line below the first")
+        self.label_field2_combo.fieldChanged.connect(self._sync_label_preview)
+        form.addRow("Second line", self.label_field2_combo)
+
+        self.label_decimals_spin = QSpinBox()
+        self.label_decimals_spin.setRange(-1, 6)
+        self.label_decimals_spin.setValue(-1)
+        self.label_decimals_spin.setSpecialValueText("off")
+        self.label_decimals_spin.setToolTip(
+            "Round numeric labels to this many decimals (off = leave as is)")
+        self.label_decimals_spin.valueChanged.connect(self._sync_label_preview)
+        form.addRow("Decimals", self.label_decimals_spin)
+
+        self.label_thousands_check = QCheckBox("Thousands separator (1,234)")
+        self.label_thousands_check.toggled.connect(self._sync_label_preview)
+        form.addRow("", self.label_thousands_check)
+
+        prow = QHBoxLayout()
+        self.label_prefix_edit = QLineEdit()
+        self.label_prefix_edit.setPlaceholderText("prefix")
+        self.label_prefix_edit.setMaximumWidth(86)
+        self.label_prefix_edit.textChanged.connect(self._sync_label_preview)
+        prow.addWidget(self.label_prefix_edit)
+        prow.addWidget(QLabel("…value…"))
+        self.label_suffix_edit = QLineEdit()
+        self.label_suffix_edit.setPlaceholderText("suffix")
+        self.label_suffix_edit.setMaximumWidth(86)
+        self.label_suffix_edit.textChanged.connect(self._sync_label_preview)
+        prow.addWidget(self.label_suffix_edit)
+        prow.addStretch(1)
+        form.addRow("Prefix / Suffix", prow)
+
+        self.label_case_combo = QComboBox()
+        for key in expressions.LABEL_CASES:
+            self.label_case_combo.addItem(expressions.LABEL_CASE_LABELS[key], key)
+        self.label_case_combo.currentIndexChanged.connect(self._sync_label_preview)
+        form.addRow("Case", self.label_case_combo)
+
+        self.label_wrap_spin = QSpinBox()
+        self.label_wrap_spin.setRange(0, 80)
+        self.label_wrap_spin.setValue(0)
+        self.label_wrap_spin.setSpecialValueText("off")
+        self.label_wrap_spin.setToolTip(
+            "Wrap long labels at this many characters (off = no wrap)")
+        self.label_wrap_spin.valueChanged.connect(self._sync_label_preview)
+        form.addRow("Wrap at", self.label_wrap_spin)
+
         self.label_preset_combo = QComboBox()
         for key, lbl in labels.PRESETS:
             self.label_preset_combo.addItem(lbl, key)
         form.addRow("Style", self.label_preset_combo)
+
         self.label_size_spin = QDoubleSpinBox()
         self.label_size_spin.setRange(5.0, 40.0)
         self.label_size_spin.setValue(9.0)
         form.addRow("Size (pt)", self.label_size_spin)
+
+        self.label_expr_edit = QLineEdit()
+        self.label_expr_edit.setPlaceholderText(
+            "advanced QGIS expression — overrides the controls above")
+        self.label_expr_edit.setToolTip(
+            "Type any QGIS expression, e.g. "
+            "concat(\"name\", char(10), round(\"pop\", 0)). "
+            "When filled it overrides the formatting controls above.")
+        self.label_expr_edit.textChanged.connect(self._sync_label_preview)
+        form.addRow("Expression", self.label_expr_edit)
         c.addLayout(form)
+
+        self.label_preview = QLabel("")
+        self.label_preview.setWordWrap(True)
+        self.label_preview.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.label_preview.setToolTip("The exact label expression being applied"
+                                      " — and a sample from the first feature")
+        self.label_preview.setStyleSheet(
+            "color:#207168; background:#f0f4f6; border:1px solid #e0e7ea;"
+            " border-radius:6px; padding:5px 8px;"
+            " font-family:Consolas,monospace; font-size:11px;")
+        c.addWidget(self.label_preview)
+
         brow = QHBoxLayout()
         lbl_apply = QPushButton("Apply to layer")
         lbl_apply.setStyleSheet(_RENDER_BTN_QSS)
@@ -542,9 +665,12 @@ class StudioDockWidget(QDockWidget):
 
     def _on_layer_changed(self, layer) -> None:
         for combo in (self.x_combo, self.y_combo, self.group_combo,
-                      self.value_combo, self.animate_combo, self.label_field_combo):
+                      self.value_combo, self.animate_combo,
+                      self.label_field_combo, self.label_field2_combo):
             combo.setLayer(layer)
         self._refresh_diagram_fields(layer)
+        self._sync_diag_hint()
+        self._sync_label_preview()
         self._watch_layer(layer)
 
     def _watch_layer(self, layer) -> None:
@@ -660,17 +786,53 @@ class StudioDockWidget(QDockWidget):
             self.set_status("Tick at least one numeric field for the diagram")
             return
         kind = self.diag_type_combo.currentData()
+        normalize = self.diag_norm_combo.currentData()
+        field_stats: dict = {}
+        if normalize != "none":
+            try:
+                cols = datasource.columns(layer, fields,
+                                          self.selected_only.isChecked())
+            except ValueError as exc:
+                self.set_status(str(exc))
+                return
+            for name in fields:
+                st = stats.field_numeric_stats(cols[name])
+                if st:
+                    field_stats[name] = st
         ok = diagrams.apply_diagram(
             layer, kind=kind, fields=fields,
             colors=list(self._current_theme()["palette"]),
-            size_mm=self.diag_size_spin.value())
+            size_mm=self.diag_size_spin.value(),
+            normalize=normalize, stats=field_stats)
         if not ok:
             self.set_status("Could not apply the diagram (no geometry?)")
             return
         self._refresh_canvas(layer)
+        norm_txt = ("" if normalize == "none"
+                    else ", " + expressions.NORMALIZE_LABELS[normalize].lower())
         self.set_status(
             f"Applied {diagrams.DIAGRAM_LABELS[kind].lower()} diagram "
-            f"({len(fields)} field{'s' if len(fields) != 1 else ''}) on the canvas")
+            f"({len(fields)} field{'s' if len(fields) != 1 else ''}{norm_txt}) "
+            f"on the canvas")
+
+    def _sync_diag_hint(self, *_args) -> None:
+        if not hasattr(self, "diag_hint"):
+            return
+        kind = self.diag_type_combo.currentData()
+        mode = self.diag_norm_combo.currentData()
+        msg = {
+            "none": "Raw values — fine when fields share a scale; otherwise a "
+                    "big-number field dominates the others.",
+            "minmax": "Each field scaled to 0–1 — the safe choice for comparing "
+                      "pies and bars across fields.",
+            "zscore": "Standardised to mean 0 — great for bars; values can be "
+                      "negative.",
+            "log": "Log-compressed — tames heavy tails or a few dominant features.",
+        }.get(mode, "")
+        if mode == "zscore" and kind in ("pie", "stacked"):
+            msg = ("⚠ Z-score can be negative, which a pie / stacked bar can't "
+                   "draw — use Min–max or Log for this diagram type.")
+        self.diag_hint.setText(msg)
 
     def _clear_diagram(self) -> None:
         layer = self.layer_combo.currentLayer()
@@ -682,23 +844,93 @@ class StudioDockWidget(QDockWidget):
 
     # ── Labels tab handlers ──
 
+    def _build_label_expression(self) -> str:
+        """The label expression in effect: the advanced box if filled, else
+        assembled from the format controls (pure — see core.expressions)."""
+        layer = self.layer_combo.currentLayer()
+        numeric = (set(diagrams.numeric_field_names(layer))
+                   if layer is not None else None)
+        return expressions.label_expression(
+            [self.label_field_combo.currentField(),
+             self.label_field2_combo.currentField()],
+            decimals=self.label_decimals_spin.value(),
+            thousands=self.label_thousands_check.isChecked(),
+            prefix=self.label_prefix_edit.text(),
+            suffix=self.label_suffix_edit.text(),
+            case=self.label_case_combo.currentData(),
+            wrap=self.label_wrap_spin.value(),
+            multiline=True, numeric_fields=numeric,
+            custom=self.label_expr_edit.text())
+
+    def _sample_label(self, expr: str) -> str:
+        """Best-effort evaluation of ``expr`` on the first feature, for the
+        live preview. Returns '' (or a short parser note) on any problem."""
+        layer = self.layer_combo.currentLayer()
+        if layer is None or not expr:
+            return ""
+        try:
+            from qgis.core import (
+                QgsExpression, QgsExpressionContext, QgsExpressionContextUtils,
+            )
+            parsed = QgsExpression(expr)
+            if parsed.hasParserError():
+                return "⚠ " + parsed.parserErrorString().strip()
+            feat = next(layer.getFeatures(), None)
+            if feat is None:
+                return ""
+            ctx = QgsExpressionContext()
+            ctx.appendScopes(
+                QgsExpressionContextUtils.globalProjectLayerScopes(layer))
+            ctx.setFeature(feat)
+            val = parsed.evaluate(ctx)
+            if parsed.hasEvalError():
+                return ""
+            text = "" if val is None else str(val)
+            return (text[:70] + "…") if len(text) > 70 else text
+        except Exception:
+            return ""
+
+    def _sync_label_preview(self, *_args) -> None:
+        if not hasattr(self, "label_preview"):
+            return
+        # advanced box overrides → grey out the format controls so it's clear
+        custom = bool(self.label_expr_edit.text().strip())
+        for w in (self.label_field_combo, self.label_field2_combo,
+                  self.label_decimals_spin, self.label_thousands_check,
+                  self.label_prefix_edit, self.label_suffix_edit,
+                  self.label_case_combo, self.label_wrap_spin):
+            w.setEnabled(not custom)
+        expr = self._build_label_expression()
+        sample = self._sample_label(expr)
+        self.label_preview.setText(expr + (f"\n→  {sample}" if sample else ""))
+
     def _apply_labels(self) -> None:
         layer = self.layer_combo.currentLayer()
         if layer is None:
             self.set_status("Pick a layer first")
             return
-        field = self.label_field_combo.currentField()
-        if not field:
-            self.set_status("Pick a field to label")
+        expr = self._build_label_expression()
+        if expr in ("", "''"):
+            self.set_status("Pick a field to label, or type an expression")
             return
+        try:  # don't let a typo silently produce no labels
+            from qgis.core import QgsExpression
+            parsed = QgsExpression(expr)
+            if parsed.hasParserError():
+                self.set_status("Expression error: "
+                                + parsed.parserErrorString().strip())
+                return
+        except Exception:
+            pass
         ok = labels.apply_labels(
-            layer, field=field, preset=self.label_preset_combo.currentData(),
+            layer, expression=expr, preset=self.label_preset_combo.currentData(),
             color=self._current_theme()["text"], size=self.label_size_spin.value())
         if not ok:
             self.set_status("Could not apply labels")
             return
         self._refresh_canvas(layer)
-        self.set_status(f"Labelled features by '{field}'")
+        self.set_status("Labelled features · "
+                        + (expr[:70] + ("…" if len(expr) > 70 else "")))
 
     def _clear_labels(self) -> None:
         layer = self.layer_combo.currentLayer()
@@ -1318,6 +1550,70 @@ class StudioDockWidget(QDockWidget):
             return
         self._show_html(html, f"Explored {layer.name()}: {len(prof['tiles'])} charts, "
                               f"{len(prof['insights'])} insights")
+
+    # ───────────────────────── smart assistant ─────────────────────────
+
+    def _suggest_chart(self) -> None:
+        """Offline assistant: pick the best chart for this layer, configure the
+        controls and render it."""
+        layer = self.layer_combo.currentLayer()
+        if layer is None:
+            self.set_status("Pick a layer first")
+            return
+        try:
+            names = [f.name() for f in layer.fields()]
+            cols, fids = datasource.columns_with_ids(
+                layer, names, self.selected_only.isChecked())
+        except Exception as exc:
+            self.set_status(f"Suggest failed: {exc}")
+            return
+        sug = assistant.suggest_chart(cols, fids)
+        if not sug:
+            self.set_status("No clear chart suggestion — try ✨ Explore for an overview")
+            return
+        self._apply_chart_suggestion(sug)
+        self.set_status("💡 " + sug["why"])
+        self._render()
+
+    def _apply_chart_suggestion(self, sug: dict) -> None:
+        kind = sug["type"]
+        eng = engines()[max(0, self.engine_combo.currentIndex())]
+        if kind not in eng.supports:  # switch to an engine that can draw it
+            for i, e in enumerate(engines()):
+                if kind in e.supports:
+                    self.engine_combo.setCurrentIndex(i)
+                    break
+        for i in range(self.type_combo.count()):
+            if self.type_combo.itemData(i) == kind:
+                self.type_combo.setCurrentIndex(i)
+                break
+        self._sync_controls()
+        self.x_combo.setField(sug.get("x") or "")
+        self.y_combo.setField(sug.get("y") or "")
+        self.group_combo.setField(sug.get("group") or "")
+        self.value_combo.setField(sug.get("value") or "")
+        agg_i = self.agg_combo.findText(sug.get("agg") or "none")
+        if agg_i >= 0:
+            self.agg_combo.setCurrentIndex(agg_i)
+        self.trend_check.setChecked(bool(sug.get("trend")))
+
+    def _open_guide(self) -> None:
+        """Show the full user guide, with suggestions for the active layer."""
+        layer = self.layer_combo.currentLayer()
+        layer_name = layer.name() if layer is not None else ""
+        suggestions = None
+        if layer is not None:
+            try:
+                names = [f.name() for f in layer.fields()]
+                cols, fids = datasource.columns_with_ids(
+                    layer, names, self.selected_only.isChecked())
+                suggestions = assistant.suggestions(
+                    cols, has_geometry=diagrams.layer_has_geometry(layer), fids=fids)
+            except Exception:
+                suggestions = None
+        html = build_guide_html(suggestions=suggestions, layer_name=layer_name)
+        self.tabs.setCurrentIndex(0)  # the embedded view lives on the Charts tab
+        self._show_html(html, "Opened the 02viz user guide")
 
     def _export_html(self) -> None:
         if not self._last_html:

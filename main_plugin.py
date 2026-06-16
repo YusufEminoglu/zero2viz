@@ -117,6 +117,8 @@ class O2VizPlugin:
             "<p><i>From zero to elegant visuals — fast.</i></p>"
             "<p>Geospatial Visualization Studio — charts, on-canvas diagrams "
             "and labels from QGIS layers and external data.</p>"
+            "<p>Open the <b>❔ Guide</b> in the studio dock for a full, offline "
+            "walk-through of every feature.</p>"
             "<p><a href='https://github.com/YusufEminoglu/zero2viz'>"
             "github.com/YusufEminoglu/zero2viz</a></p>",
         )

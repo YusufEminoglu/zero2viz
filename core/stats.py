@@ -153,12 +153,76 @@ def boxplot_stats(values: list) -> list[float] | None:
     nums = sorted(v for v in (to_float(x) for x in values) if v is not None)
     if not nums:
         return None
+    return [nums[0], _quantile(nums, 0.25), _median(nums),
+            _quantile(nums, 0.75), nums[-1]]
 
-    def quantile(q: float) -> float:
-        pos = q * (len(nums) - 1)
-        lo_i = int(math.floor(pos))
-        hi_i = min(lo_i + 1, len(nums) - 1)
-        frac = pos - lo_i
-        return nums[lo_i] * (1 - frac) + nums[hi_i] * frac
 
-    return [nums[0], quantile(0.25), _median(nums), quantile(0.75), nums[-1]]
+def _quantile(sorted_nums: list[float], q: float) -> float:
+    """Linear-interpolation quantile of an already-sorted list."""
+    pos = q * (len(sorted_nums) - 1)
+    lo_i = int(math.floor(pos))
+    hi_i = min(lo_i + 1, len(sorted_nums) - 1)
+    frac = pos - lo_i
+    return sorted_nums[lo_i] * (1 - frac) + sorted_nums[hi_i] * frac
+
+
+def field_numeric_stats(values: list) -> dict | None:
+    """Summary of a numeric column → {min, max, mean, std, n} (sample std,
+    0 for n < 2). None when nothing in the column is numeric — used both to
+    normalise map diagrams and to describe fields on the Explore dashboard.
+    """
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if not nums:
+        return None
+    mean = sum(nums) / len(nums)
+    if len(nums) < 2:
+        std = 0.0
+    else:
+        std = math.sqrt(sum((v - mean) ** 2 for v in nums) / (len(nums) - 1))
+    return {"min": min(nums), "max": max(nums), "mean": mean,
+            "std": std, "n": len(nums)}
+
+
+def minmax_normalize(values: list) -> list[float]:
+    """Scale numeric values to 0–1 by their own min/max (None → dropped).
+
+    Lets the dashboard put differently-scaled numeric fields on one comparable
+    axis (a normalised box plot), the same idea the map-diagram normaliser
+    applies on the canvas. A flat field collapses to all-zeros.
+    """
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if not nums:
+        return []
+    lo, hi = min(nums), max(nums)
+    if hi == lo:
+        return [0.0] * len(nums)
+    return [(v - lo) / (hi - lo) for v in nums]
+
+
+def skewness(values: list) -> float | None:
+    """Fisher–Pearson sample skewness; None for n < 3 or zero spread.
+    Positive = a long right tail, negative = a long left tail."""
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    n = len(nums)
+    if n < 3:
+        return None
+    mean = sum(nums) / n
+    m2 = sum((v - mean) ** 2 for v in nums) / n
+    if m2 <= 0:
+        return None
+    m3 = sum((v - mean) ** 3 for v in nums) / n
+    g1 = m3 / (m2 ** 1.5)
+    return g1 * math.sqrt(n * (n - 1)) / (n - 2)
+
+
+def outlier_count(values: list) -> int:
+    """Number of values beyond the 1.5·IQR Tukey fences (0 if too few)."""
+    nums = sorted(v for v in (to_float(x) for x in values) if v is not None)
+    if len(nums) < 4:
+        return 0
+    q1, q3 = _quantile(nums, 0.25), _quantile(nums, 0.75)
+    iqr = q3 - q1
+    if iqr <= 0:
+        return 0
+    lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+    return sum(1 for v in nums if v < lo or v > hi)
