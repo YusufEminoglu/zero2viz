@@ -187,11 +187,56 @@ def theme_of(spec: dict) -> dict:
     return spec.get("theme") or THEMES[DEFAULT_THEME]
 
 
+# Shown in the embedded panel when the QGIS build only has the legacy QtWebKit
+# view (no QtWebEngine), which cannot run a modern-JS engine. Deliberately plain
+# HTML/CSS (no flexbox / ES) so it renders even in that old WebKit fork.
+_FALLBACK_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Open in browser</title>
+<style>
+  html, body {{ margin: 0; padding: 0; background: #fbfbfd; color: #16323f;
+    font-family: 'Segoe UI', system-ui, Arial, sans-serif; }}
+  .card {{ max-width: 440px; margin: 38px auto; background: #ffffff;
+    border: 1px solid #d8dee4; border-radius: 12px; padding: 22px 24px; }}
+  h2 {{ margin: 0 0 10px; font-size: 17px; color: #2a8f85; }}
+  p {{ margin: 9px 0; font-size: 13px; line-height: 1.55; }}
+  .k {{ border: 1px solid #cbd3da; border-radius: 5px; padding: 1px 7px;
+    background: #eef1f4; font-weight: 600; }}
+  .muted {{ color: #6b7a82; font-size: 12px; }}
+</style></head>
+<body><div class="card">
+  <h2>Open this {what} in your browser</h2>
+  <p>The <b>{engine}</b> engine needs a modern web view. This QGIS build only
+     ships the legacy <b>QtWebKit</b> viewer, which can't run {engine}'s charts,
+     so the panel would stay blank here.</p>
+  <p>Your chart is ready — click <span class="k">&#8599;</span> (top of the
+     panel) to open it in your system browser, or use <b>Export HTML</b>.</p>
+  <p class="muted">For an embedded chart now, switch the engine to
+     <b>ECharts</b>. To run {engine} inside the dock, install QtWebEngine for
+     QGIS (the qt5-webengine / python3-qt5-webengine package in OSGeo4W).</p>
+</div></body></html>
+"""
+
+
+def webkit_fallback_page(engine_label: str, chart_type: str = "") -> str:
+    """Explainer page for the legacy-WebKit case (see _FALLBACK_HTML). The real
+    chart is still exported and openable in the browser; this just replaces the
+    silent blank panel with a clear, actionable message."""
+    what = f"{chart_type} chart" if chart_type else "chart"
+    return _FALLBACK_HTML.format(engine=engine_label, what=what)
+
+
 class ChartEngine:
     id = "base"
     label = "Base"
     supports = frozenset(CHART_TYPES)  # engines may declare a reduced set
     animates = frozenset()             # chart types this engine can animate
+    # Does this engine's output run in the legacy QtWebKit embedded view?
+    # ECharts (ES5) and the matplotlib PNG engine do. Plotly and Vega-Lite ship
+    # modern ES6+ bundles the old WebKit fork can't parse — they render fine on
+    # export / in a real browser but stay BLANK in the dock when the QGIS build
+    # has no QtWebEngine. The dock reads this to show an explainer instead of a
+    # silent blank panel.
+    webkit_ok = True
 
     @classmethod
     def available(cls) -> bool:

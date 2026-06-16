@@ -66,6 +66,7 @@ def _axis_x(label: str, angle: int = -30) -> dict:
 class VegaLiteEngine(ChartEngine):
     id = "vegalite"
     label = "Vega-Lite"
+    webkit_ok = False  # vega/vega-lite are ES6+; legacy QtWebKit can't parse them
     # no treemap/sunburst (not in the grammar) and no radar (no polar coords)
     supports = frozenset(set(CHART_TYPES) - {"treemap", "sunburst", "radar"})
 

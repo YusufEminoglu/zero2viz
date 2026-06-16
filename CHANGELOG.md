@@ -3,6 +3,11 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.9.2] - 2026-06-16
+
+- **Plotly and Vega-Lite no longer leave a blank panel on QGIS builds without QtWebEngine.** When a QGIS build ships no QtWebEngine, the embedded panel falls back to the legacy QtWebKit viewer — and that old viewer cannot run the modern JavaScript (ES6+) that Plotly.js and Vega-Lite require, so their charts stayed blank in the dock even though they exported and opened correctly in a browser. ECharts and the matplotlib image engine were unaffected (they run on QtWebKit). The dock now detects the QtWebKit viewer and, for Plotly/Vega-Lite, shows a short explainer in the panel instead of a silent blank: your chart is still built — one click on **↗** opens it in your system browser, or use **Export HTML**. For a chart that renders inside the dock, switch to the **ECharts** engine, or install QtWebEngine for QGIS.
+- Root-caused in real QGIS: under QtWebKit the engines fail with `ReferenceError: Can't find variable: Plotly` / `vega` (the bundles never parse), while ECharts renders normally; under QtWebEngine (QGIS 4 / Qt6) all engines render. Chart output, the engines themselves and exports are unchanged — this only affects what the embedded panel shows on a QtWebKit-only QGIS.
+
 ## [0.9.1] - 2026-06-16
 
 - **Readable on QGIS 4 (Qt6).** The studio panel now pins its own light colours for every control, so it reads identically under any QGIS theme. On QGIS 4 the dark application palette bled into the parts the panel didn't explicitly colour: the drop-down lists rendered on a near-black background and the field labels and check-box text faded into the white cards. Combo pop-ups, line edits, spin boxes, the diagram field list, form labels, check boxes and tool-tips are now explicitly styled — white fields, dark text, teal selection — independent of the host palette. QGIS 3.x looked correct before (its palette is light) and is unchanged.

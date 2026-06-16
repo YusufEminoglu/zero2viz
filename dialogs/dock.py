@@ -44,7 +44,7 @@ from ..core import (
     datasource, diagrams, labels, profile as profiler, requirements, stats, transform,
 )
 from ..engines import engines
-from ..engines.base import DEFAULT_THEME, PALETTES, THEMES
+from ..engines.base import DEFAULT_THEME, PALETTES, THEMES, webkit_fallback_page
 from ..engines.dashboard import build_dashboard
 from .bridge import SelectionBridge
 from .webview import attach_title_listener, create_chart_view, run_js, show_html_file
@@ -1172,15 +1172,10 @@ class StudioDockWidget(QDockWidget):
         theme = THEMES.get(self.theme_combo.currentText(), THEMES[DEFAULT_THEME])
         return dict(theme, palette=self._resolve_palette())
 
-    def _show_html(self, html: str, status: str) -> None:
-        if self._tmp_dir is None:
-            self._tmp_dir = tempfile.mkdtemp(prefix="o2viz_")
-        path = os.path.join(self._tmp_dir, f"chart_{int(time.time() * 1000)}.html")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(html)
-        self._last_html = html
-        self._last_path = path
-
+    def _ensure_view(self) -> None:
+        """Create the embedded web view once, recording which backend the QGIS
+        build ships (webengine / webkit / browser). Called before a render so
+        the dock knows the backend in time to adapt the engine choice."""
         if self._view is None and self._view_kind is None:
             self._view_kind, self._view = create_chart_view(self)
             if self._view is not None:
@@ -1191,9 +1186,31 @@ class StudioDockWidget(QDockWidget):
                 self._view_placeholder.hide()
                 self._view.setMinimumHeight(300)
                 self._view_slot.addWidget(self._view, 1)
+
+    def _show_html(self, html: str, status: str, embed_html: str | None = None) -> None:
+        """Show a chart. ``html`` is the real chart — always what Export and the
+        ↗ browser button use. ``embed_html``, when given, is loaded into the
+        panel instead (e.g. the legacy-WebKit explainer for an engine the
+        embedded view can't run), without losing the real chart."""
+        if self._tmp_dir is None:
+            self._tmp_dir = tempfile.mkdtemp(prefix="o2viz_")
+        stamp = int(time.time() * 1000)
+        path = os.path.join(self._tmp_dir, f"chart_{stamp}.html")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(html)
+        self._last_html = html
+        self._last_path = path
+
+        self._ensure_view()
+        if embed_html is not None:
+            load_path = os.path.join(self._tmp_dir, f"embed_{stamp}.html")
+            with open(load_path, "w", encoding="utf-8") as f:
+                f.write(embed_html)
+        else:
+            load_path = path
         self.bridge.bind(self.layer_combo.currentLayer()
                          if self.link_check.isChecked() else None)
-        embedded = show_html_file(self._view_kind, self._view, path)
+        embedded = show_html_file(self._view_kind, self._view, load_path)
         self.export_btn.setEnabled(True)
         self.browser_btn.setEnabled(True)
         if embedded:
@@ -1228,7 +1245,18 @@ class StudioDockWidget(QDockWidget):
         except Exception as exc:
             self.set_status(f"Chart failed: {exc}")
             return
-        self._show_html(html, f"Rendered {spec['type']} · {engine.label}")
+        self._ensure_view()
+        if self._view_kind == "webkit" and not engine.webkit_ok:
+            # legacy QtWebKit (no QtWebEngine in this QGIS) can't run Plotly's /
+            # Vega's modern JS — they parse-fail and the panel stays blank. Show
+            # an explainer there, but keep the real chart for export / ↗ browser.
+            self._show_html(
+                html,
+                f"{engine.label}: open in your browser ↗ — the embedded WebKit "
+                f"view can't run it (try the ECharts engine for an embedded chart)",
+                embed_html=webkit_fallback_page(engine.label, spec.get("type", "")))
+        else:
+            self._show_html(html, f"Rendered {spec['type']} · {engine.label}")
 
     # ───────────────────────── advanced engine availability ─────────────────────────
 

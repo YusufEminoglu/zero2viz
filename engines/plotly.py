@@ -85,6 +85,7 @@ class PlotlyEngine(ChartEngine):
     id = "plotly"
     label = "Plotly"
     animates = ANIMATABLE
+    webkit_ok = False  # plotly.js is ES6+; the legacy QtWebKit fork can't parse it
 
     def build_html(self, spec: dict) -> str:
         if spec.get("frames") and spec["type"] in self.animates:
