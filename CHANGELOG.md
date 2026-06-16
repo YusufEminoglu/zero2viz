@@ -3,6 +3,10 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.10.1] - 2026-06-16
+
+- **Hub upload compatibility fix.** `metadata.txt` no longer contains a raw percent sign in the long Hub description/changelog text. QGIS Plugin Hub parses metadata with INI interpolation rules, so `missing %` caused the upload parser to fail before reading the package. Plugin code and features are unchanged from 0.10.0.
+
 ## [0.10.0] - 2026-06-16
 
 - **Map diagrams can normalise their fields.** A new *Normalize* control rewrites each diagram field as an expression so fields on very different scales become comparable on every feature, instead of one big-number field swamping the rest. **Min–max (0–1)** is the safe default for pie/bar; **Z-score** standardises (great for bars; can be negative); **Log** compresses heavy tails. Each field's min/max/mean/std are computed from the (optionally selected) features and baked into the diagram's category expressions — **nothing is written to your data**. A live hint warns when Z-score is paired with a pie/stacked diagram (which can't draw negative angles).
