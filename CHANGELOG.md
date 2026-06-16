@@ -3,6 +3,11 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.9.1] - 2026-06-16
+
+- **Readable on QGIS 4 (Qt6).** The studio panel now pins its own light colours for every control, so it reads identically under any QGIS theme. On QGIS 4 the dark application palette bled into the parts the panel didn't explicitly colour: the drop-down lists rendered on a near-black background and the field labels and check-box text faded into the white cards. Combo pop-ups, line edits, spin boxes, the diagram field list, form labels, check boxes and tool-tips are now explicitly styled — white fields, dark text, teal selection — independent of the host palette. QGIS 3.x looked correct before (its palette is light) and is unchanged.
+- The fix is purely the dock's stylesheet; the chart engines, rendering and exports are untouched. Re-verified end-to-end on **QGIS 4.0.2** and **QGIS 3.44**: all four engines render every supported type (ECharts 17, Plotly 17, Vega-Lite 14, matplotlib 11) plus the 12 animated pages, with zero JS exceptions in headless Chrome; the panel and an open drop-down were also grabbed under a simulated dark palette to confirm white fields and dark, legible text.
+
 ## [0.9.0] - 2026-06-16
 
 - **Animated charts — a play axis.** Pick an *Animate by ▶* field (typically a year or sequence) and the chart plays through that field's values: a **bar-chart race**, **Gapminder-style bubbles**, or composition/trends unfolding over time. Available for **bar, line, area, scatter, bubble and pie** in the two interactive engines — **ECharts** (a timeline with auto-play) and **Plotly** (a slider with play / pause). A *Play speed* control sets the pace; the play axis greys out for engines and chart types that cannot animate (Vega-Lite, matplotlib, and types like box/heatmap/violin), consistent with the existing engine-first gating.

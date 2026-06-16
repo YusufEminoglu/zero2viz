@@ -56,8 +56,16 @@ MAX_HIGHLIGHT_IDS = 20000
 # sentinel entry in the Colors combo that opens the custom palette editor
 CUSTOM_PALETTE_LABEL = "Custom…"
 
+# The studio has its own light visual identity (light root, white cards). On
+# QGIS 3 (Qt5) the host palette is light too, so unstyled child widgets looked
+# fine by accident. On QGIS 4 (Qt6) the host palette is often dark: every
+# colour we DON'T pin is then inherited from it, so the combo popups paint
+# near-black and the field labels/checkboxes turn into light-on-white ghosts
+# (the "siyah dropdown + okunmayan yazı" bug). The remedy is to pin every text
+# and input colour here, so the panel reads identically under any host theme.
 _DOCK_QSS = """
 QWidget#o2vizRoot { background: #fbfbfd; }
+QWidget#o2vizTabPage { background: #ffffff; }
 QLabel#o2vizTitle { font-size: 18px; font-weight: 700; color: #16323f; }
 QLabel#o2vizTagline { color: #5b6b73; }
 QFrame.o2vizCard {
@@ -74,6 +82,55 @@ QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 6px 15px;
                border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; font-weight: 600; }
 QTabBar::tab:hover { color: #16323f; }
+
+/* ── text + form labels (pinned dark so they never inherit a light palette
+      text colour and vanish on the white cards) ── */
+QLabel { color: #2c3e46; background: transparent; }
+QCheckBox { color: #2c3e46; background: transparent; spacing: 6px; }
+QCheckBox:disabled { color: #9aa6ae; }
+
+/* ── inputs: white field, dark text, teal selection — independent of the host
+      palette so the dropdown popup is never black again ── */
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QListWidget {
+    background: #ffffff;
+    color: #16323f;
+    border: 1px solid #cbd3da;
+    border-radius: 6px;
+    padding: 3px 6px;
+    selection-background-color: #2a8f85;
+    selection-color: #ffffff;
+}
+QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #2a8f85;
+}
+QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled,
+QDoubleSpinBox:disabled {
+    background: #eef1f3; color: #9aa6ae; border-color: #dde2e6;
+}
+/* the drop-down list itself — the surface the user saw as solid black */
+QComboBox QAbstractItemView {
+    background: #ffffff;
+    color: #16323f;
+    border: 1px solid #cbd3da;
+    selection-background-color: #2a8f85;
+    selection-color: #ffffff;
+    outline: 0;
+}
+QComboBox QAbstractItemView::item { min-height: 22px; padding: 2px 4px; }
+QListWidget::item { color: #16323f; }
+QListWidget::item:selected { background: #2a8f85; color: #ffffff; }
+
+/* ── secondary buttons (Load table / Clear / ↗): the primary ones set their
+      own teal style in code, which wins over this neutral default ── */
+QPushButton {
+    background: #eef1f4; color: #1f333d;
+    border: 1px solid #cbd3da; border-radius: 6px; padding: 5px 10px;
+}
+QPushButton:hover { background: #e4e9ed; }
+QPushButton:disabled { background: #f2f4f6; color: #9aa6ae; border-color: #e2e6ea; }
+
+QToolTip { background: #16323f; color: #ffffff; border: 1px solid #16323f;
+           padding: 4px 6px; }
 """
 _RENDER_BTN_QSS = (
     "QPushButton { background-color: #2a8f85; border: 1px solid #237a72;"
@@ -194,9 +251,14 @@ class StudioDockWidget(QDockWidget):
         root.addWidget(self._build_data_card())
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_charts_tab(), "Charts")
-        self.tabs.addTab(self._build_diagrams_tab(), "Map diagrams")
-        self.tabs.addTab(self._build_labels_tab(), "Labels")
+        for page, label in ((self._build_charts_tab(), "Charts"),
+                            (self._build_diagrams_tab(), "Map diagrams"),
+                            (self._build_labels_tab(), "Labels")):
+            # pin a light page background so a dark host *stylesheet* (e.g. a
+            # Night-Mapping UI theme that sets QWidget{background:dark}) can't
+            # bleed through the chart area or the gaps around the cards
+            page.setObjectName("o2vizTabPage")
+            self.tabs.addTab(page, label)
         root.addWidget(self.tabs, 1)
 
         self.status = QLabel("Ready")
@@ -1058,13 +1120,23 @@ class StudioDockWidget(QDockWidget):
                 f"QPushButton:hover {{ border: 2px solid #16323f; }}")
             sw.clicked.connect(lambda _=False, idx=i: self._edit_swatch(idx))
             self._swatch_row.addWidget(sw)
+        # padding:0 so the glyph fits the 20×20 square (the generic QPushButton
+        # rule's padding would otherwise clip a single +/− character)
+        mini_qss = (
+            "QPushButton { background: #eef1f4; color: #1f333d;"
+            " border: 1px solid #cbd3da; border-radius: 4px; padding: 0;"
+            " font-weight: 700; }"
+            "QPushButton:hover { background: #e4e9ed; }"
+            "QPushButton:disabled { color: #b9c2c9; }")
         add = QPushButton("+")
         add.setFixedSize(20, 20)
+        add.setStyleSheet(mini_qss)
         add.setToolTip("Add a colour")
         add.clicked.connect(self._add_swatch)
         self._swatch_row.addWidget(add)
         rem = QPushButton("−")
         rem.setFixedSize(20, 20)
+        rem.setStyleSheet(mini_qss)
         rem.setToolTip("Remove the last colour")
         rem.setEnabled(len(palette) > 1)
         rem.clicked.connect(self._remove_swatch)

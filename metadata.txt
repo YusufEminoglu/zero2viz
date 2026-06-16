@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.9.0
+version=0.9.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.9.1 - QGIS 4 (Qt6) readability: the studio panel now pins its own light colours for every control, so it reads the same under any QGIS theme. On QGIS 4 the dark application palette was bleeding into the parts the panel did not explicitly colour — drop-down lists rendered on a near-black background and field labels and check-box text faded into the white cards. Combo pop-ups, line edits, spin boxes, the field list, labels, check boxes and tool-tips are now explicitly styled (white fields, dark text, teal selection). QGIS 3.x was unaffected and is unchanged, as are the chart engines.
     0.9.0 - Animated charts (play axis): pick a field such as a year and the chart plays through its values — a bar-chart race, Gapminder-style bubbles, composition or trends over time. Works in ECharts (timeline) and Plotly (slider + play/pause) for bar, line, area, scatter, bubble and pie. Categories, series colours and axes stay fixed across frames (bubble sizes are scaled once, globally) so things animate in place, and animated bars/points still click to select features on the map. Pure-Python frame builder, fully offline, no new dependencies.
     0.8.0 - Three-tab studio under one dock: Charts, Map diagrams and Labels, sharing one layer selector. New Labels tab adds quick, elegant feature labels (clean/halo/bold presets) via native QGIS labeling. Embedded colour editor: the palette swatches are now inline in the Charts tab — click to recolour, +/- to resize, no modal — plus a chart-title override. Optional advanced engine: a matplotlib/seaborn renderer for publication-grade static figures, listed in the engine picker and installed on demand (auto-detect missing libraries, one-click pip install into the QGIS Python). 'Zero2Visual' motto surfaced in the dock and About. The vendored JS engines remain zero-dependency and offline.
     0.7.0 - Map diagrams: draw native QGIS pie / bar / stacked-bar / text diagrams on every feature, on the map canvas, coloured with the studio palette (they print and export to layout like any symbology). Custom colour palettes: a swatch editor lets you define your own series colours, applied identically across all three engines. Fixed charts staying blank in the embedded dock while exporting fine (the viewer now gives the chart a definite size and re-fits once laid out; an 'open in browser' escape hatch and the active web backend are shown). Engine-first workflow: pick the renderer, then choose from the chart types it can draw. Explore now ignores identifier columns (fid, id, gid, uuid, primary keys) that carry no analytical meaning. Publication-grade visual polish across every engine: one type system, soft dashed gridlines, clean card tooltips and rounded bars.
