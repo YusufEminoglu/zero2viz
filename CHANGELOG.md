@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.10.2] - 2026-06-18
+
+- docs: add CITATION.cff for Zenodo DOI integration
+
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
