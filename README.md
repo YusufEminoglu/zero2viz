@@ -73,7 +73,7 @@ Requires QGIS 3.28 or newer. **No external Python dependencies for the core stud
 
 1. Install 02viz and click the **02viz Studio** toolbar button — the studio dock opens on the right.
 2. Pick a layer (or **Load external table…** for a CSV/XLSX), optionally tick *Only selected features*.
-3. On the **Charts** tab pick the engine and chart type, set the X/Y fields and an aggregation if you want grouping — or press **💡 Suggest** to let 02viz configure the best chart for your fields.
+3. On the **Charts** tab pick the engine and chart type, set the X/Y fields and an aggregation if you want grouping — or press **💡 Suggest** to let 02viz configure the most suitable chart for your fields.
 4. Hit **Render chart** — the interactive chart appears right in the dock.
 5. **Export HTML…** saves it as a single self-contained file; the chart toolbox saves PNG. The **Map diagrams** (with Min–max / Z-score / Log normalisation) and **Labels** (round / multi-line / expressions) tabs draw straight onto the canvas. New to it all? Open **❔ Guide**.
 

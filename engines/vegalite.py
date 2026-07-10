@@ -14,7 +14,7 @@ from .base import CHART_TYPES, FONT_FAMILY, ChartEngine, read_web, theme_of, wra
 
 _BODY = """
 var SPEC = %(spec)s;
-var VALUES = (SPEC.data && SPEC.data.values) || [];
+var VALUES = (SPEC.datasets && SPEC.datasets.o2viz) || (SPEC.data && SPEC.data.values) || [];
 VALUES.forEach(function (d) { if (d.__op === undefined) d.__op = 1; d.__op0 = d.__op; });
 var view = null;
 function render() {
@@ -50,7 +50,7 @@ window.__o2vizHighlight = function (ids) {
     render();
     window.__o2vizDimCount = dim;
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
-  } catch (e) { /* highlight is best-effort */ }
+  } catch (e) { /* highlight is guarded */ }
 };
 """
 
@@ -70,6 +70,27 @@ class VegaLiteEngine(ChartEngine):
     # no treemap/sunburst (not in the grammar) and no radar (no polar coords)
     supports = frozenset(set(CHART_TYPES) - {"treemap", "sunburst", "radar"})
 
+    @staticmethod
+    def validate_custom_spec(value: dict) -> None:
+        if not isinstance(value, dict):
+            raise ValueError("Custom Vega-Lite spec must be a JSON object")
+        if not (value.get("mark") or value.get("layer") or value.get("concat") or value.get("hconcat") or value.get("vconcat")):
+            raise ValueError("Custom Vega-Lite spec needs mark, layer or concat")
+
+    def build_custom_html(self, spec: dict, custom: dict) -> str:
+        self.validate_custom_spec(custom)
+        generated = self.vl_spec(spec)
+        rows = generated.get("data", {}).get("values", [])
+        out = dict(custom)
+        out["datasets"] = dict(out.get("datasets", {}), o2viz=rows)
+        if "data" not in out and "mark" in out:
+            out["data"] = {"name": "o2viz"}
+        out.setdefault("$schema", "https://vega.github.io/schema/vega-lite/v5.json")
+        out.setdefault("config", self._config(theme_of(spec)))
+        lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")
+        return wrap_html(spec.get("title", ""), lib,
+                         _BODY % {"spec": json.dumps(out, ensure_ascii=False)},
+                         theme_of(spec))
     def build_html(self, spec: dict) -> str:
         vl = self.vl_spec(spec)
         lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")

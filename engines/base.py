@@ -131,7 +131,7 @@ BRIDGE_JS = """
       if (!clean.length) return;
       seq += 1;
       document.title = "o2viz-select:" + clean.join(",") + ":" + seq;
-    } catch (e) { /* selection is best-effort */ }
+    } catch (e) { /* selection is guarded */ }
   };
 })();
 """

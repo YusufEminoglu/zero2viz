@@ -58,7 +58,7 @@ def install_command(packages: list[str]) -> list[str]:
 def run_pip_install(packages: list[str], timeout: int = 900) -> tuple[bool, str]:
     """Install ``packages`` into the QGIS interpreter's user site-packages.
 
-    Returns ``(ok, combined_log)``. Best-effort and fully guarded — a failed
+    Returns ``(ok, combined_log)``. Guarded and fully guarded — a failed
     install never raises, it just reports the log so the dialog can show it.
     """
     if not packages:

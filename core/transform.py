@@ -127,7 +127,7 @@ def heatmap_rows(xs: list, ys: list, vals: list, how: str):
     return x_cats, y_cats, cells, (min(flat) if flat else 0), (max(flat) if flat else 0)
 
 
-def tree_rows(groups: list, subs: list, vals: list, how: str) -> list[dict]:
+def tree_rows(groups: list, subs: list, vals: list, how: str, fids: list | None = None) -> list[dict]:
     """→ nested nodes [{name, value, children:[{name, value}]}] for
     treemap / sunburst. ``subs`` may be empty (flat hierarchy)."""
     g_order: list[str] = []
@@ -138,7 +138,7 @@ def tree_rows(groups: list, subs: list, vals: list, how: str) -> list[dict]:
         if cg not in children:
             g_order.append(cg)
             children[cg] = {}
-        bucket = children[cg].setdefault(cs, {"nums": [], "count": 0})
+        bucket = children[cg].setdefault(cs, {"nums": [], "count": 0, "ids": []})
         bucket["count"] += 1
         if how != "count" and i < len(vals):
             f = to_float(vals[i])
@@ -150,11 +150,11 @@ def tree_rows(groups: list, subs: list, vals: list, how: str) -> list[dict]:
         for cs, bucket in children[cg].items():
             value = _reduce(bucket["nums"], bucket["count"], how)
             if cs is None:
-                kids.append({"name": cg, "value": value})
+                kids.append({"name": cg, "value": value, "__ids": list(bucket["ids"])})
             else:
-                kids.append({"name": cs, "value": value})
+                kids.append({"name": cs, "value": value, "__ids": list(bucket["ids"])})
         total = sum(k["value"] for k in kids)
-        node = {"name": cg, "value": total}
+        node = {"name": cg, "value": total, "__ids": [fid for kid in kids for fid in kid.get("__ids", [])]}
         if not (len(kids) == 1 and kids[0]["name"] == cg):
             node["children"] = kids
         nodes.append(node)

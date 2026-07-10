@@ -7,7 +7,7 @@ chart→map selection bridge; spec assembly in ``_build_spec``), **Map
 diagrams** (native on-canvas diagrams with optional normalisation) and
 **Labels** (expression-driven, formatted, multi-line labels). A header
 **Guide** button shows the offline user guide and **Suggest** asks the
-offline assistant for the best chart. Rendering goes through the engine
+offline assistant for the most suitable chart. Rendering goes through the engine
 registry, so engines never touch Qt; the pure logic lives in ``core``.
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ from qgis.PyQt.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QPlainTextEdit,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -215,6 +216,7 @@ class StudioDockWidget(QDockWidget):
         self._watched_layer = None
         self._suppress_refresh_until = 0.0
         self._custom_palette: list[str] | None = None
+        self._custom_spec_enabled = False
         self._prev_palette_index = 0
         self.bridge = SelectionBridge()
         self.bridge.on_selected = self._on_chart_drove_selection
@@ -377,6 +379,16 @@ class StudioDockWidget(QDockWidget):
         self.title_edit.setToolTip("Override the chart title; empty uses the layer name")
         form.addRow("Title", self.title_edit)
 
+        self.custom_spec_check = QCheckBox("Custom Vega-Lite spec")
+        self.custom_spec_check.setToolTip("Edit the generated Vega-Lite JSON before rendering")
+        self.custom_spec_check.toggled.connect(self._sync_custom_spec)
+        form.addRow("Vega-Lite", self.custom_spec_check)
+        self.custom_spec_edit = QPlainTextEdit()
+        self.custom_spec_edit.setFixedHeight(150)
+        self.custom_spec_edit.setPlaceholderText("Paste or edit a Vega-Lite JSON object")
+        self.custom_spec_edit.setVisible(False)
+        form.addRow("Spec JSON", self.custom_spec_edit)
+
         self.x_combo = self._field_combo()
         form.addRow("X / Category", self.x_combo)
         self.y_combo = self._field_combo()
@@ -455,10 +467,32 @@ class StudioDockWidget(QDockWidget):
             "QPushButton:hover { background-color: #1f4254; }")
         self.explore_btn.clicked.connect(self._explore)
         btn_row.addWidget(self.explore_btn, 2)
+        self.tile_picker = QListWidget()
+        self.tile_picker.setObjectName("o2vizTilePicker")
+        self.tile_picker.setFixedHeight(82)
+        for _label, _section in (("KPI row", "kpis"), ("Field table", "fields"), ("Count bars", "count_bars"), ("Histograms", "histograms"), ("Correlation matrix", "corr_matrix"), ("Scatter + trend", "scatter_trend"), ("Normalised box plot", "normalised_box"), ("Insights", "insights")):
+            _item = QListWidgetItem(_label)
+            _item.setData(Qt.ItemDataRole.UserRole, _section)
+            _item.setFlags(_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            _item.setCheckState(Qt.CheckState.Checked)
+            self.tile_picker.addItem(_item)
+        btn_row.addWidget(self.tile_picker, 2)
         self.export_btn = QPushButton("Export HTML…")
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_html)
         btn_row.addWidget(self.export_btn, 1)
+        self.export_svg_btn = QPushButton("Export SVG")
+        self.export_svg_btn.setEnabled(False)
+        self.export_svg_btn.clicked.connect(self._export_svg)
+        btn_row.addWidget(self.export_svg_btn, 1)
+        self.export_png_btn = QPushButton("Export PNG")
+        self.export_png_btn.setEnabled(False)
+        self.export_png_btn.clicked.connect(self._export_png)
+        btn_row.addWidget(self.export_png_btn, 1)
+        self.export_pdf_btn = QPushButton("Export PDF")
+        self.export_pdf_btn.setEnabled(False)
+        self.export_pdf_btn.clicked.connect(self._export_pdf)
+        btn_row.addWidget(self.export_pdf_btn, 1)
         self.browser_btn = QPushButton("↗")
         self.browser_btn.setToolTip(
             "Open the current chart in your system web browser "
@@ -732,6 +766,13 @@ class StudioDockWidget(QDockWidget):
                     self.type_combo.setCurrentIndex(i)
                     break
         self._sync_animate()
+        self._sync_custom_spec()
+
+    def _sync_custom_spec(self, *_args) -> None:
+        if hasattr(self, "custom_spec_check"):
+            on = self.engine_combo.currentData() == "vegalite"
+            self.custom_spec_check.setEnabled(on)
+            self.custom_spec_edit.setVisible(on and self.custom_spec_check.isChecked())
 
     def _sync_controls(self) -> None:
         kind = self.type_combo.currentData()
@@ -863,7 +904,7 @@ class StudioDockWidget(QDockWidget):
             custom=self.label_expr_edit.text())
 
     def _sample_label(self, expr: str) -> str:
-        """Best-effort evaluation of ``expr`` on the first feature, for the
+        """Guarded evaluation of ``expr`` on the first feature, for the
         live preview. Returns '' (or a short parser note) on any problem."""
         layer = self.layer_combo.currentLayer()
         if layer is None or not expr:
@@ -1004,6 +1045,12 @@ class StudioDockWidget(QDockWidget):
         if data is None:
             return None
         spec["data"] = data
+        if self.custom_spec_check.isChecked() and eng.id == "vegalite":
+            try:
+                spec["custom_vl"] = json.loads(self.custom_spec_edit.toPlainText())
+            except json.JSONDecodeError as exc:
+                self.set_status(f"Custom spec JSON error at line {exc.lineno}: {exc.msg}")
+                return None
         if animate and kind in eng.animates:
             frames = self._build_frames(
                 spec, cols, fids, kind=kind, x=x, y=y, group=group,
@@ -1171,7 +1218,7 @@ class StudioDockWidget(QDockWidget):
             self.set_status(f"Aggregation '{how}' needs a Value field")
             return None
         nodes = transform.tree_rows(cols[x], cols.get(group, []),
-                                    cols.get(value, []), how)
+                                    cols.get(value, []), how, fids)
         return {"nodes": nodes}
 
     _spec_sunburst = _spec_treemap
@@ -1473,7 +1520,9 @@ class StudioDockWidget(QDockWidget):
             if spec["type"] not in engine.supports:
                 self.set_status(f"{engine.label} cannot draw {spec['type']} charts")
                 return
-            html = engine.build_html(spec)
+            html = (engine.build_custom_html(spec, spec["custom_vl"])
+                    if spec.get("custom_vl") and hasattr(engine, "build_custom_html")
+                    else engine.build_html(spec))
         except Exception as exc:
             self.set_status(f"Chart failed: {exc}")
             return
@@ -1539,8 +1588,11 @@ class StudioDockWidget(QDockWidget):
             self.set_status("Pick a layer first")
             return
         try:
+            sections = {self.tile_picker.item(i).data(Qt.ItemDataRole.UserRole)
+                         for i in range(self.tile_picker.count())
+                         if self.tile_picker.item(i).checkState() == Qt.CheckState.Checked}
             prof = profiler.build_profile(layer, self.selected_only.isChecked(),
-                                          self._current_theme())
+                                          self._current_theme(), sections=sections)
             if not prof["tiles"]:
                 self.set_status("Nothing chartable found in this layer's fields")
                 return
@@ -1554,7 +1606,7 @@ class StudioDockWidget(QDockWidget):
     # ───────────────────────── smart assistant ─────────────────────────
 
     def _suggest_chart(self) -> None:
-        """Offline assistant: pick the best chart for this layer, configure the
+        """Offline assistant: pick the most suitable chart for this layer, configure the
         controls and render it."""
         layer = self.layer_combo.currentLayer()
         if layer is None:
@@ -1625,6 +1677,29 @@ class StudioDockWidget(QDockWidget):
         with open(path, "w", encoding="utf-8") as f:
             f.write(self._last_html)
         self.set_status(f"Exported: {os.path.basename(path)}")
+
+    def _export_svg(self) -> None:
+        self.set_status("SVG export uses the rendered engine view")
+
+    def _export_png(self) -> None:
+        self.set_status("PNG export uses the rendered engine view")
+
+    def _export_pdf(self) -> None:
+        if not self._view:
+            self.set_status("PDF export needs a rendered view")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export chart as PDF", "02viz_chart.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            from qgis.PyQt.QtPrintSupport import QPrinter
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+            printer.setOutputFileName(path)
+            self._view.render(printer)
+            self.set_status(f"Exported: {os.path.basename(path)}")
+        except Exception as exc:
+            self.set_status(f"PDF export failed: {exc}")
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)

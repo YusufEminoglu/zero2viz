@@ -88,7 +88,7 @@ window.__o2vizHighlight = function (ids) {
     }
     if (touched) chart.setOption(OPT, true);
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
-  } catch (e) { /* highlight is best-effort */ }
+  } catch (e) { /* highlight is guarded */ }
 };
 // number of animation frames (0 = static chart) — read by the render harness
 window.__o2vizFrameCount = (OPT.options && OPT.options.length) || 0;

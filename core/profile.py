@@ -15,6 +15,7 @@ MAX_CAT_CHARTS = 4       # bar charts for categorical fields
 MAX_NUM_CHARTS = 6       # histograms for numeric fields
 MAX_CATS_SHOWN = 12      # top-N per categorical bar
 MAX_SCATTER_POINTS = 3000
+SECTION_NAMES = ("kpis", "fields", "count_bars", "histograms", "corr_matrix", "scatter_trend", "normalised_box", "insights")
 HIST_BINS = 14
 
 
@@ -25,8 +26,10 @@ def _fmt(v: float) -> str:
     return f"{v:.4g}"
 
 
-def build_profile(layer, selected_only: bool = False, theme: dict | None = None) -> dict:
+def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
+                  sections: list[str] | set[str] | None = None) -> dict:
     """→ {"title", "meta", "kpis", "insights", "tiles": [{"spec", "span"}]}"""
+    wanted = set(SECTION_NAMES if sections is None else sections)
     field_names = [f.name() for f in layer.fields()][:MAX_FIELDS]
     cols, fids = datasource.columns_with_ids(layer, field_names, selected_only)
     n_rows = len(fids)
@@ -224,9 +227,12 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None)
             ("Categorical", str(len(cat_fields))),
             ("Complete", f"{completeness:.0f}%")]
 
+    section_of = {"bar": "count_bars", "histogram": "histograms", "heatmap": "corr_matrix", "scatter": "scatter_trend", "box": "normalised_box"}
+    tiles = [dict(tile, section=section_of.get(tile["spec"].get("type"), "count_bars"))
+             for tile in tiles if section_of.get(tile["spec"].get("type"), "count_bars") in wanted]
     return {"title": layer.name(),
             "meta": f"{n_rows:,} rows · {len(field_names)} fields · "
                     f"{completeness:.0f}% complete"
                     + (" · selection only" if selected_only else ""),
-            "kpis": kpis, "insights": insights[:7], "tiles": tiles,
-            "fields": field_rows}
+            "kpis": kpis if "kpis" in wanted else [], "insights": insights[:7] if "insights" in wanted else [], "tiles": tiles,
+            "fields": field_rows if "fields" in wanted else []}

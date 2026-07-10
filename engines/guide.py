@@ -173,7 +173,7 @@ on the map.</div>
 <section id="charts"><h2><span class="n">3</span>Charts</h2>
 <p>Pick the <b>Engine</b> first — it decides which types are drawable (unsupported
 types grey out) — then the <b>Type</b>.</p>
-<table><tr><th>Engine</th><th>Best for</th><th>Notes</th></tr>
+<table><tr><th>Engine</th><th>Suitable for</th><th>Notes</th></tr>
 <tr><td>ECharts</td><td>Everyday interactive charts</td><td>All 17 types; runs in the dock on every QGIS build; can animate.</td></tr>
 <tr><td>Plotly.js</td><td>Rich hover &amp; zoom</td><td>All 17 types; can animate. Needs a modern web view (see Troubleshooting).</td></tr>
 <tr><td>Vega-Lite</td><td>Clean grammar-of-graphics</td><td>14 types. Needs a modern web view.</td></tr>
@@ -217,6 +217,15 @@ types grey out) — then the <b>Type</b>.</p>
 </ul>
 </section>
 
+<section id="custom"><h2><span class="n">4</span>Custom specs and exports</h2>
+<p>When the engine is <b>Vega-Lite</b>, enable <b>Custom Vega-Lite spec</b> to edit the generated JSON. Press <b>Render chart</b> to validate it and render it with the bundled offline Vega runtime. Parse errors remain in the status panel.</p>
+<p>The current data is injected as the named offline dataset <code>o2viz</code>. Keep the generated <code>__ids</code> values in your rows when you want chart clicks to select map features.</p>
+<ul><li><b>Export HTML</b> saves the complete offline page.</li><li><b>Export SVG</b> and <b>Export PNG</b> use the active rendered view where the engine supports it.</li><li><b>Export PDF</b> uses QGIS print output and does not require a browser or network.</li></ul>
+</section>
+
+<section id="tiles"><h2><span class="n">5</span>Explore tile picker</h2>
+<p>Before opening Explore, use the checkable tile picker to choose KPI row, field table, count bars, histograms, correlation matrix, scatter with trend, normalised box plot and insights. The default keeps the complete dashboard output.</p>
+</section>
 <section id="explore"><h2><span class="n">4</span>Explore — one-click dashboard</h2>
 <p><b>✨ Explore layer</b> profiles every field and builds a full interactive page:</p>
 <ul>
@@ -309,7 +318,7 @@ answer back (for example into the <b>Advanced expression</b> box).</p>
 <pre>I'm using the 02viz QGIS plugin. My layer's fields are:
 <b>&lt;paste field names and a few example rows&gt;</b>
 Which 02viz chart type and which X / Y / Group / Aggregate
-settings would best show the main story? Explain why in 2 lines.</pre>
+settings would show most clearly the main story? Explain why in 2 lines.</pre>
 <h3>Write a label expression</h3>
 <pre>Write a single QGIS label expression (functions: concat, round,
 format_number, char(10), upper, title, wordwrap) that shows:

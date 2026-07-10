@@ -124,7 +124,7 @@ window.__o2vizHighlight = function (ids) {{
       if (touched) CHARTS[ci].setOption(opt, true);
     }}
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
-  }} catch (e) {{ /* highlight is best-effort */ }}
+  }} catch (e) {{ /* highlight is guarded */ }}
 }};
 window.__chartCount = OPTIONS.length;
 window.__chartReady = true;

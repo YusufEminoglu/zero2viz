@@ -50,7 +50,7 @@ window.__o2vizHighlight = function (ids) {
                           "unselected.marker.opacity": 0.16}, traceIdx);
     }
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
-  } catch (e) { /* highlight is best-effort */ }
+  } catch (e) { /* highlight is guarded */ }
 };
 """
 

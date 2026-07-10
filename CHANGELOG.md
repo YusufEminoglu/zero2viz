@@ -1,11 +1,18 @@
 # Changelog
 
+All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
+
+## [0.11.0] - 2026-07-10
+
+- Added a validated custom Vega-Lite JSON editor with offline named-dataset injection and graceful parse errors.
+- Added SVG, PNG and PDF export actions, including native QGIS PDF rendering.
+- Added an Explore tile picker and pure profile section filtering.
+- Extended cross-filter ids to line and area symbols and treemap/sunburst nodes.
+- Refreshed the guide, README and release icon for the 0.11.0 workflow.
 ## [0.10.2] - 2026-06-18
 
 - docs: add CITATION.cff for Zenodo DOI integration
-
-All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
 ## [0.10.1] - 2026-06-16
 

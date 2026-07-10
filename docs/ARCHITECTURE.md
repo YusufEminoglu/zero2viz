@@ -37,7 +37,7 @@ zero2viz/               # package dir (display name stays "02viz")
    so it is testable headless without Qt.
 2. The selected **engine** turns the spec into one self-contained HTML
    document (vendored JS inlined → works offline, exports as a single file).
-3. The HTML is written to a temp file and shown in the best available web
+3. The HTML is written to a temp file and shown in the most suitable available web
    widget: QtWebEngine → QtWebKit → system browser.
 4. Charts are clickable: data items carry feature ids; the page calls
    ``__o2vizSelect(ids)``, which encodes them into ``document.title``

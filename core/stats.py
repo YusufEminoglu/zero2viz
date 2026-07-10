@@ -8,7 +8,7 @@ AGGREGATIONS = ("none", "count", "sum", "mean", "median", "min", "max")
 
 
 def to_float(value):
-    """Best-effort numeric coercion; returns None for anything non-finite."""
+    """Guarded numeric coercion; returns None for anything non-finite."""
     if value is None or isinstance(value, bool):
         return None
     try:
