@@ -17,7 +17,7 @@ import os
 import tempfile
 import time
 
-from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtCore import Qt, QTimer, QSettings
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -997,12 +997,23 @@ class StudioDockWidget(QDockWidget):
         except Exception:
             pass
 
+    def _last_io_dir(self) -> str:
+        """Return the last-used load/export folder, falling back to the user home."""
+        value = QSettings().value("zero2viz/last_io_dir", "")
+        return value if isinstance(value, str) and os.path.isdir(value) else os.path.expanduser("~")
+
+    def _remember_io_dir(self, path: str) -> None:
+        folder = os.path.dirname(path)
+        if folder and os.path.isdir(folder):
+            QSettings().setValue("zero2viz/last_io_dir", folder)
+
     def _load_external(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Load external table", "",
+            self, "Load external table", self._last_io_dir(),
             "Tables (*.csv *.xlsx *.ods *.gpkg *.dbf);;All files (*.*)")
         if not path:
             return
+        self._remember_io_dir(path)
         layer = datasource.load_table(path)
         if layer is None:
             self.set_status(f"Could not read: {os.path.basename(path)}")
@@ -1677,9 +1688,10 @@ class StudioDockWidget(QDockWidget):
         if not self._last_html:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export chart as HTML", "02viz_chart.html", "HTML (*.html)")
+            self, "Export chart as HTML", os.path.join(self._last_io_dir(), "02viz_chart.html"), "HTML (*.html)")
         if not path:
             return
+        self._remember_io_dir(path)
         with open(path, "w", encoding="utf-8") as f:
             f.write(self._last_html)
         self.set_status(f"Exported: {os.path.basename(path)}")
@@ -1694,9 +1706,11 @@ class StudioDockWidget(QDockWidget):
         if not self._view:
             self.set_status("PDF export needs a rendered view")
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export chart as PDF", "02viz_chart.pdf", "PDF (*.pdf)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export chart as PDF", os.path.join(self._last_io_dir(), "02viz_chart.pdf"), "PDF (*.pdf)")
         if not path:
             return
+        self._remember_io_dir(path)
         try:
             from qgis.PyQt.QtPrintSupport import QPrinter
             printer = QPrinter(QPrinter.PrinterMode.HighResolution)

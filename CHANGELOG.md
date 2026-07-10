@@ -3,6 +3,14 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.11.1] - 2026-07-10
+
+### Changed
+- Remove the top-level "&02viz" QGIS menu registration; the studio now only adds its toggle icon to its own toolbar, so it no longer shows up as its own menu tab next to Help.
+
+### Added
+- Remember the last folder used to load an external table or export a chart as HTML/PDF, across QGIS sessions.
+
 ## [0.11.0] - 2026-07-10
 
 - Added a validated custom Vega-Lite JSON editor with offline named-dataset injection and graceful parse errors.
