@@ -35,6 +35,7 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QListView,
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
@@ -469,14 +470,19 @@ class StudioDockWidget(QDockWidget):
         btn_row.addWidget(self.explore_btn, 2)
         self.tile_picker = QListWidget()
         self.tile_picker.setObjectName("o2vizTilePicker")
-        self.tile_picker.setFixedHeight(82)
+        self.tile_picker.setFlow(QListView.Flow.LeftToRight)
+        self.tile_picker.setWrapping(True)
+        self.tile_picker.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tile_picker.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tile_picker.setMinimumHeight(58)
+        self.tile_picker.setMaximumHeight(64)
         for _label, _section in (("KPI row", "kpis"), ("Field table", "fields"), ("Count bars", "count_bars"), ("Histograms", "histograms"), ("Correlation matrix", "corr_matrix"), ("Scatter + trend", "scatter_trend"), ("Normalised box plot", "normalised_box"), ("Insights", "insights")):
             _item = QListWidgetItem(_label)
             _item.setData(Qt.ItemDataRole.UserRole, _section)
             _item.setFlags(_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             _item.setCheckState(Qt.CheckState.Checked)
             self.tile_picker.addItem(_item)
-        btn_row.addWidget(self.tile_picker, 2)
+        outer.addWidget(self.tile_picker)
         self.export_btn = QPushButton("Export HTML…")
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_html)
