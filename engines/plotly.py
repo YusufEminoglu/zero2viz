@@ -6,6 +6,9 @@ import json
 
 from .base import ANIMATABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
+# chart types that carry reference lines/bands on their value axis (core.overlays)
+_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+
 _BODY = """
 var gd = document.getElementById("chart");
 Plotly.newPlot(gd, %(traces)s, %(layout)s, {responsive: true, displaylogo: false})
@@ -79,6 +82,13 @@ def _rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"rgba({r},{g},{b},{alpha})"
+
+
+def _dash(dash) -> str:
+    """core.overlays gives a [on, off] pattern; Plotly wants a px-list string."""
+    if isinstance(dash, (list, tuple)) and len(dash) == 2:
+        return f"{dash[0]}px,{dash[1]}px"
+    return "dash"
 
 
 class PlotlyEngine(ChartEngine):
@@ -416,4 +426,40 @@ class PlotlyEngine(ChartEngine):
         else:
             raise ValueError(f"Unsupported chart type: {kind}")
 
+        if spec.get("overlays") and kind in _OVERLAY_OK:
+            self._apply_overlays(layout, spec["overlays"], theme)
         return traces, layout
+
+    def _apply_overlays(self, layout: dict, overlays: list, theme: dict) -> None:
+        """Reference lines/bands (see core.overlays) as full-width ``shapes``
+        (x on paper, y on data) with matching edge ``annotations``."""
+        shapes = list(layout.get("shapes", []))
+        annos = list(layout.get("annotations", []))
+        label_bg = _rgba(theme["bg"], 0.72)
+        for ov in overlays:
+            color = ov.get("color")
+            if ov.get("kind") == "line":
+                shapes.append({"type": "line", "xref": "paper", "x0": 0, "x1": 1,
+                               "yref": "y", "y0": ov["value"], "y1": ov["value"],
+                               "line": {"color": color, "width": ov.get("width", 1.6),
+                                        "dash": _dash(ov.get("dash"))},
+                               "layer": "above"})
+                annos.append({"xref": "paper", "x": 1, "xanchor": "right",
+                              "yref": "y", "y": ov["value"], "yanchor": "bottom",
+                              "text": ov.get("label", ""), "showarrow": False,
+                              "font": {"color": color, "size": 11, "family": FONT_FAMILY},
+                              "bgcolor": label_bg, "borderpad": 2})
+            else:
+                shapes.append({"type": "rect", "xref": "paper", "x0": 0, "x1": 1,
+                               "yref": "y", "y0": ov["lo"], "y1": ov["hi"],
+                               "fillcolor": _rgba(color, ov.get("opacity", 0.12)),
+                               "line": {"width": 0}, "layer": "below"})
+                annos.append({"xref": "paper", "x": 0, "xanchor": "left",
+                              "yref": "y", "y": ov["hi"], "yanchor": "bottom",
+                              "text": ov.get("label", ""), "showarrow": False,
+                              "font": {"color": color, "size": 10, "family": FONT_FAMILY},
+                              "bgcolor": label_bg, "borderpad": 2})
+        if shapes:
+            layout["shapes"] = shapes
+        if annos:
+            layout["annotations"] = annos

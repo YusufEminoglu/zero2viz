@@ -12,6 +12,9 @@ import json
 
 from .base import CHART_TYPES, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
+# chart types that carry reference lines/bands on their value axis (core.overlays)
+_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+
 _BODY = """
 var SPEC = %(spec)s;
 var VALUES = (SPEC.datasets && SPEC.datasets.o2viz) || (SPEC.data && SPEC.data.values) || [];
@@ -93,10 +96,52 @@ class VegaLiteEngine(ChartEngine):
                          theme_of(spec))
     def build_html(self, spec: dict) -> str:
         vl = self.vl_spec(spec)
+        if spec.get("overlays") and spec["type"] in _OVERLAY_OK:
+            vl = self._wrap_overlays(vl, spec["overlays"])
         lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")
         return wrap_html(spec.get("title", ""), lib,
                          _BODY % {"spec": json.dumps(vl, ensure_ascii=False)},
                          theme_of(spec))
+
+    def _wrap_overlays(self, out: dict, overlays: list) -> dict:
+        """Fold the generated chart into a layered spec and append reference
+        rule/rect layers (+ a small left-anchored text label) from
+        core.overlays. Kept out of ``vl_spec`` so the custom-spec editor still
+        sees the plain generated spec. The overlay layers carry their own tiny
+        datasets; the shared value scale aligns them with the chart."""
+        layers: list[dict] = []
+        for ov in overlays:
+            color = ov.get("color")
+            label = ov.get("label", "")
+            if ov.get("kind") == "line":
+                layers.append({
+                    "data": {"values": [{"ry": ov["value"]}]},
+                    "mark": {"type": "rule", "color": color,
+                             "strokeDash": ov.get("dash", [6, 4]),
+                             "strokeWidth": ov.get("width", 1.6)},
+                    "encoding": {"y": {"field": "ry", "type": "quantitative"}}})
+                y_lbl = ov["value"]
+            else:
+                layers.append({
+                    "data": {"values": [{"lo": ov["lo"], "hi": ov["hi"]}]},
+                    "mark": {"type": "rect", "color": color,
+                             "opacity": ov.get("opacity", 0.12)},
+                    "encoding": {"y": {"field": "lo", "type": "quantitative"},
+                                 "y2": {"field": "hi"}}})
+                y_lbl = ov["hi"]
+            layers.append({
+                "data": {"values": [{"ry": y_lbl, "lbl": label}]},
+                "mark": {"type": "text", "align": "left", "baseline": "bottom",
+                         "dx": 4, "dy": -2, "color": color, "fontSize": 10},
+                "encoding": {"y": {"field": "ry", "type": "quantitative"},
+                             "x": {"value": 4}, "text": {"field": "lbl"}}})
+        if "layer" in out:
+            out["layer"] = list(out.pop("layer")) + layers
+        else:
+            inner = {k: out.pop(k) for k in ("data", "mark", "encoding", "transform")
+                     if k in out}
+            out["layer"] = [inner] + layers
+        return out
 
     # ───────────────────── spec builder ─────────────────────
 

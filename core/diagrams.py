@@ -13,6 +13,8 @@ layer's diagram renderer + layer settings; ``layer.diagramsEnabled()`` and
 """
 from __future__ import annotations
 
+from contextlib import suppress
+
 from qgis.PyQt.QtCore import QSizeF
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.core import (
@@ -94,11 +96,9 @@ def numeric_field_names(layer) -> list[str]:
     """Numeric fields are the only ones a diagram can size bars/slices by."""
     out = []
     for field in layer.fields():
-        try:
+        with suppress(Exception):
             if field.isNumeric():
                 out.append(field.name())
-        except Exception:
-            pass
     return out
 
 
@@ -130,10 +130,9 @@ def apply_diagram(layer, *, kind: str, fields: list[str], colors: list[str],
     settings.categoryAttributes = [
         expressions.normalize_expression(name, normalize, stats.get(name))
         for name in fields]
-    try:  # categoryLabels exists on recent QGIS; harmless to skip otherwise
+    # categoryLabels exists on recent QGIS; harmless to skip otherwise
+    with suppress(Exception):
         settings.categoryLabels = list(fields)
-    except Exception:
-        pass
     settings.categoryColors = [QColor(palette[i % len(palette)])
                                for i in range(len(fields))]
     settings.backgroundColor = QColor(0, 0, 0, 0)
@@ -144,10 +143,8 @@ def apply_diagram(layer, *, kind: str, fields: list[str], colors: list[str],
     settings.opacity = max(0.0, min(1.0, opacity))
     if kind == "text":
         settings.font = QFont("Segoe UI", 9)
-        try:
+        with suppress(Exception):
             settings.textColor = QColor(text_color)
-        except Exception:
-            pass
 
     renderer = QgsSingleCategoryDiagramRenderer()
     renderer.setDiagram(_diagram_for(kind))

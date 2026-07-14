@@ -207,6 +207,18 @@ types grey out) — then the <b>Type</b>.</p>
       Axes and colours stay fixed across frames; set the pace with <b>Play speed</b>.</li>
 </ul>
 
+<h3>Reference &amp; statistics overlays</h3>
+<p>On <b>bar, line, area, scatter</b> and <b>bubble</b> charts the <b>Reference:</b> row
+   draws guide lines and shaded bands on the value axis, computed from the plotted numbers:</p>
+<ul>
+  <li><b>Mean</b> / <b>Median</b> — a dashed line at the average / middle value.</li>
+  <li><b>±1σ</b> — a shaded band one standard deviation either side of the mean.</li>
+  <li><b>IQR</b> — a shaded band across the inter-quartile range (Q1–Q3).</li>
+  <li><b>Target…</b> — type any number to draw your own threshold line.</li>
+</ul>
+<p>Turn on any combination; every engine draws them the same way and they export with the
+   chart. Overlays are hidden while a chart is animating.</p>
+
 <h3>Colours &amp; interactivity</h3>
 <ul>
   <li><b>Theme</b> + <b>Colors</b> — eight palettes, or click a swatch / <b>Custom…</b>

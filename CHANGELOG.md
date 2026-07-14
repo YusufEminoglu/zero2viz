@@ -3,6 +3,17 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.12.0] - 2026-07-14
+
+### Added
+- **Reference & statistics overlays.** Bar, line, area, scatter and bubble charts can now carry horizontal guide lines and shaded bands on the value axis: the **mean**, the **median**, a **target** value you type, a **±1σ** band (mean ± one standard deviation) and the **inter-quartile** band (Q1–Q3). Turn any combination on from a *Reference:* row in the Charts tab. The values are computed in pure Python from the plotted numbers (`core/overlays.py`) and drawn identically by every engine — ECharts mark-lines/areas, Plotly shapes, Vega-Lite rule/rect layers and matplotlib `axhline`/`axhspan` — so they read the same in light and dark themes and export with the chart. Overlays are skipped while a chart is animating (the play axis tells its own story).
+
+### Changed
+- **The studio no longer runs pip.** When the optional matplotlib/seaborn engine is missing, the dock now shows the exact install command to run yourself (with a Copy button) instead of shelling out to `pip install`. A QGIS plugin should not execute a package manager; this keeps 02viz offline and side-effect free and lets it pass the QGIS Plugin Hub security scan with zero findings.
+
+### Fixed
+- Replaced the remaining bare `try/except: pass` blocks with `contextlib.suppress`, clearing the last Bandit warnings so the security scan is clean.
+
 ## [0.11.1] - 2026-07-10
 
 ### Changed

@@ -9,6 +9,8 @@ labeling, which ``layer.labelsEnabled()`` reflects without a canvas.
 """
 from __future__ import annotations
 
+from contextlib import suppress
+
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.core import (
     QgsPalLayerSettings,
@@ -85,10 +87,8 @@ def apply_labels(layer, *, field: str = "", expression: str = "",
     pal.fieldName = expr if use_expr else field
     pal.isExpression = use_expr
     pal.enabled = True
-    try:
+    with suppress(Exception):
         pal.placement = _placement_for(layer)
-    except Exception:
-        pass
     pal.setFormat(fmt)
 
     layer.setLabeling(QgsVectorLayerSimpleLabeling(pal))

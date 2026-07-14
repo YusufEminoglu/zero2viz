@@ -25,6 +25,9 @@ _SUPPORTED = frozenset({
     "pie", "box", "heatmap", "density", "violin",
 })
 
+# chart types that carry reference lines/bands on their value axis (core.overlays)
+_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+
 _IMG_HTML = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{title}</title>
 <style>
@@ -93,6 +96,8 @@ class MatplotlibEngine(ChartEngine):
         try:
             self._draw(kind, ax, data, spec, np, col, palette, theme)
             self._style_axes(ax, theme, kind)
+            if spec.get("overlays") and kind in _OVERLAY_OK:
+                self._draw_overlays(ax, spec["overlays"])
             if spec.get("title"):
                 ax.set_title(spec["title"], color=text, fontsize=15,
                              fontweight="bold")
@@ -244,6 +249,24 @@ class MatplotlibEngine(ChartEngine):
 
         else:
             raise ValueError(f"Matplotlib engine does not support: {kind}")
+
+    def _draw_overlays(self, ax, overlays) -> None:
+        """Reference lines/bands (see core.overlays) as axhline / axhspan with
+        an edge label, in the y-axis blended transform (x in axes fraction)."""
+        trans = ax.get_yaxis_transform()
+        for ov in overlays:
+            color = ov.get("color")
+            if ov.get("kind") == "line":
+                ax.axhline(ov["value"], color=color, zorder=4,
+                           linewidth=ov.get("width", 1.5),
+                           linestyle=(0, tuple(ov.get("dash") or (6, 4))))
+                ax.text(0.995, ov["value"], ov.get("label", ""), transform=trans,
+                        ha="right", va="bottom", color=color, fontsize=8, zorder=5)
+            else:
+                ax.axhspan(ov["lo"], ov["hi"], color=color, zorder=0,
+                           alpha=ov.get("opacity", 0.12))
+                ax.text(0.005, ov["hi"], ov.get("label", ""), transform=trans,
+                        ha="left", va="bottom", color=color, fontsize=8, zorder=5)
 
     def _legend(self, ax, theme) -> None:
         leg = ax.legend(facecolor=theme["bg"], edgecolor=theme["grid"],

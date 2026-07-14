@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Optional-dependency detection and on-demand install.
+"""Optional-dependency detection.
 
 The studio works out of the box with zero Python dependencies (the JS engines
 are vendored). *Advanced* engines — matplotlib/seaborn, plotnine, R/ggplot2 —
-are optional: this module reports what's present and, on the user's explicit
-click, installs the missing Python libraries into the QGIS interpreter's
-user site-packages (``python -m pip install --user``). Never auto-installs.
+are optional: this module reports what's present and, when something is
+missing, hands back the exact ``pip`` command the user can run themselves. It
+never shells out to pip or installs anything — a QGIS plugin must not execute
+package managers, and the studio stays offline and side-effect free.
 """
 from __future__ import annotations
 
 import importlib.util
 import shutil
-import subprocess
 import sys
 
 # advanced engine id → pip packages it needs (R is not a pip install)
@@ -51,24 +51,12 @@ def r_available() -> bool:
 
 
 def install_command(packages: list[str]) -> list[str]:
-    """The exact argv used to install — also shown to the user before running."""
+    """The exact argv the user can run themselves to install ``packages`` into
+    the QGIS interpreter (shown, never executed — the studio does not shell
+    out to pip)."""
     return [sys.executable, "-m", "pip", "install", "--user", *packages]
 
 
-def run_pip_install(packages: list[str], timeout: int = 900) -> tuple[bool, str]:
-    """Install ``packages`` into the QGIS interpreter's user site-packages.
-
-    Returns ``(ok, combined_log)``. Guarded and fully guarded — a failed
-    install never raises, it just reports the log so the dialog can show it.
-    """
-    if not packages:
-        return True, "nothing to install"
-    cmd = install_command(packages)
-    try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except Exception as exc:  # subprocess failure, timeout, missing pip…
-        return False, f"$ {' '.join(cmd)}\n{exc}"
-    log = f"$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}".strip()
-    return proc.returncode == 0, log
+def install_command_str(packages: list[str]) -> str:
+    """``install_command`` as a single copy-pasteable command line."""
+    return " ".join(install_command(packages))

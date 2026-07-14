@@ -16,6 +16,7 @@ import json
 import os
 import tempfile
 import time
+from contextlib import suppress
 
 from qgis.PyQt.QtCore import Qt, QTimer, QSettings
 from qgis.PyQt.QtGui import QColor
@@ -48,7 +49,7 @@ from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
 from ..core import (
     assistant, datasource, diagrams, expressions, labels,
-    profile as profiler, requirements, stats, transform,
+    overlays, profile as profiler, requirements, stats, transform,
 )
 from ..engines import engines
 from ..engines.base import DEFAULT_THEME, PALETTES, THEMES, webkit_fallback_page
@@ -444,8 +445,32 @@ class StudioDockWidget(QDockWidget):
         self.link_check = QCheckBox("Click selects on map")
         self.link_check.setChecked(True)
         flags.addWidget(self.link_check)
+
+        # reference & statistics overlays (bar/line/area/scatter/bubble)
+        refs = QHBoxLayout()
+        refs.addWidget(QLabel("Reference:"))
+        self.ov_mean_check = QCheckBox("Mean")
+        self.ov_median_check = QCheckBox("Median")
+        self.ov_sigma_check = QCheckBox("±1σ")
+        self.ov_iqr_check = QCheckBox("IQR")
+        self.ov_mean_check.setToolTip("Horizontal line at the mean of the plotted values")
+        self.ov_median_check.setToolTip("Horizontal line at the median")
+        self.ov_sigma_check.setToolTip("Shaded band one standard deviation either side of the mean")
+        self.ov_iqr_check.setToolTip("Shaded band across the inter-quartile range (Q1–Q3)")
+        for _c in (self.ov_mean_check, self.ov_median_check,
+                   self.ov_sigma_check, self.ov_iqr_check):
+            refs.addWidget(_c)
+        self.ov_target_edit = QLineEdit()
+        self.ov_target_edit.setPlaceholderText("Target…")
+        self.ov_target_edit.setFixedWidth(84)
+        self.ov_target_edit.setToolTip(
+            "Draw a reference line at this value (leave blank for none)")
+        refs.addWidget(self.ov_target_edit)
+        refs.addStretch(1)
+
         chart_lay.addLayout(form)
         chart_lay.addLayout(flags)
+        chart_lay.addLayout(refs)
         outer.addWidget(chart_card)
 
         btn_row = QHBoxLayout()
@@ -792,6 +817,10 @@ class StudioDockWidget(QDockWidget):
         self.sort_combo.setEnabled(topn_sort)
         self.stacked_check.setEnabled(stacked)
         self.trend_check.setEnabled(trend)
+        ov_ok = kind in overlays.OVERLAY_TYPES
+        for w in (self.ov_mean_check, self.ov_median_check, self.ov_sigma_check,
+                  self.ov_iqr_check, self.ov_target_edit):
+            w.setEnabled(ov_ok)
         self._sync_animate()
 
     def _sync_animate(self, *_args) -> None:
@@ -960,15 +989,13 @@ class StudioDockWidget(QDockWidget):
         if expr in ("", "''"):
             self.set_status("Pick a field to label, or type an expression")
             return
-        try:  # don't let a typo silently produce no labels
+        with suppress(Exception):  # don't let a typo silently produce no labels
             from qgis.core import QgsExpression
             parsed = QgsExpression(expr)
             if parsed.hasParserError():
                 self.set_status("Expression error: "
                                 + parsed.parserErrorString().strip())
                 return
-        except Exception:
-            pass
         ok = labels.apply_labels(
             layer, expression=expr, preset=self.label_preset_combo.currentData(),
             color=self._current_theme()["text"], size=self.label_size_spin.value())
@@ -988,14 +1015,10 @@ class StudioDockWidget(QDockWidget):
         self.set_status("Labels removed from this layer")
 
     def _refresh_canvas(self, layer) -> None:
-        try:
+        with suppress(Exception):
             self.iface.layerTreeView().refreshLayerSymbology(layer.id())
-        except Exception:
-            pass
-        try:
+        with suppress(Exception):
             self.iface.mapCanvas().refreshAllLayers()
-        except Exception:
-            pass
 
     def _last_io_dir(self) -> str:
         """Return the last-used load/export folder, falling back to the user home."""
@@ -1075,7 +1098,32 @@ class StudioDockWidget(QDockWidget):
             if frames is None:
                 return None  # _build_frames sets the status
             spec["frames"] = frames
+        else:
+            # reference lines/bands apply to the static chart (a play axis tells
+            # its own story, so overlays are skipped while animating)
+            ov_opts = self._overlay_options(kind)
+            if ov_opts:
+                ovs = overlays.build_overlays(spec, ov_opts, spec["theme"])
+                if ovs:
+                    spec["overlays"] = ovs
         return spec
+
+    def _overlay_options(self, kind: str) -> dict | None:
+        """Read the reference-line controls into options for ``core.overlays``,
+        or None when the type has no value axis or nothing is requested."""
+        if kind not in overlays.OVERLAY_TYPES:
+            return None
+        opts = {"mean": self.ov_mean_check.isChecked(),
+                "median": self.ov_median_check.isChecked(),
+                "sigma": self.ov_sigma_check.isChecked(),
+                "iqr": self.ov_iqr_check.isChecked()}
+        text = self.ov_target_edit.text().strip()
+        target = stats.to_float(text) if text else None
+        if not (any(opts.values()) or target is not None):
+            return None
+        if target is not None:
+            opts["target"] = target
+        return opts
 
     # — per-type builders: return the spec["data"] dict, or None + status —
 
@@ -1565,38 +1613,35 @@ class StudioDockWidget(QDockWidget):
             self.engine_combo.setItemText(i, label)
 
     def _ensure_engine_available(self, engine) -> bool:
-        """If an optional engine's libraries are missing, offer to install them
-        (explicit click only) into the QGIS Python. Returns True if usable."""
+        """If an optional engine's libraries are missing, tell the user exactly
+        how to install them themselves. The studio never runs pip (it must not
+        shell out to a package manager); it only shows the copy-pasteable
+        command. Returns True when the engine is ready to render."""
         if engine.available():
             return True
         pkgs = requirements.ENGINE_PIP_REQUIREMENTS.get(engine.id, [])
         missing = requirements.missing_packages(pkgs)
         if not missing:
             return True
-        cmd = " ".join(requirements.install_command(missing))
-        resp = QMessageBox.question(
-            self, "Install advanced engine",
+        cmd = requirements.install_command_str(missing)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Advanced engine needs a library")
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(
             f"<b>{engine.label}</b> needs: {', '.join(missing)}.<br><br>"
-            f"Install now into the QGIS Python (user site-packages)?<br>"
-            f"<code>{cmd}</code>",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if resp != QMessageBox.StandardButton.Yes:
+            "Install it into the QGIS Python yourself, then reopen the dock — "
+            "run this in the <b>OSGeo4W Shell</b> (or the QGIS Python console):"
+            f"<br><br><code>{cmd}</code>")
+        copy_btn = box.addButton("Copy command", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is copy_btn:
+            with suppress(Exception):
+                QApplication.clipboard().setText(cmd)
+            self.set_status(f"Copied the install command for {', '.join(missing)}")
+        else:
             self.set_status(f"{engine.label} needs {', '.join(missing)}")
-            return False
-        self.set_status(f"Installing {', '.join(missing)} — this can take a minute…")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        QApplication.processEvents()
-        try:
-            ok, log = requirements.run_pip_install(missing)
-        finally:
-            QApplication.restoreOverrideCursor()
-        if ok and engine.available():
-            self._refresh_engine_labels()
-            self.set_status(f"Installed {', '.join(missing)} — ready")
-            return True
-        QMessageBox.warning(self, "Install failed",
-                            (log or "pip failed")[-1600:])
-        self.set_status("Install failed — see the dialog")
         return False
 
     def _explore(self) -> None:

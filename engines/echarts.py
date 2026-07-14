@@ -7,6 +7,9 @@ import math
 
 from .base import ANIMATABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
+# chart types that carry reference lines/bands on their value axis (core.overlays)
+_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+
 _BODY = """
 var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
 var OPT = %(option)s;
@@ -516,4 +519,49 @@ class EChartsEngine(ChartEngine):
         else:
             raise ValueError(f"Unsupported chart type: {kind}")
 
+        if spec.get("overlays") and kind in _OVERLAY_OK:
+            self._add_overlays(option, spec["overlays"], theme)
         return option
+
+    def _add_overlays(self, option: dict, overlays: list, theme: dict) -> None:
+        """Reference lines/bands (see core.overlays) as invisible carrier
+        series: a low-z series holds the markAreas (bands sit behind the data)
+        and a high-z series the markLines (guides sit on top)."""
+        mark_lines, mark_areas = [], []
+        for ov in overlays:
+            if ov.get("kind") == "line":
+                mark_lines.append({
+                    "yAxis": ov["value"],
+                    "lineStyle": {"color": ov.get("color"),
+                                  "type": ov.get("dash") or "dashed",
+                                  "width": ov.get("width", 1.6)},
+                    "label": {"show": True, "formatter": ov.get("label", ""),
+                              "position": "insideEndTop", "color": ov.get("color"),
+                              "fontFamily": FONT_FAMILY, "fontSize": 11},
+                })
+            else:
+                mark_areas.append([
+                    {"yAxis": ov["lo"],
+                     "itemStyle": {"color": ov.get("color"),
+                                   "opacity": ov.get("opacity", 0.12)},
+                     "label": {"show": True, "formatter": ov.get("label", ""),
+                               "position": "insideTopLeft", "color": ov.get("color"),
+                               "fontFamily": FONT_FAMILY, "fontSize": 10}},
+                    {"yAxis": ov["hi"]},
+                ])
+        # keep the legend to the real series (carriers must not show up there)
+        real_names = [s.get("name", "") for s in option.get("series", [])
+                      if s.get("name")]
+        base = {"type": "line", "data": [], "silent": True, "showSymbol": False,
+                "legendHoverLink": False, "tooltip": {"show": False}}
+        if mark_areas:
+            option["series"].append(dict(base, name="reference-band", z=0,
+                                         markArea={"silent": True, "data": mark_areas}))
+        if mark_lines:
+            option["series"].append(dict(
+                base, name="reference", z=6,
+                markLine={"symbol": "none", "silent": True, "animation": False,
+                          "data": mark_lines}))
+        legend = option.get("legend")
+        if isinstance(legend, dict) and "data" not in legend and real_names:
+            legend["data"] = real_names
