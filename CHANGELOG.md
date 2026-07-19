@@ -3,6 +3,11 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.13.0] - 2026-07-19
+
+### Added
+- **Reusable chart presets.** Save a named chart setup and recall it across QGIS sessions, including the engine and chart type, field bindings, aggregation and sorting, animation, selection scope, theme or custom palette, reference overlays, and custom Vega-Lite JSON. Loading against another layer clears unavailable fields and reports them instead of failing.
+
 ## [0.12.0] - 2026-07-14
 
 ### Added

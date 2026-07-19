@@ -38,6 +38,7 @@ from qgis.PyQt.QtWidgets import (
     QListWidgetItem,
     QListView,
     QMessageBox,
+    QInputDialog,
     QPushButton,
     QPlainTextEdit,
     QSpinBox,
@@ -49,7 +50,7 @@ from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
 from ..core import (
     assistant, datasource, diagrams, expressions, labels,
-    overlays, profile as profiler, requirements, stats, transform,
+    overlays, presets, profile as profiler, requirements, stats, transform,
 )
 from ..engines import engines
 from ..engines.base import DEFAULT_THEME, PALETTES, THEMES, webkit_fallback_page
@@ -64,6 +65,8 @@ MAX_HIGHLIGHT_IDS = 20000
 
 # sentinel entry in the Colors combo that opens the custom palette editor
 CUSTOM_PALETTE_LABEL = "Custom…"
+
+PRESET_SETTINGS_KEY = "zero2viz/chart_presets"
 
 # The studio has its own light visual identity (light root, white cards). On
 # QGIS 3 (Qt5) the host palette is light too, so unstyled child widgets looked
@@ -220,6 +223,7 @@ class StudioDockWidget(QDockWidget):
         self._custom_palette: list[str] | None = None
         self._custom_spec_enabled = False
         self._prev_palette_index = 0
+        self._preset_library: dict[str, dict] = {}
         self.bridge = SelectionBridge()
         self.bridge.on_selected = self._on_chart_drove_selection
         self._build_ui()
@@ -472,6 +476,25 @@ class StudioDockWidget(QDockWidget):
         chart_lay.addLayout(flags)
         chart_lay.addLayout(refs)
         outer.addWidget(chart_card)
+
+        preset_row = QHBoxLayout()
+        preset_row.addWidget(QLabel("Preset"))
+        self.preset_combo = QComboBox()
+        self.preset_combo.setToolTip(
+            "Recall a saved chart setup, including fields, styling and overlays")
+        preset_row.addWidget(self.preset_combo, 1)
+        self.preset_load_btn = QPushButton("Load")
+        self.preset_load_btn.clicked.connect(self._load_selected_preset)
+        preset_row.addWidget(self.preset_load_btn)
+        self.preset_save_btn = QPushButton("Save preset")
+        self.preset_save_btn.clicked.connect(self._save_preset)
+        preset_row.addWidget(self.preset_save_btn)
+        self.preset_delete_btn = QPushButton("Delete")
+        self.preset_delete_btn.clicked.connect(self._delete_preset)
+        preset_row.addWidget(self.preset_delete_btn)
+        outer.addLayout(preset_row)
+        self.preset_combo.currentIndexChanged.connect(self._sync_preset_buttons)
+        self._read_presets()
 
         btn_row = QHBoxLayout()
         self.render_btn = QPushButton("Render chart")
@@ -783,6 +806,191 @@ class StudioDockWidget(QDockWidget):
         # a chart click is about to change the selection — don't re-render
         # the very chart the user is interacting with
         self._suppress_refresh_until = time.time() + 1.0
+
+    # Reusable chart presets
+
+    @staticmethod
+    def _set_combo_data(combo: QComboBox, value: object) -> bool:
+        index = combo.findData(value)
+        if index < 0:
+            return False
+        combo.setCurrentIndex(index)
+        return True
+
+    def _chart_preset(self) -> dict:
+        """Capture the reusable parts of the current chart configuration."""
+        return {
+            "engine": self.engine_combo.currentData(),
+            "type": self.type_combo.currentData(),
+            "theme": self.theme_combo.currentText(),
+            "palette": self.palette_combo.currentText(),
+            "custom_palette": (
+                list(self._custom_palette) if self._custom_palette else []),
+            "title": self.title_edit.text(),
+            "fields": {
+                "x": self.x_combo.currentField(),
+                "y": self.y_combo.currentField(),
+                "group": self.group_combo.currentField(),
+                "value": self.value_combo.currentField(),
+                "animate": self.animate_combo.currentField(),
+            },
+            "speed": int(self.speed_combo.currentData()),
+            "aggregation": self.agg_combo.currentText(),
+            "bins": self.bins_spin.value(),
+            "top_n": self.topn_spin.value(),
+            "sort": self.sort_combo.currentData(),
+            "selected_only": self.selected_only.isChecked(),
+            "stacked": self.stacked_check.isChecked(),
+            "trend": self.trend_check.isChecked(),
+            "link": self.link_check.isChecked(),
+            "mean": self.ov_mean_check.isChecked(),
+            "median": self.ov_median_check.isChecked(),
+            "sigma": self.ov_sigma_check.isChecked(),
+            "iqr": self.ov_iqr_check.isChecked(),
+            "target": self.ov_target_edit.text(),
+            "custom_spec_enabled": self.custom_spec_check.isChecked(),
+            "custom_spec": self.custom_spec_edit.toPlainText(),
+        }
+
+    def _read_presets(self) -> None:
+        raw = QSettings().value(PRESET_SETTINGS_KEY, "")
+        self._preset_library = presets.decode_library(raw)
+        self._refresh_preset_combo()
+
+    def _write_presets(self) -> None:
+        QSettings().setValue(
+            PRESET_SETTINGS_KEY, presets.encode_library(self._preset_library))
+
+    def _refresh_preset_combo(self, selected: str = "") -> None:
+        self.preset_combo.blockSignals(True)
+        self.preset_combo.clear()
+        if self._preset_library:
+            for name in sorted(self._preset_library, key=str.casefold):
+                self.preset_combo.addItem(name, name)
+            index = self.preset_combo.findData(selected)
+            if index >= 0:
+                self.preset_combo.setCurrentIndex(index)
+        else:
+            self.preset_combo.addItem("No saved presets", None)
+        self.preset_combo.blockSignals(False)
+        self._sync_preset_buttons()
+
+    def _sync_preset_buttons(self, *_args) -> None:
+        available = self.preset_combo.currentData() in self._preset_library
+        self.preset_load_btn.setEnabled(available)
+        self.preset_delete_btn.setEnabled(available)
+
+    def _save_preset(self) -> None:
+        suggested = self.preset_combo.currentData() or (
+            self.title_edit.text().strip()
+            or self.type_combo.currentText().replace(" chart", ""))
+        name, ok = QInputDialog.getText(
+            self, "Save chart preset", "Preset name:", text=str(suggested))
+        name = name.strip()
+        if not ok or not name:
+            return
+        if (name not in self._preset_library
+                and len(self._preset_library) >= presets.MAX_PRESETS):
+            self.set_status(
+                f"Preset limit reached ({presets.MAX_PRESETS}); delete one first")
+            return
+        if name in self._preset_library:
+            answer = QMessageBox.question(
+                self, "Replace chart preset",
+                f'A preset named "{name}" already exists. Replace it?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        clean = presets.sanitize_preset(self._chart_preset())
+        if clean is None:
+            self.set_status("Could not save the current chart setup")
+            return
+        self._preset_library[name] = clean
+        self._write_presets()
+        self._refresh_preset_combo(name)
+        self.set_status(f'Saved chart preset "{name}"')
+
+    def _delete_preset(self) -> None:
+        name = self.preset_combo.currentData()
+        if name not in self._preset_library:
+            return
+        answer = QMessageBox.question(
+            self, "Delete chart preset", f'Delete the preset "{name}"?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        del self._preset_library[name]
+        self._write_presets()
+        self._refresh_preset_combo()
+        self.set_status(f'Deleted chart preset "{name}"')
+
+    def _load_selected_preset(self) -> None:
+        name = self.preset_combo.currentData()
+        preset = self._preset_library.get(name)
+        if preset is None:
+            return
+        if not self._set_combo_data(self.engine_combo, preset.get("engine")):
+            self.set_status(f'Preset "{name}" uses an unavailable engine')
+            return
+        self._sync_engine_types()
+        if not self._set_combo_data(self.type_combo, preset.get("type")):
+            self.set_status(f'Preset "{name}" uses an unavailable chart type')
+            return
+        self._sync_controls()
+
+        theme = self.theme_combo.findText(preset.get("theme", ""))
+        if theme >= 0:
+            self.theme_combo.setCurrentIndex(theme)
+        custom_colors = preset.get("custom_palette", [])
+        if preset.get("palette") == CUSTOM_PALETTE_LABEL and custom_colors:
+            self._enter_custom(custom_colors)
+        else:
+            palette = self.palette_combo.findText(preset.get("palette", ""))
+            if palette >= 0:
+                self.palette_combo.setCurrentIndex(palette)
+
+        self.title_edit.setText(preset.get("title", ""))
+        layer = self.layer_combo.currentLayer()
+        available = ({field.name() for field in layer.fields()}
+                     if layer is not None else set())
+        missing: list[str] = []
+        fields = preset.get("fields", {})
+        for key, combo in (
+                ("x", self.x_combo), ("y", self.y_combo),
+                ("group", self.group_combo), ("value", self.value_combo),
+                ("animate", self.animate_combo)):
+            field = fields.get(key, "")
+            if field and field not in available:
+                missing.append(field)
+                field = ""
+            combo.setField(field)
+
+        self._set_combo_data(self.speed_combo, preset.get("speed"))
+        agg = self.agg_combo.findText(preset.get("aggregation", ""))
+        if agg >= 0:
+            self.agg_combo.setCurrentIndex(agg)
+        self.bins_spin.setValue(preset.get("bins", self.bins_spin.value()))
+        self.topn_spin.setValue(preset.get("top_n", self.topn_spin.value()))
+        self._set_combo_data(self.sort_combo, preset.get("sort"))
+        for key, widget in (
+                ("selected_only", self.selected_only),
+                ("stacked", self.stacked_check), ("trend", self.trend_check),
+                ("link", self.link_check), ("mean", self.ov_mean_check),
+                ("median", self.ov_median_check), ("sigma", self.ov_sigma_check),
+                ("iqr", self.ov_iqr_check)):
+            if key in preset:
+                widget.setChecked(preset[key])
+        self.ov_target_edit.setText(preset.get("target", ""))
+        self.custom_spec_edit.setPlainText(preset.get("custom_spec", ""))
+        self.custom_spec_check.setChecked(
+            bool(preset.get("custom_spec_enabled"))
+            and self.engine_combo.currentData() == "vegalite")
+        self._sync_custom_spec()
+        suffix = (f" Â· missing fields cleared: {', '.join(sorted(set(missing)))}"
+                  if missing else "")
+        self.set_status(f'Loaded chart preset "{name}"{suffix}')
 
     def _sync_engine_types(self, *_args) -> None:
         """Grey out chart types the selected engine cannot draw

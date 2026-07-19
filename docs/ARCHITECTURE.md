@@ -111,6 +111,9 @@ keep their feature ids per frame, so animated bars/points still drive
 chart→map selection; the map→chart highlight is a no-op while animating
 (every frame redraws the whole trace set).
 
-Planned next: small-multiples dashboards, custom spec editor for power
-users, dashboard tile picker, SVG/PDF export, animation on the Explore
-dashboard tiles.
+Chart presets are stored as versioned, sanitized JSON in QSettings. The dock
+captures and reapplies widget state; ``core/presets.py`` owns validation and
+keeps corrupt or future settings from breaking dock construction. Field
+bindings are resolved against the active layer when a preset is loaded.
+
+Planned next: small-multiples dashboards and animation on Explore tiles.

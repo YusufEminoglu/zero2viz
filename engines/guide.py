@@ -229,7 +229,17 @@ types grey out) — then the <b>Type</b>.</p>
 </ul>
 </section>
 
-<section id="custom"><h2><span class="n">4</span>Custom specs and exports</h2>
+<section id="presets"><h2><span class="n">4</span>Reusable chart presets</h2>
+<p>Use the <b>Preset</b> row below the chart controls to save a named setup or
+load it again in a later QGIS session. A preset keeps the engine, chart type,
+field bindings, data shaping, animation, selection scope, colours, reference
+overlays and custom Vega-Lite JSON.</p>
+<p>You can load a preset against another layer with the same schema. If a saved
+field is unavailable, 02viz clears that binding and lists it in the status line
+so you can choose a replacement without a failed render.</p>
+</section>
+
+<section id="custom"><h2><span class="n">5</span>Custom specs and exports</h2>
 <p>When the engine is <b>Vega-Lite</b>, enable <b>Custom Vega-Lite spec</b> to edit the generated JSON. Press <b>Render chart</b> to validate it and render it with the bundled offline Vega runtime. Parse errors remain in the status panel.</p>
 <p>The current data is injected as the named offline dataset <code>o2viz</code>. Keep the generated <code>__ids</code> values in your rows when you want chart clicks to select map features.</p>
 <ul><li><b>Export HTML</b> saves the complete offline page.</li><li><b>Export SVG</b> and <b>Export PNG</b> use the active rendered view where the engine supports it.</li><li><b>Export PDF</b> uses QGIS print output and does not require a browser or network.</li></ul>

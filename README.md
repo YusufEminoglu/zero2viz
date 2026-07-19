@@ -70,6 +70,11 @@ The optional **matplotlib / seaborn** engine renders the same spec as a publicat
 
 Requires QGIS 3.28 or newer. **No external Python dependencies for the core studio** (the three JS engines are vendored). The optional matplotlib/seaborn engine is auto-detected; when it is missing, the plugin shows you the exact install command to run yourself (it never runs pip for you).
 
+**Reusable chart presets** save a named setup across QGIS sessions: engine,
+chart type, field bindings, shaping, animation, selection scope, styling,
+reference overlays and custom Vega-Lite JSON. Load the same preset on another
+layer with a matching schema; unavailable fields are cleared and reported.
+
 ## 📖 Quick start
 
 1. Install 02viz and click the **02viz Studio** toolbar button — the studio dock opens on the right.
