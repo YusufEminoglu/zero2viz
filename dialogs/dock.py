@@ -73,7 +73,7 @@ PRESET_SETTINGS_KEY = "zero2viz/chart_presets"
 # fine by accident. On QGIS 4 (Qt6) the host palette is often dark: every
 # colour we DON'T pin is then inherited from it, so the combo popups paint
 # near-black and the field labels/checkboxes turn into light-on-white ghosts
-# (the "siyah dropdown + okunmayan yazı" bug). The remedy is to pin every text
+# (the "black dropdown + unreadable label" bug). The remedy is to pin every text
 # and input colour here, so the panel reads identically under any host theme.
 _DOCK_QSS = """
 QWidget#o2vizRoot { background: #fbfbfd; }
