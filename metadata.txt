@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.13.0
+version=0.14.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.14.0 - Add an explicitly approved SmartModeler GIS bridge that selects one live project vector layer and renders 02viz's existing offline smart chart suggestion without exposing paths, URLs, expressions, exports, arbitrary methods or feature values.
     0.12.0 - Reference and statistics overlays: add horizontal guide lines and shaded bands to bar, line, area, scatter and bubble charts — the mean, the median, a target value you type, a ±1σ band and the inter-quartile (Q1–Q3) band — computed in pure Python from the plotted values and drawn identically by every engine (ECharts, Plotly, Vega-Lite and matplotlib). Turn any combination on from the Charts tab; they read the same in light and dark themes and export with the chart. Hardening: the studio no longer shells out to pip — when the optional matplotlib/seaborn engine is missing it now shows the exact install command for you to run yourself instead of running it, so the plugin stays offline and side-effect free and passes the QGIS Plugin Hub security scan cleanly.
     0.11.1 - Removed the shared top-level "&02viz" QGIS menu; the studio now only adds its toggle icon to its own toolbar, so it no longer shows up as its own menu tab next to Help. The dock now also remembers the last folder used to load an external table or export a chart as HTML/PDF, across QGIS sessions.
     0.10.1 - Hub upload compatibility fix: metadata text no longer contains a raw percent sign, which QGIS Plugin Hub's INI parser treats as interpolation syntax. Plugin code and features are unchanged from 0.10.0.

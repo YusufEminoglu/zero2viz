@@ -3,6 +3,18 @@
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.14.0] - 2026-07-29
+
+### Added
+
+- **Reviewed SmartModeler bridge.** SmartModeler GIS can now open 02viz for one
+  exact live project vector-layer id and invoke the existing fully offline
+  smart suggestion path after the user approves a `plugin_action` card. 02viz
+  selects the layer, chooses a suitable chart from its local field statistics,
+  and renders it in the dock. The bridge accepts no path, URL, export target,
+  custom Vega-Lite specification, expression, or arbitrary method name, and it
+  returns no feature values.
+
 ## [0.13.0] - 2026-07-19
 
 ### Added

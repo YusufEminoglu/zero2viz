@@ -19,6 +19,12 @@
 
 ## Why 02viz?
 
+SmartModeler GIS can also open 02viz for one live project vector layer and run
+the same fully offline smart chart suggestion after you approve its
+`plugin_action` card. This narrow bridge accepts no file path, export, URL,
+expression, custom specification, or arbitrary plugin method; feature values
+remain inside QGIS and 02viz.
+
 **Zero2Visual — from zero to elegant visuals, fast.** Charting in GIS has always meant exporting attribute tables to a spreadsheet, or wrestling with one fixed plotting library. 02viz puts a full visualization studio inside QGIS, organised as **one dock with three tabs — Charts, Map diagrams and Labels** — three ways to turn a layer's data into a publication-quality visual that stays linked to the map. It is built for planners, analysts and cartographers who want their visuals to match the quality of their maps.
 
 ## ✨ Features

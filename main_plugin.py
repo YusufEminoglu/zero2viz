@@ -12,6 +12,7 @@ import os
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QMessageBox, QToolBar
+from qgis.core import QgsProject, QgsVectorLayer
 
 try:  # Qt5: QtWidgets / Qt6: QtGui
     from qgis.PyQt.QtWidgets import QAction
@@ -85,6 +86,30 @@ class O2VizPlugin:
         self._dock.setVisible(not self._dock.isVisible())
         if self._dock.isVisible():
             self._dock.raise_()
+
+    def smartmodeler_suggest_chart(self, layer_id: str) -> dict:
+        """Reviewed SmartModeler bridge: render 02viz's offline suggestion.
+
+        The bridge accepts only an exact live project-layer id. It exposes no
+        file path, export, custom specification, engine code, or network input;
+        SmartModeler calls it only after showing its own explicit approval card.
+        Feature values stay inside 02viz/QGIS and are never returned.
+        """
+        project = QgsProject.instance()
+        layer = project.mapLayer(layer_id) if project is not None else None
+        if not isinstance(layer, QgsVectorLayer):
+            return {"ok": False, "message": "The target vector layer is unavailable."}
+        if self._dock is None:
+            self._toggle_dock()
+        if self._dock is None:
+            return {"ok": False, "message": "The 02viz dock could not be opened."}
+        self._dock.setVisible(True)
+        self._dock.raise_()
+        self._dock.layer_combo.setLayer(layer)
+        self._dock._suggest_chart()
+        if not getattr(self._dock, "_last_html", ""):
+            return {"ok": False, "message": "No suitable chart could be generated."}
+        return {"ok": True, "message": "02viz rendered a smart chart."}
 
     # ───────────────────────── Helpers ─────────────────────────
 
