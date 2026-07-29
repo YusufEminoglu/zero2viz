@@ -63,7 +63,14 @@ class O2VizPlugin:
         if self.toolbar:
             for action in self.actions:
                 self.toolbar.removeAction(action)
+                action.setParent(None)
+                action.deleteLater()
+            self.actions.clear()
+            # removeToolBar() only takes the bar out of the layout; it stays a
+            # child of the main window until the deferred delete runs, so a
+            # plugin reload could leave an orphan toolbar behind.
             self.iface.mainWindow().removeToolBar(self.toolbar)
+            self.toolbar.setParent(None)
             self.toolbar.deleteLater()
             self.toolbar = None
 
