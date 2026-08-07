@@ -18,6 +18,11 @@
 
 ---
 
+## 📖 Documentation
+
+**[Comprehensive Academic Reference Manual](https://yusufeminoglu.github.io/zero2viz/)** — complete documentation of every feature, parameter, and workflow. Hosted on GitHub Pages.
+
+
 ## Why 02viz?
 
 SmartModeler GIS can also open 02viz for one live project vector layer and run
