@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.14.4] - 2026-08-07
+
+- Added online user manual link (https://yusufeminoglu.github.io/zero2viz/) and GitHub repository star call-to-action.
+
 ## [0.14.3] - 2026-08-07
 
 - Expand reference manual 3x with theory, math, 10 DOI refs
