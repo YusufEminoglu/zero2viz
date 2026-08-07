@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.14.3] - 2026-08-07
+
+- Expand reference manual 3x with theory, math, 10 DOI refs
+
 All notable changes to **02viz - Geospatial Visualization Studio** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
