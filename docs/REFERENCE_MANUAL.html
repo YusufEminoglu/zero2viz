@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02viz &mdash; Reference Manual</title>
+<style>
+:root {--bg:#fafaf8;--sidebar-bg:#f3f3f0;--text:#1a1a1a;--muted:#5a5a55;--accent:#2a6e5e;--border:#d8d5ce;--card-bg:#fff;--link:#1a6e5e;--code-bg:#edf4f2;--search-bg:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;display:flex;min-height:100vh}
+#sidebar{width:270px;min-width:270px;background:var(--sidebar-bg);border-right:1px solid var(--border);padding:24px 20px;position:sticky;top:0;height:100vh;overflow-y:auto}
+#sidebar h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
+#search{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--search-bg);margin-bottom:20px}
+#sidebar nav a{display:block;padding:5px 0;font-size:13px;color:var(--link);text-decoration:none}
+#sidebar nav a:hover{text-decoration:underline}
+#sidebar nav a.sub{padding-left:14px;font-size:12px}
+#main{flex:1;padding:40px 48px;max-width:860px}
+h1{font-size:28px;font-weight:700;color:var(--accent);margin-bottom:4px}
+h1+p{color:var(--muted);margin-bottom:32px}
+h2{font-size:20px;font-weight:600;color:var(--accent);margin:36px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--border)}
+h3{font-size:16px;font-weight:600;color:var(--text);margin:20px 0 8px}
+p,li{font-size:14px;color:var(--text)}
+p{margin-bottom:10px}
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px}
+.card h4{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:6px}
+ul{margin:4px 0 10px 20px}
+li{margin-bottom:3px}
+code{font-family:Consolas,'Courier New',monospace;background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:13px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th,td{border:1px solid var(--border);padding:8px 12px;text-align:left}
+th{background:var(--code-bg);font-weight:600}
+.refs{font-size:12px;color:var(--muted)}
+.refs a{color:var(--link)}
+@media(max-width:760px){body{flex-direction:column}#sidebar{width:100%;min-width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}#main{padding:24px}}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <input type="text" id="search" placeholder="Search manual&hellip;" autocomplete="off">
+  <h2>Contents</h2>
+  <nav id="toc">
+    <a href="#overview">Overview</a>
+    <a href="#engines" class="sub">Rendering Engines</a>
+    <a href="#charts" class="sub">Chart Types</a>
+    <a href="#charts-tab" class="sub">Charts Tab</a>
+    <a href="#diagrams" class="sub">Map Diagrams</a>
+    <a href="#labels" class="sub">Labels Tab</a>
+    <a href="#dashboard" class="sub">Explore Dashboard</a>
+    <a href="#animation" class="sub">Animation</a>
+    <a href="#overlays" class="sub">Reference Overlays</a>
+    <a href="#params" class="sub">Controls</a>
+    <a href="#workflow" class="sub">Workflow</a>
+    <a href="#technical" class="sub">Technical Notes</a>
+    <a href="#literature">Literature</a>
+  </nav>
+</aside>
+<main id="main">
+<h1>02viz</h1>
+<p>Geospatial Visualization Studio &mdash; multi-engine chart, diagram, and label studio &bull; v0.14.0</p>
+
+<h2 id="overview">1. Overview</h2>
+<p>02viz is a QGIS plugin that turns the GIS environment into a full data visualisation studio. It provides a single dock with three tabs&mdash;<strong>Charts</strong>, <strong>Map Diagrams</strong>, and <strong>Labels</strong>&mdash;all sharing a common layer and data selector. It supports four rendering engines (both zero-dependency offline JS engines and optional Python engines) for making interactive, publishable charts from QGIS layers or external tabular data. The plugin runs entirely offline with no accounts, no network, and no mandatory external Python dependencies.</p>
+<p>The plugin ships with bundled, vendored copies of Apache ECharts, Plotly.js, Vega, and Vega-Lite in <code>web/</code>. The chart-to-map selection bridge uses the browser's <code>document.title</code> as a click-event transport channel, avoiding the need for QWebChannel in any QtWebKit build.</p>
+
+<h2 id="engines">2. Rendering Engines</h2>
+<table>
+  <tr><th>Engine</th><th>Chart Types</th><th>Animation</th><th>WebKit OK</th><th>Interactive</th></tr>
+  <tr><td><strong>Apache ECharts</strong></td><td>All 17</td><td>Timeline (autoPlay, loop)</td><td>Yes</td><td>Full, including cross-filter</td></tr>
+  <tr><td><strong>Plotly.js</strong></td><td>All 17</td><td>Frames + slider + play/pause</td><td>No (ES6+)</td><td>Full, including cross-filter</td></tr>
+  <tr><td><strong>Vega-Lite</strong></td><td>14 (no treemap, sunburst, radar)</td><td>None</td><td>No</td><td>Declarative; JSON spec editor</td></tr>
+  <tr><td><strong>Matplotlib / seaborn</strong></td><td>11 (static types only)</td><td>None</td><td>Yes (PNG)</td><td>None (static images)</td></tr>
+</table>
+
+<h2 id="charts">3. Chart Types (17)</h2>
+<table>
+  <tr><th>Chart</th><th>ECharts</th><th>Plotly</th><th>Vega-Lite</th><th>Matplotlib</th></tr>
+  <tr><td>Bar</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Line</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Area</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Scatter</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Bubble</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Histogram</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Pie / Donut</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Box Plot</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Heatmap</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Treemap</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td></tr>
+  <tr><td>Sunburst</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td></tr>
+  <tr><td>Mean &plusmn; &sigma; band</td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td></tr>
+  <tr><td>Mean &plusmn; &sigma; bars</td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td></tr>
+  <tr><td>Density (KDE)</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Violin Plot</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Radar / Spider</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td></tr>
+  <tr><td>Pareto (80/20)</td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td></tr>
+</table>
+
+<h2 id="charts-tab">4. Charts Tab</h2>
+
+<h3>4.1 Themes and Palettes</h3>
+<div class="card">
+  <h4>Four Themes, Eight Palettes, Custom Editor</h4>
+  <p><strong>Themes:</strong> Studio Light (default, #fbfbfd), Ink Dark (#131c21), Soft Pastel (#ffffff), Bold Print (#ffffff / dark text).</p>
+  <p><strong>Palettes:</strong> Vivid, Colorblind safe (8-colour), Viridis, Sunset, Ocean, Earth, Berry, Grayscale print.</p>
+  <p><strong>Custom palette editor:</strong> Inline colour swatch editor with click-to-change and +/- buttons to add/remove colours (up to 16). Switches to "Custom..." mode.</p>
+</div>
+
+<h3>4.2 Chart-to-Map Selection Bridge</h3>
+<div class="card">
+  <h4>Title-Based Click Transport</h4>
+  <p>Chart pages encode clicked feature IDs as <code>document.title = "o2viz-select:&lt;id,id,...&gt;:&lt;seq&gt;"</code> via a helper <code>__o2vizSelect()</code> function defined in the engine base <code>BRIDGE_JS</code>. The dock listens to the webview's <code>titleChanged</code> signal (API-consistent across QtWebKit and QtWebEngine) and forwards it to a <code>SelectionBridge</code>, which selects those features on the QGIS canvas. Map-to-chart cross-filtering pushes <code>__o2vizHighlight(ids)</code> to the page to dim non-selected items.</p>
+</div>
+
+<h3>4.3 Smart Chart Suggestions</h3>
+<div class="card">
+  <h4>Offline Field Analysis</h4>
+  <p>The "Suggest a chart" button analyses the selected layer's field types (numeric/categorical/identifier via <code>fields.py</code>), recommends the most suitable chart, configures all controls, and renders the result. The algorithm runs entirely offline with no API calls.</p>
+</div>
+
+<h2 id="diagrams">5. Map Diagrams Tab</h2>
+<div class="card">
+  <h4>Native QGIS Per-Feature Diagrams</h4>
+  <p>Four diagram types via <code>QgsDiagramRenderer</code>: <strong>Pie</strong> (<code>QgsPieDiagram</code>), <strong>Bar</strong> (<code>QgsHistogramDiagram</code>), <strong>Stacked bar</strong> (<code>QgsStackedBarDiagram</code>, QGIS 3.14+), and <strong>Text</strong> (<code>QgsTextDiagram</code>).</p>
+  <p>Key features: diagram size in millimetres (3&ndash;60 mm, default 14 mm), placement by geometry type (AroundPoint / Line / OverPoint), palette cycling across fields, and four normalisation modes:</p>
+  <table>
+    <tr><th>Mode</th><th>Expression</th><th>Use Case</th></tr>
+    <tr><td>None</td><td>Raw values</td><td>Same-scale fields</td></tr>
+    <tr><td>Min-max (0&ndash;1)</td><td>(value &minus; min) / (max &minus; min)</td><td>Different ranges</td></tr>
+    <tr><td>Z-score</td><td>(value &minus; mean) / std</td><td>Statistical comparison (warns for pies: negative angles impossible)</td></tr>
+    <tr><td>Log</td><td>ln(value &minus; min + 1)</td><td>Heavy-tailed distributions</td></tr>
+  </table>
+  <p>Normalisation expressions are baked into the diagram's classified expression&mdash;no new columns are written to the source data.</p>
+</div>
+
+<h2 id="labels">6. Labels Tab</h2>
+<div class="card">
+  <h4>Expression-Driven, Formatted Feature Labels</h4>
+  <p>Four presets: Clean (subtle halo, 0.6 mm), Strong halo (1.2 mm), Bold, Plain. Formatting controls: primary field, optional second-row field (joined with <code>char(10)</code> newline), decimal places (&minus;1&ndash;6, using <code>round()</code> or <code>format_number()</code>), thousands separator (<code>format_number()</code>), prefix/suffix (<code>concat()</code>), case conversion (none / upper / lower / title), word wrap (<code>wordwrap()</code> with configurable character limit). Advanced expression mode: freeform text field for raw QGIS expressions; overrides all other formatting controls; validated before application. Live preview shows the exact expression and the first feature's evaluated value.</p>
+</div>
+
+<h2 id="dashboard">7. One-Click Explore Dashboard</h2>
+<div class="card">
+  <h4>Full Layer Analysis in One Click</h4>
+  <p>The "Explore layer" button builds a single-page interactive ECharts dashboard. Tiles (toggleable via a Tile Picker): KPI cards (row count, field count, numeric/categorical field counts, completeness %), field summary table (name, type badge, missing %, distinct count, numeric min&hellip;mean&hellip;max, categorical top value), bar charts for categorical fields (up to 4), histograms for numeric fields (up to 6, 14 bins), normalised box plots (all numeric fields on a 0&ndash;1 axis for cross-scale comparison), Pearson correlation matrix (diverging colour), strongest-correlation scatter plot with trend line (sampled to 3,000 points), and text insights (strongest correlations, field ranges, skewness with log-transform hints, outliers, near-constant fields, mostly-null fields). Identifier fields (matching patterns like <code>fid</code>, <code>id</code>, <code>gid</code>, <code>uuid</code>, <code>objectid</code>, <code>*_id</code>) are excluded.</p>
+</div>
+
+<h2 id="animation">8. Animation (Play Axis)</h2>
+<div class="card">
+  <h4>Temporal and Sequence Animation</h4>
+  <p>Available for Bar, Line, Area, Scatter, Bubble, and Pie charts when an "Animate by" field (typically year or sequence) is selected. Frames are built entirely in pure Python (<code>transform.build_frames</code>, <code>union_categories</code>, <code>align_values</code>): rows are partitioned by the animate field (numeric-aware sort), each frame uses the same chart-type transformer, stable axes guarantee each category keeps its position and colour across frames, and global numeric ranges are fixed so axes do not rescale. Bubble sizes are globally scaled once so values map to the same radius throughout. Playback speed: Slow (1600 ms/frame), Medium (900 ms), Fast (450 ms). ECharts renders as timeline with autoPlay and loop; Plotly renders as frames with slider and play/pause buttons.</p>
+</div>
+
+<h2 id="overlays">9. Reference Overlays</h2>
+<div class="card">
+  <h4>Statistical Reference Lines and Bands</h4>
+  <p>Available for Bar, Line, Area, Scatter, and Bubble charts. Computed entirely in pure Python: <strong>Mean</strong> (dashed line at mean), <strong>Median</strong> (dotted line at median), <strong>&plusmn;1&sigma; band</strong> (shaded region around mean), <strong>IQR band</strong> (Q1&ndash;Q3 shaded region), <strong>Target value</strong> (emphasis line at any user-entered value). Rendered identically across engines: ECharts via markLines/markAreas, Plotly via shapes+annotations, Vega-Lite via rule/rect layers, matplotlib via axhline/axhspan. Hidden during animation (the play axis tells its own story).</p>
+</div>
+
+<h2 id="params">10. Controls Summary</h2>
+
+<h3>Shared Data Card</h3>
+<table>
+  <tr><th>Control</th><th>Description</th></tr>
+  <tr><td>Layer combo</td><td>QgsMapLayerComboBox (vector only) or external file (CSV/XLSX/ODS/GPKG/DBF)</td></tr>
+  <tr><td>Selected features only</td><td>Checkbox: uses selection; auto-refreshes on selection change</td></tr>
+  <tr><td>Live refresh</td><td>Checkbox: re-renders on layer edit; max 100,000 rows</td></tr>
+</table>
+
+<h3>Charts Tab Controls</h3>
+<table>
+  <tr><th>Control</th><th>Description</th></tr>
+  <tr><td>Engine</td><td>ECharts / Plotly / Vega-Lite / Matplotlib</td></tr>
+  <tr><td>Chart type</td><td>17 types; unsupported types greyed per engine</td></tr>
+  <tr><td>Field bindings</td><td>X, Y, Group, Value, Animate by (context-sensitive per chart type)</td></tr>
+  <tr><td>Aggregation</td><td>Count / Sum / Mean / Median / Min / Max</td></tr>
+  <tr><td>Bins / Top-N / Sort</td><td>Context-sensitive; Top-N collapses remainder to "Other"</td></tr>
+  <tr><td>Stacked / Trend line</td><td>Checkboxes; trend = least-squares linear regression</td></tr>
+  <tr><td>Reference overlays</td><td>Mean line, median line, &plusmn;1&sigma; band, IQR band, target value</td></tr>
+  <tr><td>Theme / Palette</td><td>4 themes; 8 palettes + custom editor</td></tr>
+  <tr><td>Animation speed</td><td>Slow (1600 ms) / Medium (900 ms) / Fast (450 ms)</td></tr>
+</table>
+
+<h3>Map Diagrams Tab Controls</h3>
+<table>
+  <tr><th>Control</th><th>Description</th></tr>
+  <tr><td>Diagram type</td><td>Pie / Bar / Stacked bar / Text</td></tr>
+  <tr><td>Size (mm)</td><td>3&ndash;60 mm, default 14</td></tr>
+  <tr><td>Fields</td><td>Multi-select numeric field checkboxes</td></tr>
+  <tr><td>Normalisation</td><td>None / Min-max (0&ndash;1) / Z-score / Log</td></tr>
+  <tr><td>Apply / Remove</td><td>Sets or clears diagram renderer on the layer</td></tr>
+</table>
+
+<h3>Labels Tab Controls</h3>
+<table>
+  <tr><th>Control</th><th>Description</th></tr>
+  <tr><td>Preset</td><td>Clean / Strong halo / Bold / Plain</td></tr>
+  <tr><td>Primary / Second field</td><td>QgsFieldComboBox for each row</td></tr>
+  <tr><td>Decimals / Separator</td><td>&minus;1&ndash;6; checkbox for thousands</td></tr>
+  <tr><td>Prefix / Suffix / Case / Wrap</td><td>String entry; dropdown; spinbox for wrap chars</td></tr>
+  <tr><td>Advanced expression</td><td>Freeform QGIS expression (overrides all formatting)</td></tr>
+  <tr><td>Live preview</td><td>Shows exact expression + first feature evaluation</td></tr>
+</table>
+
+<h2 id="workflow">11. Workflow Guide</h2>
+<ol>
+  <li>Click the 02viz toolbar icon to toggle the dock.</li>
+  <li><strong>Data:</strong> Select a vector layer from the shared layer combo.</li>
+  <li><strong>Charts:</strong> Choose an engine and chart type. Bind fields (X, Y, Group, Value). Set aggregation, bins, and sort. Click <em>Render chart</em>. Click chart elements to select features on the canvas. Export as self-contained HTML, SVG, PNG, or PDF.</li>
+  <li><strong>Diagrams:</strong> Check numeric fields, choose diagram type, set size, pick normalisation mode. Click <em>Apply to layer</em>. Diagrams render on the map canvas.</li>
+  <li><strong>Labels:</strong> Choose fields, configure formatting (decimals, separator, case, wrap). Click <em>Apply to layer</em>. Labels render on the map canvas.</li>
+  <li><strong>Explore:</strong> Click the "Explore layer" button for a one-click full dashboard. Use the Tile Picker to toggle individual dashboard tiles.</li>
+  <li><strong>Animation:</strong> Select an "Animate by" field (e.g., year). The chart renders with time controls. Set playback speed.</li>
+  <li><strong>External data:</strong> Load CSV, XLSX, ODS, GPKG, or DBF via the file loader; it appears in the layer combo like any vector layer.</li>
+</ol>
+
+<h2 id="technical">12. Technical Notes</h2>
+<ul>
+  <li><strong>Pure-Python statistics (zero dependencies):</strong> All aggregation, histogram binning, Pearson correlation, KDE (Silverman bandwidth), boxplot stats (five-number summary with linear interpolation), quantile, skewness, outlier detection (Tukey 1.5&times;IQR), and min-max normalisation are implemented in pure Python with no numpy/pandas dependency.</li>
+  <li><strong>Data shaping:</strong> Group-by, pivot (category &times; series), heatmap matrix, treemap/sunburst nested hierarchies, Top-N with "Other" collapse, frame-building for animation, bubble radius sqrt-scaling, and least-squares trend line endpoints.</li>
+  <li><strong>Engine isolation:</strong> Every engine exposes only <code>build_html(spec) &rarr; str</code>. They never touch Qt. Testable in pure Python. Usable for batch export.</li>
+  <li><strong>WebView fallback chain:</strong> QtWebEngine (Chromium) &rarr; QtWebKit (legacy QWebView) &rarr; system browser. When Plotly/Vega-Lite are used on a WebKit-only QGIS build, a plain HTML/CSS explainer page shows why the panel is blank and offers solutions.</li>
+  <li><strong>Dock styling:</strong> Explicitly locked light theme with white backgrounds, dark text, and teal selection to render consistently across Qt5 (light palette) and Qt6 (dark palette).</li>
+  <li><strong>Chart presets:</strong> Version-controlled JSON in QSettings (up to 50 presets, schema v1). Validated on load; unavailable fields cleared with a report.</li>
+  <li><strong>SmartModeler bridge:</strong> v0.14.0 adds a narrow public method <code>smartmodeler_suggest_chart(layer_id)</code> for integration with SmartModeler GIS.</li>
+  <li><strong>QGIS compatibility:</strong> 3.28 through 4.99. Zero external Python dependencies. Bundled JS libraries: ECharts, Plotly.js, Vega, Vega-Lite.</li>
+</ul>
+
+<h2 id="literature">13. Literature</h2>
+<ol class="refs">
+  <li>Wilkinson, L. (2005). <em>The Grammar of Graphics</em> (2nd ed.). Springer. <a href="https://doi.org/10.1007/0-387-28695-0">DOI: 10.1007/0-387-28695-0</a></li>
+  <li>Tufte, E. R. (1983). <em>The Visual Display of Quantitative Information</em>. Graphics Press.</li>
+  <li>Satyanarayan, A., Moritz, D., Wongsuphasawat, K., &amp; Heer, J. (2017). Vega-Lite: A grammar of interactive graphics. <em>IEEE Transactions on Visualization and Computer Graphics</em>, 23(1), 341&ndash;350. <a href="https://doi.org/10.1109/TVCG.2016.2599030">DOI: 10.1109/TVCG.2016.2599030</a></li>
+  <li>Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. <em>Computing in Science &amp; Engineering</em>, 9(3), 90&ndash;95. <a href="https://doi.org/10.1109/MCSE.2007.55">DOI: 10.1109/MCSE.2007.55</a></li>
+  <li>Li, D., Mei, H., Shen, Y., Su, S., Zhang, W., Wang, J., Zu, M., &amp; Chen, W. (2018). ECharts: A declarative framework for rapid construction of web-based visualization. <em>Visual Informatics</em>, 2(2), 136&ndash;146. <a href="https://doi.org/10.1016/j.visinf.2018.04.011">DOI: 10.1016/j.visinf.2018.04.011</a></li>
+</ol>
+</main>
+<script>
+(function(){
+  var inp=document.getElementById('search');
+  var main=document.getElementById('main');
+  if(!inp||!main)return;
+  var all=main.querySelectorAll('h2,h3,p,li,td');
+  inp.addEventListener('input',function(){
+    var q=inp.value.trim().toLowerCase();
+    all.forEach(function(el){el.classList.remove('hidden');});
+    if(!q)return;
+    var sections=main.querySelectorAll('h2');
+    sections.forEach(function(h){
+      var next=h.nextElementSibling;
+      var keep=h.textContent.toLowerCase().indexOf(q)!==-1;
+      while(next && next.tagName!=='H2'){
+        if(next.textContent.toLowerCase().indexOf(q)!==-1)keep=true;
+        next=next.nextElementSibling;
+      }
+      if(!keep){
+        next=h.nextElementSibling;
+        while(next && next.tagName!=='H2'){next.classList.add('hidden');next=next.nextElementSibling;}
+        h.classList.add('hidden');
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
