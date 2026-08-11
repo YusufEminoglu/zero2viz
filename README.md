@@ -108,8 +108,8 @@ layer with a matching schema; unavailable fields are cleared and reported.
 | Charts | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
 | Charts | Render / 💡 Suggest / ✨ Explore / Export / ↗ | Render to the embedded viewer (WebEngine → WebKit → browser), one-click chart suggestion, one-click Explore dashboard, one-file HTML export, open-in-browser fallback |
 | Header | ❔ Guide | Full offline user guide with per-layer suggestions and copy-ready expression/AI-prompt recipes |
-| Map diagrams | Type / Fields / Size / **Normalize** | Native QGIS pie/bar/stacked/text diagrams on every feature; Normalize = None / Min–max (0–1) / Z-score / Log makes differently-scaled fields comparable |
-| Labels | Field / Second line / Decimals / Thousands / Prefix-Suffix / Case / Wrap / Expression / Style / Size | Formatted, multi-line, expression-driven labels via native QGIS labeling, with a live preview |
+| Map diagrams | Type / Fields / Size / Opacity / **Size by** / Avoid overlaps / **Normalize** | Native QGIS pie/bar/stacked/text diagrams on every feature; Size by scales each diagram between a small and a full-size one by a chosen field (proportional-symbol maps); Normalize = None / Min–max (0–1) / Z-score / Log makes differently-scaled fields comparable |
+| Labels | Field / Second line / Decimals / Thousands / Prefix-Suffix / Case / Wrap / Expression / Style (incl. **Chip**) / Size | Formatted, multi-line, expression-driven labels via native QGIS labeling, with a live preview |
 
 ## 🧩 Part of the PlanX ecosystem
 

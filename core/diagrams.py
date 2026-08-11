@@ -21,6 +21,7 @@ from qgis.core import (
     QgsDiagramLayerSettings,
     QgsDiagramSettings,
     QgsHistogramDiagram,
+    QgsLinearlyInterpolatedDiagramRenderer,
     QgsPieDiagram,
     QgsSingleCategoryDiagramRenderer,
     QgsTextDiagram,
@@ -105,7 +106,9 @@ def numeric_field_names(layer) -> list[str]:
 def apply_diagram(layer, *, kind: str, fields: list[str], colors: list[str],
                   size_mm: float = 14.0, opacity: float = 1.0,
                   text_color: str = "#16323f", line_color: str = "#ffffff",
-                  normalize: str = "none", stats: dict | None = None) -> bool:
+                  normalize: str = "none", stats: dict | None = None,
+                  size_field: str = "", size_range: tuple[float, float] | None = None,
+                  avoid_overlap: bool = False) -> bool:
     """Attach a diagram renderer to ``layer``. Returns True on success.
 
     ``fields`` are the numeric attributes that become slices / bars;
@@ -116,6 +119,17 @@ def apply_diagram(layer, *, kind: str, fields: list[str], colors: list[str],
     ``{field: {min, max, mean, std}}`` map computed by the dock — so fields on
     very different scales become comparable in a pie / bar instead of one
     field dwarfing the rest. ``none`` keeps the raw field values.
+
+    ``size_field`` + ``size_range`` (its ``(min, max)`` across the layer) turn
+    on classic proportional-symbol sizing: instead of every feature's diagram
+    being ``size_mm`` square, it is linearly interpolated between a small and
+    a full-size diagram by that field's value — a population or magnitude
+    field reads at a glance instead of every feature looking equally big.
+    Leave ``size_field`` empty for the previous fixed-size behaviour.
+
+    ``avoid_overlap`` lets QGIS drop lower-priority diagrams that would
+    collide on screen instead of stacking every one of them regardless of
+    space (the default, ``False``, always draws all of them).
     """
     if not fields or not layer_has_geometry(layer):
         return False
@@ -146,14 +160,26 @@ def apply_diagram(layer, *, kind: str, fields: list[str], colors: list[str],
         with suppress(Exception):
             settings.textColor = QColor(text_color)
 
-    renderer = QgsSingleCategoryDiagramRenderer()
+    if size_field and size_range and size_range[1] > size_range[0]:
+        lo_val, hi_val = size_range
+        renderer = QgsLinearlyInterpolatedDiagramRenderer()
+        renderer.setLowerValue(lo_val)
+        renderer.setUpperValue(hi_val)
+        renderer.setLowerSize(QSizeF(size_mm * 0.3, size_mm * 0.3))
+        renderer.setUpperSize(QSizeF(size_mm, size_mm))
+        renderer.setClassificationField(size_field)
+    else:
+        renderer = QgsSingleCategoryDiagramRenderer()
     renderer.setDiagram(_diagram_for(kind))
     renderer.setDiagramSettings(settings)
     layer.setDiagramRenderer(renderer)
 
     dls = QgsDiagramLayerSettings()
     dls.setPlacement(_placement_for(layer))
-    dls.setShowAllDiagrams(True)
+    dls.setShowAllDiagrams(not avoid_overlap)
+    if avoid_overlap:
+        with suppress(Exception):
+            dls.setPriority(5)
     layer.setDiagramLayerSettings(dls)
 
     layer.triggerRepaint()

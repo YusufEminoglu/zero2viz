@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from contextlib import suppress
 
+from qgis.PyQt.QtCore import QSizeF
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.core import (
     QgsPalLayerSettings,
+    QgsTextBackgroundSettings,
     QgsTextBufferSettings,
     QgsTextFormat,
     QgsVectorLayerSimpleLabeling,
@@ -26,9 +28,10 @@ PRESETS = (
     ("halo", "Strong halo"),
     ("bold", "Bold"),
     ("plain", "Plain"),
+    ("chip", "Chip (rounded badge)"),
 )
 PRESET_LABELS = dict(PRESETS)
-_HALO = {"clean": 0.6, "halo": 1.2, "bold": 0.6, "plain": 0.0}
+_HALO = {"clean": 0.6, "halo": 1.2, "bold": 0.6, "plain": 0.0, "chip": 0.0}
 
 
 def label_field_names(layer) -> list[str]:
@@ -82,6 +85,20 @@ def apply_labels(layer, *, field: str = "", expression: str = "",
         buf.setSize(halo)
         buf.setColor(QColor(halo_color))
         fmt.setBuffer(buf)
+
+    if preset == "chip":
+        bg = QgsTextBackgroundSettings()
+        bg.setEnabled(True)
+        with suppress(Exception):
+            bg.setType(QgsTextBackgroundSettings.ShapeRectangle)
+            bg.setSizeType(QgsTextBackgroundSettings.SizeBuffer)
+        bg.setSize(QSizeF(1.4, 0.8))
+        with suppress(Exception):
+            bg.setRadii(QSizeF(1.2, 1.2))
+        bg.setFillColor(QColor(halo_color))
+        bg.setStrokeColor(QColor(color).lighter(160))
+        bg.setStrokeWidth(0.2)
+        fmt.setBackground(bg)
 
     pal = QgsPalLayerSettings()
     pal.fieldName = expr if use_expr else field

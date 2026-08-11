@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.0] - 2026-08-11
+
+### Fixed
+- **Toolbar icon needed two clicks to open the studio.** `iface.addDockWidget()` already makes a freshly created dock visible, so the old toggle handler's `setVisible(not isVisible())` ran against an already-visible dock on that very first click and immediately hid it again — the user had to click the icon a second time to actually see the panel. The first click now always shows the dock; every click after that toggles normally.
+
+### Added
+- **Proportional-symbol map diagrams.** The Map diagrams tab has a new "Size by" field: pick a numeric field and every feature's diagram is linearly scaled between a small and a full-size diagram by that field's value (backed by QGIS's native `QgsLinearlyInterpolatedDiagramRenderer`), instead of every feature drawing the same fixed size — the classic proportional-symbol map. Leave it empty for the previous fixed-size behaviour.
+- **Diagram opacity control** in the Map diagrams tab (was already supported by the renderer but never exposed).
+- **Avoid overlaps** checkbox for map diagrams: lets QGIS drop diagrams that would collide instead of always drawing every one of them regardless of space.
+- **Chip label preset**: a new rounded background badge behind the label text, alongside the existing Clean / Strong halo / Bold / Plain presets.
+
 ## [0.14.4] - 2026-08-07
 
 - Added online user manual link (https://yusufeminoglu.github.io/zero2viz/) and GitHub repository star call-to-action.

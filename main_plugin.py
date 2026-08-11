@@ -90,6 +90,12 @@ class O2VizPlugin:
                                      f"Could not create the studio panel:\n{exc}")
                 self.panel_action.setChecked(False)
                 return
+            # addDockWidget() already makes a freshly created dock visible, so
+            # the very first click must not immediately toggle it back to
+            # hidden — just raise it and stop, the same click already opened it.
+            self._dock.setVisible(True)
+            self._dock.raise_()
+            return
         self._dock.setVisible(not self._dock.isVisible())
         if self._dock.isVisible():
             self._dock.raise_()

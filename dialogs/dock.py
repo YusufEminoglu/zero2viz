@@ -46,6 +46,7 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qgis.core import QgsFieldProxyModel
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
 from ..core import (
@@ -202,6 +203,14 @@ def _vector_filter():
         return QgsMapLayerProxyModel.VectorLayer
     except AttributeError:  # QGIS 4 scoped enums
         return QgsMapLayerProxyModel.Filter.VectorLayer
+
+
+def _numeric_field_filter():
+    """Scoped-enum-safe numeric filter for QgsFieldComboBox (Qt5/Qt6)."""
+    try:
+        return QgsFieldProxyModel.Numeric
+    except AttributeError:  # QGIS 4 scoped enums
+        return QgsFieldProxyModel.Filter.Numeric
 
 
 class StudioDockWidget(QDockWidget):
@@ -597,8 +606,35 @@ class StudioDockWidget(QDockWidget):
         self.diag_size_spin.setRange(3.0, 60.0)
         self.diag_size_spin.setValue(14.0)
         srow.addWidget(self.diag_size_spin)
+        srow.addWidget(QLabel("Opacity"))
+        self.diag_opacity_spin = QSpinBox()
+        self.diag_opacity_spin.setRange(10, 100)
+        self.diag_opacity_spin.setValue(100)
+        self.diag_opacity_spin.setSuffix("%")
+        srow.addWidget(self.diag_opacity_spin)
         srow.addStretch(1)
         c.addLayout(srow)
+
+        szrow = QHBoxLayout()
+        szrow.addWidget(QLabel("Size by"))
+        self.diag_size_field_combo = self._field_combo()
+        self.diag_size_field_combo.setFilters(_numeric_field_filter())
+        self.diag_size_field_combo.setToolTip(
+            "Proportional symbols: scale each feature's diagram between a small "
+            "and a full-size diagram by this field's value, so a population or "
+            "magnitude field reads at a glance instead of every feature looking "
+            "equally big. Leave empty for a fixed size.")
+        szrow.addWidget(self.diag_size_field_combo, 1)
+        c.addLayout(szrow)
+
+        orow = QHBoxLayout()
+        self.diag_avoid_overlap_check = QCheckBox("Avoid overlaps (hide crowded diagrams)")
+        self.diag_avoid_overlap_check.setToolTip(
+            "Let QGIS drop diagrams that would collide instead of always "
+            "drawing every one of them regardless of space.")
+        orow.addWidget(self.diag_avoid_overlap_check)
+        orow.addStretch(1)
+        c.addLayout(orow)
 
         nrow = QHBoxLayout()
         nrow.addWidget(QLabel("Normalize"))
@@ -754,7 +790,8 @@ class StudioDockWidget(QDockWidget):
     def _on_layer_changed(self, layer) -> None:
         for combo in (self.x_combo, self.y_combo, self.group_combo,
                       self.value_combo, self.animate_combo,
-                      self.label_field_combo, self.label_field2_combo):
+                      self.label_field_combo, self.label_field2_combo,
+                      self.diag_size_field_combo):
             combo.setLayer(layer)
         self._refresh_diagram_fields(layer)
         self._sync_diag_hint()
@@ -1071,10 +1108,15 @@ class StudioDockWidget(QDockWidget):
             return
         kind = self.diag_type_combo.currentData()
         normalize = self.diag_norm_combo.currentData()
+        size_field = self.diag_size_field_combo.currentField()
+        stats_fields = list(fields)
+        if size_field and size_field not in stats_fields:
+            stats_fields.append(size_field)
         field_stats: dict = {}
-        if normalize != "none":
+        size_range = None
+        if normalize != "none" or size_field:
             try:
-                cols = datasource.columns(layer, fields,
+                cols = datasource.columns(layer, stats_fields,
                                           self.selected_only.isChecked())
             except ValueError as exc:
                 self.set_status(str(exc))
@@ -1083,20 +1125,28 @@ class StudioDockWidget(QDockWidget):
                 st = stats.field_numeric_stats(cols[name])
                 if st:
                     field_stats[name] = st
+            if size_field:
+                st = stats.field_numeric_stats(cols[size_field])
+                if st:
+                    size_range = (st["min"], st["max"])
         ok = diagrams.apply_diagram(
             layer, kind=kind, fields=fields,
             colors=list(self._current_theme()["palette"]),
             size_mm=self.diag_size_spin.value(),
-            normalize=normalize, stats=field_stats)
+            opacity=self.diag_opacity_spin.value() / 100.0,
+            normalize=normalize, stats=field_stats,
+            size_field=size_field if size_range else "", size_range=size_range,
+            avoid_overlap=self.diag_avoid_overlap_check.isChecked())
         if not ok:
             self.set_status("Could not apply the diagram (no geometry?)")
             return
         self._refresh_canvas(layer)
         norm_txt = ("" if normalize == "none"
                     else ", " + expressions.NORMALIZE_LABELS[normalize].lower())
+        size_txt = f", sized by {size_field}" if size_field and size_range else ""
         self.set_status(
             f"Applied {diagrams.DIAGRAM_LABELS[kind].lower()} diagram "
-            f"({len(fields)} field{'s' if len(fields) != 1 else ''}{norm_txt}) "
+            f"({len(fields)} field{'s' if len(fields) != 1 else ''}{norm_txt}{size_txt}) "
             f"on the canvas")
 
     def _sync_diag_hint(self, *_args) -> None:

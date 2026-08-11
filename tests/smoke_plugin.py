@@ -183,6 +183,42 @@ def test_lifecycle(iface):
     )
 
 
+def test_toggle_shows_on_first_click(iface):
+    """The toolbar icon is a single toggle: one click must open the dock, not
+    build it and leave it hidden. ``iface.addDockWidget`` already makes a
+    freshly created dock visible, so a naive ``setVisible(not isVisible())``
+    right after creation flips it straight back to hidden on that same first
+    click, forcing the user to click twice. Regression guard for that bug."""
+    module = __import__(PACKAGE)
+    plugin = module.classFactory(iface)
+    plugin.initGui()
+    app = QgsApplication.instance()
+    # Qt widget visibility is inherited from the ancestor chain: a dock
+    # widget only reports isVisible()==True once its top-level window is
+    # actually shown too, exactly as QGIS's own main window always is by the
+    # time a plugin loads. Mirror that here, or setVisible(True) below would
+    # read back False for reasons unrelated to the toggle logic being tested.
+    iface.mainWindow().show()
+    app.processEvents()
+    try:
+        plugin.panel_action.trigger()
+        app.processEvents()
+        first_click_visible = plugin._dock is not None and plugin._dock.isVisible()
+        plugin.panel_action.trigger()
+        app.processEvents()
+        second_click_hidden = not plugin._dock.isVisible()
+        return _ok(
+            "one click opens the dock, the next closes it",
+            first_click_visible and second_click_hidden,
+            f"visible_after_1st_click={first_click_visible} "
+            f"hidden_after_2nd_click={second_click_hidden}",
+        )
+    finally:
+        plugin.unload()
+        app.sendPostedEvents()
+        app.processEvents()
+
+
 def run_all(iface):
     print("=" * 60)
     print(" zero2viz - lifecycle smoke")
@@ -193,6 +229,7 @@ def run_all(iface):
         test_icon_exists(),
         test_class_factory(),
         test_lifecycle(iface),
+        test_toggle_shows_on_first_click(iface),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)
