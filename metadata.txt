@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.15.0
+version=0.15.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.15.1 - Fixed two dock readability issues: on a short panel the content was simply squashed instead of scrolling, so lower rows in the Charts/Map diagrams/Labels tabs could become unreachable — the studio now scrolls when there is not enough height, and still stretches to fill a tall dock as before. Also fixed the active tab's label — the selected tab turned bold while the others stayed regular weight, and Qt does not re-lay-out a tab's box when only its font weight changes on selection, so the wider bold glyphs no longer fit their own tab and looked clipped/unreadable ("Map diagrams" worst of all). Every tab is now the same weight, sized to fit from the start.
     0.15.0 - Fixed the toolbar icon needing two clicks to actually open the studio: a freshly created dock is already visible, so the old toggle logic immediately flipped it back to hidden on that first click. Map diagrams gain proportional sizing (scale each feature's diagram between a small and a full-size one by a chosen field's value, for classic proportional-symbol maps), an opacity control, and an option to let crowded diagrams drop instead of always stacking every one of them. Labels gain a new Chip preset — a rounded background badge behind the text — alongside the existing halo presets.
     0.14.0 - Add an explicitly approved SmartModeler GIS bridge that selects one live project vector layer and renders 02viz's existing offline smart chart suggestion without exposing paths, URLs, expressions, exports, arbitrary methods or feature values.
     0.12.0 - Reference and statistics overlays: add horizontal guide lines and shaded bands to bar, line, area, scatter and bubble charts — the mean, the median, a target value you type, a ±1σ band and the inter-quartile (Q1–Q3) band — computed in pure Python from the plotted values and drawn identically by every engine (ECharts, Plotly, Vega-Lite and matplotlib). Turn any combination on from the Charts tab; they read the same in light and dark themes and export with the chart. Hardening: the studio no longer shells out to pip — when the optional matplotlib/seaborn engine is missing it now shows the exact install command for you to run yourself instead of running it, so the plugin stays offline and side-effect free and passes the QGIS Plugin Hub security scan cleanly.

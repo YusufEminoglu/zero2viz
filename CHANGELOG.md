@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.1] - 2026-08-12
+
+### Fixed
+- **The dock content was squashed instead of scrolling on a short panel.** Docking the studio narrow/short (or on a small screen) simply compressed every row instead of letting you reach the rest — the panel is now wrapped in a scroll area, so it still stretches to fill a tall dock exactly as before, but scrolls when there isn't enough height instead of clipping the bottom rows away.
+- **The selected tab's label looked clipped/unreadable.** `QTabBar::tab:selected` set a bolder font weight than the unselected tabs, but Qt sizes each tab's box once from its normal-weight text and does not re-lay it out on a pseudo-state change — so the wider bold glyphs of the active tab (worst on "Map diagrams") overflowed the box they were already sized for. All three tabs now use the same font weight, so the active tab is still clearly highlighted (background + colour) but never grows past its own label.
+
 ## [0.15.0] - 2026-08-11
 
 ### Fixed

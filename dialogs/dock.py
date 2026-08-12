@@ -41,6 +41,7 @@ from qgis.PyQt.QtWidgets import (
     QInputDialog,
     QPushButton,
     QPlainTextEdit,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -90,10 +91,16 @@ QLabel.o2vizCardTitle { font-weight: 600; color: #16323f; }
 QLabel#o2vizStatus { color: #5b6b73; padding: 2px; }
 QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
                    background: #ffffff; }
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 6px 15px;
-               margin-right: 2px; border-top-left-radius: 7px;
-               border-top-right-radius: 7px; }
-QTabBar::tab:selected { background: #ffffff; color: #16323f; font-weight: 600; }
+/* font-weight is fixed at 600 for BOTH states on purpose: QTabBar sizes each
+   tab once from its normal-state text metrics, so making only :selected bold
+   widens that tab's text past the box it was already sized for — Qt does not
+   re-lay-out the tab on a pseudo-state change, so the wider glyphs got
+   clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
+   constant and varying only colour/background avoids the mismatch entirely. */
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 7px 16px;
+               margin-right: 2px; font-weight: 600; min-width: 8ex;
+               border-top-left-radius: 7px; border-top-right-radius: 7px; }
+QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover { color: #16323f; }
 
 /* ── text + form labels (pinned dark so they never inherit a light palette
@@ -300,7 +307,21 @@ class StudioDockWidget(QDockWidget):
         self.status.setObjectName("o2vizStatus")
         root.addWidget(self.status)
 
-        self.setWidget(container)
+        # The dock can be far shorter than the panel's natural content height
+        # (many form rows across three tabs) — without this, QGIS simply
+        # squashes everything and the bottom rows become unreachable. Wrap
+        # the whole panel in a scroll area: widgetResizable=True still lets
+        # the tab area stretch to fill a tall dock (root's stretch factor
+        # below is honoured whenever there's spare height), but a short dock
+        # scrolls instead of clipping.
+        scroll = QScrollArea()
+        scroll.setObjectName("o2vizScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea#o2vizScroll { background: #fbfbfd; border: none; }")
+        scroll.setWidget(container)
+        self.setWidget(scroll)
         self._on_layer_changed(self.layer_combo.currentLayer())
         self._sync_engine_types()
         self._sync_controls()
