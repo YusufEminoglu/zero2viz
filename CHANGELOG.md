@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.8] - 2026-08-12
+
+### Fixed
+- **Tab labels are correctly sized on every machine, not guessed.** A second real screenshot showed "Diagrams" and "Labels" still losing their last letter to the ellipsis fallback, meaning every fixed padding value tried across 0.15.2–0.15.7 still came up short against real desktop font rendering — this project's offscreen test harness simply can't reproduce the exact metrics of a real Windows session closely enough to pin down the right constant by trial and error. Instead of another guessed number, the tab bar's minimum width is now measured at runtime from `QFontMetrics` on the actual font Qt is using on your machine, with a generous safety margin added on top — it is derived from the same measurement Qt itself uses to paint the text, so it cannot be wrong about its own labels' width regardless of font, size, or DPI. Verified against four very different test fonts/sizes to confirm the value tracks whatever is actually active rather than assuming one specific font.
+
 ## [0.15.7] - 2026-08-12
 
 ### Changed

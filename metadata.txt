@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.15.7
+version=0.15.8
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.15.8 - The tab labels (Charts/Diagrams/Labels) are sized correctly now on every machine: a second real screenshot showed "Diagrams" and "Labels" still losing their last letter to ellipsis, meaning every fixed padding number tried so far (0.15.2-0.15.7) still fell short of real desktop font rendering. Instead of guessing another number, the tab width is now measured at runtime from the actual font Qt is using on your machine, with a generous safety margin — it can no longer be wrong about its own text's width.
     0.15.7 - Tabs are noticeably bigger than their own text now, not just barely fitting. Suggest on a wide/tall layer no longer pulls every field into memory before deciding whether to sample — the field count itself is now bounded up front (the O(fields^2) scan cap alone wasn't the whole story behind the earlier crash report). Removed the toolbar's separate "About" icon; its content already lives in the Guide. The Guide now links to the online documentation site. Histogram axis labels are rounded to at most 3 decimal places instead of Python's 6-significant-figure default, which could produce long, unreadable numbers for small-magnitude fields.
     0.15.6 - Found the actual cause of the tab-label clipping, from a user screenshot: every tab was missing its first letter ("Charts"→"harts", "Diagrams"→"iagram", "Labels"→"abels"), a known Qt/Windows quirk where the native tab style's own left inset fights a custom stylesheet's padding under real Windows theming (not reproducible in this project's offscreen test harness, which is why earlier attempts missed it). Fixed with extra left padding on each tab plus a small leading space in the label text, so whatever gets eaten from the left is never a real letter.
     0.15.5 - Gave the tab strip more visible breathing room (more padding around each label, without a fixed minimum width, so tabs still shrink to fit any dock size). Suggest on a wide/tall layer now asks first: use a fast representative sample (recommended, the previous default) or scan the entire dataset. Either way the studio tells you which one it used, and offers a full re-scan when a sample was used.

@@ -19,7 +19,7 @@ import time
 from contextlib import suppress
 
 from qgis.PyQt.QtCore import Qt, QTimer, QSettings
-from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -109,9 +109,18 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    FIRST letter missing: the native tab style's own left inset fights the
    QSS one under a custom stylesheet); the extra left room, plus the
    leading space in each tab's label text (see StudioDockWidget._build_ui),
-   gives that inset something other than a real letter to eat into. */
+   gives that inset something other than a real letter to eat into.
+   min-width is filled in at runtime from THIS machine's actual measured
+   font metrics (__TAB_MIN_WIDTH__ is replaced in _build_ui, not a QSS
+   variable) — every fixed padding number tried in 0.15.2-0.15.7 fit fine
+   in this project's offscreen test harness and still fell short on a real
+   screenshot (a second real screenshot showed "Diagrams"/"Labels" eliding
+   their LAST letter this time), because real desktop font rendering keeps
+   coming out wider than anything measurable headless. Measuring with
+   QFontMetrics on the live app font removes the guesswork: whatever Qt
+   itself will use to paint the text is exactly what decided this width. */
 QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 13px 28px 13px 32px;
-               margin-right: 4px; font-weight: 600;
+               margin-right: 4px; font-weight: 600; min-width: __TAB_MIN_WIDTH__px;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover { color: #16323f; }
@@ -286,7 +295,16 @@ class StudioDockWidget(QDockWidget):
     def _build_ui(self) -> None:
         container = QWidget()
         container.setObjectName("o2vizRoot")
-        container.setStyleSheet(_DOCK_QSS)
+        # See the QTabBar::tab comment in _DOCK_QSS: size the tabs from
+        # THIS machine's actually-measured font, not a hardcoded padding
+        # guess. Bold, since font-weight:600 applies to every tab — a
+        # slightly wider (safe) estimate beats an exact-but-fragile one.
+        _tab_font = QFont(QApplication.font())
+        _tab_font.setBold(True)
+        _tab_fm = QFontMetrics(_tab_font)
+        _tab_min_w = max(_tab_fm.horizontalAdvance(t)
+                         for t in (" Charts", " Diagrams", " Labels")) + 70
+        container.setStyleSheet(_DOCK_QSS.replace("__TAB_MIN_WIDTH__", str(_tab_min_w)))
         root = QVBoxLayout(container)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
