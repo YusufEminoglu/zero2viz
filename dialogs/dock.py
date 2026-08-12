@@ -548,29 +548,16 @@ class StudioDockWidget(QDockWidget):
         self.custom_spec_edit.setVisible(False)
         form.addRow("Spec JSON", self.custom_spec_edit)
 
-        # X/Y and Group/Value paired two-up in one row each — these four
-        # field pickers are the ones most often used together, and pairing
-        # them saves two whole form rows of vertical space in an already
-        # long Chart card.
-        xy_row = QHBoxLayout()
-        xy_row.addWidget(QLabel("X / Category"))
         self.x_combo = self._field_combo()
-        xy_row.addWidget(self.x_combo, 1)
-        xy_row.addWidget(QLabel("Y"))
+        form.addRow("X / Category", self.x_combo)
         self.y_combo = self._field_combo()
-        xy_row.addWidget(self.y_combo, 1)
-        form.addRow(xy_row)
-
-        gv_row = QHBoxLayout()
-        gv_row.addWidget(QLabel("Group / Color"))
+        form.addRow("Y", self.y_combo)
         self.group_combo = self._field_combo()
         self.group_combo.setToolTip("Split into one colored series per value (or sub-group for treemap/sunburst)")
-        gv_row.addWidget(self.group_combo, 1)
-        gv_row.addWidget(QLabel("Value / Size"))
+        form.addRow("Group / Color", self.group_combo)
         self.value_combo = self._field_combo()
         self.value_combo.setToolTip("Bubble size, heatmap cell value or treemap weight")
-        gv_row.addWidget(self.value_combo, 1)
-        form.addRow(gv_row)
+        form.addRow("Value / Size", self.value_combo)
 
         self.animate_combo = self._field_combo()
         self.animate_combo.setToolTip(

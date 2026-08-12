@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.13] - 2026-08-12
+
+### Changed
+- **Reverted 0.15.11's two-column field layout in the Charts tab.** X/Category + Y and Group/Color + Value/Size are back to one field per row each, as they were before.
+
 ## [0.15.12] - 2026-08-12
 
 ### Changed
