@@ -115,7 +115,7 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    real letter to eat into. The elide-fallback set in _build_ui
    (ElideRight) is the safety net for the rare case this still isn't quite
    enough on an unusual font — a graceful "…" instead of a raw clip. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 16px 10px 20px;
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 3px 24px 3px 28px;
                margin-right: 4px; font-weight: 600;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 /* REVERTED (0.15.9 → 0.15.10): a QSS border-top accent stripe on the
@@ -508,16 +508,29 @@ class StudioDockWidget(QDockWidget):
         self.custom_spec_edit.setVisible(False)
         form.addRow("Spec JSON", self.custom_spec_edit)
 
+        # X/Y and Group/Value paired two-up in one row each — these four
+        # field pickers are the ones most often used together, and pairing
+        # them saves two whole form rows of vertical space in an already
+        # long Chart card.
+        xy_row = QHBoxLayout()
+        xy_row.addWidget(QLabel("X / Category"))
         self.x_combo = self._field_combo()
-        form.addRow("X / Category", self.x_combo)
+        xy_row.addWidget(self.x_combo, 1)
+        xy_row.addWidget(QLabel("Y"))
         self.y_combo = self._field_combo()
-        form.addRow("Y", self.y_combo)
+        xy_row.addWidget(self.y_combo, 1)
+        form.addRow(xy_row)
+
+        gv_row = QHBoxLayout()
+        gv_row.addWidget(QLabel("Group / Color"))
         self.group_combo = self._field_combo()
         self.group_combo.setToolTip("Split into one colored series per value (or sub-group for treemap/sunburst)")
-        form.addRow("Group / Color", self.group_combo)
+        gv_row.addWidget(self.group_combo, 1)
+        gv_row.addWidget(QLabel("Value / Size"))
         self.value_combo = self._field_combo()
         self.value_combo.setToolTip("Bubble size, heatmap cell value or treemap weight")
-        form.addRow("Value / Size", self.value_combo)
+        gv_row.addWidget(self.value_combo, 1)
+        form.addRow(gv_row)
 
         self.animate_combo = self._field_combo()
         self.animate_combo.setToolTip(

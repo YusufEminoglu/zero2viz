@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.15.10
+version=0.15.11
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.15.11 - Shorter, wider tabs: the tab strip's vertical padding is cut roughly in half and the horizontal padding is increased, direct feedback on how the tab row should read. The Charts tab's X/Category+Y and Group/Color+Value/Size field pickers are now paired two-up in one row each instead of four separate full-width rows, saving vertical space in an already long card.
     0.15.10 - Reverted 0.15.9's accent-stripe border on the active tab: a real screenshot showed it covering part of the tab text with a white strip instead. The active tab is shown with its background/text colour again, same as every release before 0.15.9 — no border property on this tab bar at all, since this native tab style has already shown once that it does not reliably honour a custom QSS border addition. Tab widths remain proportionate to each label (unchanged from 0.15.9).
     0.15.9 - Redesigned the tab strip: each tab is now sized to its own label instead of all three being forced to match the widest one ("Diagrams"), which had made "Charts" and "Labels" look oversized and inconsistent. The active tab is now shown with a clean teal accent stripe along its top edge, a clearer and more standard way to say "this one is open" than a size/colour difference alone.
     0.15.8 - The tab labels (Charts/Diagrams/Labels) are sized correctly now on every machine: a second real screenshot showed "Diagrams" and "Labels" still losing their last letter to ellipsis, meaning every fixed padding number tried so far (0.15.2-0.15.7) still fell short of real desktop font rendering. Instead of guessing another number, the tab width is now measured at runtime from the actual font Qt is using on your machine, with a generous safety margin — it can no longer be wrong about its own text's width.

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.11] - 2026-08-12
+
+### Changed
+- **Shorter, wider tabs.** The tab strip's vertical padding is cut roughly in half (33px → 19px tall) and the horizontal padding is increased — direct feedback on the tab row's proportions.
+- **Paired field pickers in the Charts tab.** X/Category + Y, and Group/Color + Value/Size, now sit two-up in one row each instead of four separate full-width rows, saving vertical space in an already long Chart card.
+
 ## [0.15.10] - 2026-08-12
 
 ### Fixed
