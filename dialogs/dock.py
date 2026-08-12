@@ -97,8 +97,8 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 8px 14px;
-               margin-right: 2px; font-weight: 600;
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 20px;
+               margin-right: 4px; font-weight: 600;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover { color: #16323f; }
@@ -1998,12 +1998,35 @@ class StudioDockWidget(QDockWidget):
         except Exception as exc:
             self.set_status(f"Suggest failed: {exc}")
             return
-        sug = assistant.suggest_chart(cols, fids)
+        full = False
+        if assistant.scan_would_sample(cols):
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle("Suggest — large layer")
+            box.setText(f"This layer has {len(names)} fields and "
+                       f"{len(fids):,} feature(s).")
+            box.setInformativeText(
+                "To stay responsive, Suggest normally checks a representative "
+                "sample of the fields and rows for the strongest relationship "
+                "— reliable for the recommendation, and instant. Scanning "
+                "every field against every row on a layer this size can take "
+                "a long time and use a lot of memory.")
+            sample_btn = box.addButton("Use a sample (recommended)",
+                                       QMessageBox.ButtonRole.AcceptRole)
+            full_btn = box.addButton("Scan the full dataset",
+                                     QMessageBox.ButtonRole.DestructiveRole)
+            box.setDefaultButton(sample_btn)
+            box.exec()
+            full = box.clickedButton() is full_btn
+        sug = assistant.suggest_chart(cols, fids, full=full)
         if not sug:
             self.set_status("No clear chart suggestion — try ✨ Explore for an overview")
             return
         self._apply_chart_suggestion(sug)
-        self.set_status("💡 " + sug["why"])
+        note = (" (based on a sample of the fields/rows — Suggest again and "
+               "choose “Scan the full dataset” for an exhaustive search)"
+               if sug.get("sampled") else "")
+        self.set_status("💡 " + sug["why"] + note)
         self._render()
 
     def _apply_chart_suggestion(self, sug: dict) -> None:

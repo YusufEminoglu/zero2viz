@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.5] - 2026-08-12
+
+### Changed
+- **More breathing room in the tab strip.** Each tab's padding is more generous again (without reintroducing 0.15.2's fixed minimum width, so tabs still shrink to fit any dock size instead of running off the edge).
+- **Suggest asks first on a wide or tall layer.** If the layer has enough numeric fields or rows that the correlation search would otherwise be limited to a sample, Suggest now shows a short dialog: use a fast representative sample (recommended — the previous, silent default) or scan the entire dataset, with a plain-language note about what that trade-off means. Either way, the result now says which one was used, and a sampled result invites you to Suggest again and choose the full scan.
+
 ## [0.15.4] - 2026-08-12
 
 ### Fixed

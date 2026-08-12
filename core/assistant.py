@@ -86,30 +86,58 @@ def _label_candidate(cols: dict, kinds: dict) -> str | None:
     return max(text_fields)[1]
 
 
-def suggest_chart(cols: dict, fids: list | None = None) -> dict | None:
+def scan_would_sample(cols: dict) -> bool:
+    """True if :func:`suggest_chart`'s default (``full=False``) correlation
+    scan would use fewer fields/rows than the layer actually has — lets the
+    dock warn and offer a full-dataset re-scan before it happens, rather
+    than silently narrowing the search."""
+    kinds = _kinds(cols)
+    num = [n for n, k in kinds.items() if k == "numeric"]
+    if len(num) < 2:
+        return False
+    rows = len(cols[num[0]]) if num else 0
+    return len(num) > _CORR_FIELD_CAP or rows > _CORR_SAMPLE_CAP
+
+
+def suggest_chart(cols: dict, fids: list | None = None, *, full: bool = False) -> dict | None:
     """The single most insightful chart for these fields, as a config the dock
     can drop straight into its controls.
 
-    → ``{type, x, y, group, value, agg, title, why}`` or ``None``.
+    → ``{type, x, y, group, value, agg, title, why, sampled}`` or ``None``.
+    ``sampled`` is True when the correlation search (see module docstring)
+    used a bounded subset of fields/rows rather than the whole layer; pass
+    ``full=True`` to scan everything regardless of size (the dock only does
+    this after the user explicitly confirms — see :func:`scan_would_sample`).
     """
     kinds = _kinds(cols)
     num = [n for n, k in kinds.items() if k == "numeric"]
     cat = [n for n, k in kinds.items() if k == "categorical"]
 
+    # Whether the correlation scan below (if it runs) will be limited to a
+    # subset of fields/rows — tracked once so EVERY branch's return value
+    # (not just a winning scatter) can honestly say a fuller search was
+    # possible, even when the capped scan finds nothing above threshold and
+    # the assistant falls back to a category/histogram suggestion instead.
+    was_sampled = (not full) and scan_would_sample(cols)
+
     # 1) two numerics that move together → scatter with a trend line
     if len(num) >= 2:
-        scan = num[:_CORR_FIELD_CAP]
-        sampled = {name: _sample(cols[name], _CORR_SAMPLE_CAP) for name in scan}
+        if full:
+            scan = num
+            sampled_cols = {name: cols[name] for name in scan}
+        else:
+            scan = num[:_CORR_FIELD_CAP]
+            sampled_cols = {name: _sample(cols[name], _CORR_SAMPLE_CAP) for name in scan}
         best, best_r = None, 0.0
         for i in range(len(scan)):
             for j in range(i + 1, len(scan)):
-                r = stats.pearson(sampled[scan[i]], sampled[scan[j]])
+                r = stats.pearson(sampled_cols[scan[i]], sampled_cols[scan[j]])
                 if r is not None and abs(r) > abs(best_r):
                     best, best_r = (scan[i], scan[j]), r
         if best and abs(best_r) >= 0.4:
             a, b = best
             return {"type": "scatter", "x": a, "y": b, "group": "", "value": "",
-                    "agg": "none", "trend": True,
+                    "agg": "none", "trend": True, "sampled": was_sampled,
                     "title": f"{a} vs {b}",
                     "why": f"{a} and {b} are the most correlated pair "
                            f"(r = {best_r:.2f}) — a scatter with a trend line "
@@ -120,7 +148,7 @@ def suggest_chart(cols: dict, fids: list | None = None) -> dict | None:
     if gcat and num:
         y = num[0]
         return {"type": "bar", "x": gcat, "y": y, "group": "", "value": "",
-                "agg": "mean", "trend": False,
+                "agg": "mean", "trend": False, "sampled": was_sampled,
                 "title": f"mean {y} by {gcat}",
                 "why": f"Comparing the average {y} across {gcat} groups is a "
                        f"clear first read of the data."}
@@ -128,7 +156,7 @@ def suggest_chart(cols: dict, fids: list | None = None) -> dict | None:
     # 3) just a category → count bar chart
     if gcat:
         return {"type": "bar", "x": gcat, "y": "", "group": "", "value": "",
-                "agg": "count", "trend": False,
+                "agg": "count", "trend": False, "sampled": was_sampled,
                 "title": f"{gcat} counts",
                 "why": f"{gcat} is your most informative category — count its "
                        f"values to see the distribution."}
@@ -137,7 +165,7 @@ def suggest_chart(cols: dict, fids: list | None = None) -> dict | None:
     if num:
         x = num[0]
         return {"type": "histogram", "x": x, "y": "", "group": "", "value": "",
-                "agg": "none", "trend": False,
+                "agg": "none", "trend": False, "sampled": was_sampled,
                 "title": f"{x} distribution",
                 "why": f"A histogram reveals the shape and spread of {x}."}
     return None
