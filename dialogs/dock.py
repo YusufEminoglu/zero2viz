@@ -97,8 +97,8 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 7px 16px;
-               margin-right: 2px; font-weight: 600; min-width: 8ex;
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 9px 20px;
+               margin-right: 2px; font-weight: 600; min-width: 12ex;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover { color: #16323f; }
@@ -157,6 +157,15 @@ _RENDER_BTN_QSS = (
     " color: #ffffff; font-weight: 600; padding: 7px 14px; border-radius: 8px; }"
     "QPushButton:hover { background-color: #319c91; }"
     "QPushButton:disabled { background-color: #a9c8c4; border-color: #a9c8c4; }"
+)
+# the single most-clicked action in the whole studio gets its own accent — a
+# soft "yavru ağzı" (salmon) stroke around the same teal fill, so it reads as
+# the primary action at a glance without changing its familiar colour
+_RENDER_CHART_BTN_QSS = (
+    "QPushButton { background-color: #2a8f85; border: 2px solid #f2a488;"
+    " color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 8px; }"
+    "QPushButton:hover { background-color: #319c91; border-color: #f6bda8; }"
+    "QPushButton:disabled { background-color: #a9c8c4; border-color: #e4c6bb; }"
 )
 
 CHART_TYPES = [
@@ -293,6 +302,10 @@ class StudioDockWidget(QDockWidget):
         root.addWidget(self._build_data_card())
 
         self.tabs = QTabWidget()
+        # stretch the 3 tabs to fill the whole ribbon width instead of only
+        # their own text + padding, so the busiest label ("Map diagrams")
+        # gets real breathing room whatever the dock's width happens to be
+        self.tabs.tabBar().setExpanding(True)
         for page, label in ((self._build_charts_tab(), "Charts"),
                             (self._build_diagrams_tab(), "Map diagrams"),
                             (self._build_labels_tab(), "Labels")):
@@ -528,7 +541,7 @@ class StudioDockWidget(QDockWidget):
 
         btn_row = QHBoxLayout()
         self.render_btn = QPushButton("Render chart")
-        self.render_btn.setStyleSheet(_RENDER_BTN_QSS)
+        self.render_btn.setStyleSheet(_RENDER_CHART_BTN_QSS)
         self.render_btn.clicked.connect(self._render)
         btn_row.addWidget(self.render_btn, 2)
         self.suggest_btn = QPushButton("💡 Suggest")

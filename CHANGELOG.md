@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.2] - 2026-08-12
+
+### Changed
+- **The tab ribbon (Charts / Map diagrams / Labels) now fills its full width.** Each tab used to be sized only to its own text plus a little padding; the three now stretch evenly to use the whole row, so the longest label ("Map diagrams") gets generous room instead of a tight fit.
+- **Render chart gets a visual accent.** The button carries a soft salmon ("yavru ağzı") stroke around its usual teal fill, so the studio's single most-used action stands out from the row of export/suggest buttons around it.
+
 ## [0.15.1] - 2026-08-12
 
 ### Fixed
