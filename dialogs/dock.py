@@ -97,8 +97,8 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 9px 20px;
-               margin-right: 2px; font-weight: 600; min-width: 12ex;
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 22px;
+               margin-right: 2px; font-weight: 600; min-width: 13ex;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover { color: #16323f; }
@@ -303,11 +303,22 @@ class StudioDockWidget(QDockWidget):
 
         self.tabs = QTabWidget()
         # stretch the 3 tabs to fill the whole ribbon width instead of only
-        # their own text + padding, so the busiest label ("Map diagrams")
-        # gets real breathing room whatever the dock's width happens to be
-        self.tabs.tabBar().setExpanding(True)
+        # their own text + padding, so the busiest label gets real breathing
+        # room whatever the dock's width happens to be; still set an elide
+        # fallback ("…") rather than a silent hard pixel-clip on a genuinely
+        # narrow dock (real desktop fonts can render wider than expected)
+        tabbar = self.tabs.tabBar()
+        tabbar.setExpanding(True)
+        with suppress(Exception):
+            tabbar.setElideMode(Qt.TextElideMode.ElideRight)
+        # "Map diagrams" was still the tightest label at real desktop font
+        # metrics even after widening the ribbon — "Diagrams" alone reads
+        # just as clearly in a tab next to "Charts" and "Labels", and a
+        # shorter string is the only fit that is guaranteed regardless of
+        # the dock's width or the host's font (the tab's own card title
+        # inside still says "Map diagrams — on canvas" in full)
         for page, label in ((self._build_charts_tab(), "Charts"),
-                            (self._build_diagrams_tab(), "Map diagrams"),
+                            (self._build_diagrams_tab(), "Diagrams"),
                             (self._build_labels_tab(), "Labels")):
             # pin a light page background so a dark host *stylesheet* (e.g. a
             # Night-Mapping UI theme that sets QWidget{background:dark}) can't

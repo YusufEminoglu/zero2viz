@@ -154,7 +154,7 @@ def suggestions(cols: dict, *, has_geometry: bool = True,
                 "why": f"{big} is ~{ratio:,.0f}× the scale of {small}; raw pie "
                        f"slices or bars would be unreadable. Min–max (0–1) makes "
                        f"them comparable on every feature.",
-                "how": "Map diagrams tab → tick the fields → Normalize = "
+                "how": "Diagrams tab → tick the fields → Normalize = "
                        "Min–max (0–1) → Apply to layer."})
         elif num:
             out.append({
@@ -162,7 +162,7 @@ def suggestions(cols: dict, *, has_geometry: bool = True,
                 "title": f"Map diagram comparing {', '.join(num[:3])}",
                 "why": "Draw a small chart on every feature to compare these "
                        "measures in place on the map.",
-                "how": "Map diagrams tab → tick fields → Apply (use Z-score or "
+                "how": "Diagrams tab → tick fields → Apply (use Z-score or "
                        "Log if the scales differ)."})
 
     # labels: a name + an optional rounded value on a second line

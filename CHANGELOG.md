@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.3] - 2026-08-12
+
+### Changed
+- **The Map diagrams tab is now labelled "Diagrams" in the tab strip.** Even with 0.15.2's wider, evenly-shared ribbon, the full "Map diagrams" label could still run tight against real desktop font metrics on a narrower dock. A shorter label removes the dependency on exact dock width or font rendering entirely — the tab's own card and the guide still say "Map diagrams" in full. A text-elide fallback ("…") is also set, so any future overflow degrades gracefully instead of silently clipping.
+
 ## [0.15.2] - 2026-08-12
 
 ### Changed

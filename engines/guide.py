@@ -265,7 +265,7 @@ so you can choose a replacement without a failed render.</p>
 </section>
 
 <section id="diagrams"><h2><span class="n">5</span>Map diagrams (on the canvas)</h2>
-<p>The <b>Map diagrams</b> tab draws a small <b>pie / bar / stacked / text</b> diagram on
+<p>The <b>Diagrams</b> tab draws a small <b>pie / bar / stacked / text</b> diagram on
 <i>every feature</i>, directly on the map, using native QGIS rendering — so it prints,
 exports to layouts and follows the layer like any symbology.</p>
 <ol>
