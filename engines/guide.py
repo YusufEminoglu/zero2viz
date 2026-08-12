@@ -29,6 +29,8 @@ nav .brand b{color:#2a8f85}
 nav .tag{color:#6b7a82;font-size:12px;margin:2px 0 16px}
 nav a{display:block;color:#46555d;padding:5px 10px;border-radius:7px;font-size:13.5px}
 nav a:hover{background:#e2e9ed;text-decoration:none}
+nav a.docs{margin:2px 0 14px;background:#eaf5f3;color:#16746a;font-weight:600}
+nav a.docs:hover{background:#dcefec}
 main{flex:1;background:#ffffff;border-left:1px solid #dde4e8;min-height:100vh;
   padding:30px 40px 64px}
 header.hero{border-bottom:1px solid #e7ecef;padding-bottom:18px;margin-bottom:8px}
@@ -130,6 +132,7 @@ def build_guide_html(suggestions: list | None = None,
 <nav>
   <div class="brand"><b>02</b>viz</div>
   <div class="tag">Geospatial Visualization Studio</div>
+  <a class="docs" href="https://yusufeminoglu.github.io/zero2viz/" target="_blank">🌐 Online docs &amp; manual</a>
   {foryou_link}
   {toc}
 </nav>

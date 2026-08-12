@@ -71,6 +71,22 @@ def aggregate(xs: list, ys: list, how: str) -> tuple[list[str], list[float]]:
     return order, values
 
 
+def _bin_label(v: float) -> str:
+    """Readable bin-edge text: at most 3 decimals, no trailing zeros, comma
+    thousands, and no decimals at all once the value is already in the
+    thousands (a population count doesn't need cent-level precision).
+    ``:g``'s significant-figure rule was the actual culprit behind
+    unreadable histogram axes — for a small-magnitude value (a 0-1 ratio,
+    say) 6 significant figures is 6+ decimal places, not 3."""
+    if abs(v) >= 1000:
+        return f"{round(v):,}"
+    r = round(v, 3)
+    if r == int(r):
+        return f"{int(r):,}"
+    s = f"{r:,.3f}".rstrip("0")
+    return s[:-1] if s.endswith(".") else s
+
+
 def histogram(values: list, bins: int = 20) -> tuple[list[str], list[int]]:
     """Equal-width binning. Returns (labels, counts); empty input → ([], [])."""
     nums = sorted(v for v in (to_float(x) for x in values) if v is not None)
@@ -78,14 +94,15 @@ def histogram(values: list, bins: int = 20) -> tuple[list[str], list[int]]:
         return [], []
     lo, hi = nums[0], nums[-1]
     if lo == hi:
-        return [f"{lo:g}"], [len(nums)]
+        return [_bin_label(lo)], [len(nums)]
     bins = max(1, int(bins))
     width = (hi - lo) / bins
     counts = [0] * bins
     for v in nums:
         i = min(int((v - lo) / width), bins - 1)
         counts[i] += 1
-    labels = [f"{lo + i * width:g}–{lo + (i + 1) * width:g}" for i in range(bins)]
+    labels = [f"{_bin_label(lo + i * width)}–{_bin_label(lo + (i + 1) * width)}"
+             for i in range(bins)]
     return labels, counts
 
 

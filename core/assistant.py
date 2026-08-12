@@ -86,6 +86,14 @@ def _label_candidate(cols: dict, kinds: dict) -> str | None:
     return max(text_fields)[1]
 
 
+def would_sample(numeric_field_count: int, row_count: int) -> bool:
+    """True if a correlation scan over this many numeric fields/rows would
+    exceed the default caps — usable from field/row counts alone (e.g. the
+    dock's own cheap layer metadata, before pulling any data), not just an
+    already-pulled ``cols`` dict. See :func:`scan_would_sample`."""
+    return numeric_field_count > _CORR_FIELD_CAP or row_count > _CORR_SAMPLE_CAP
+
+
 def scan_would_sample(cols: dict) -> bool:
     """True if :func:`suggest_chart`'s default (``full=False``) correlation
     scan would use fewer fields/rows than the layer actually has — lets the
@@ -96,7 +104,7 @@ def scan_would_sample(cols: dict) -> bool:
     if len(num) < 2:
         return False
     rows = len(cols[num[0]]) if num else 0
-    return len(num) > _CORR_FIELD_CAP or rows > _CORR_SAMPLE_CAP
+    return would_sample(len(num), rows)
 
 
 def suggest_chart(cols: dict, fids: list | None = None, *, full: bool = False) -> dict | None:

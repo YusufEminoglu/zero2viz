@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.7] - 2026-08-12
+
+### Changed
+- **Tabs are noticeably bigger than their own text**, not just barely fitting it.
+- **Removed the toolbar's separate "About" icon.** Its content already lives in the dock's own Guide — a second icon was pure redundancy.
+- **The Guide now links to the online documentation site** (a small "🌐 Online docs & manual" link in its sidebar, always visible while scrolling).
+- **Histogram axis labels are rounded** to at most 3 decimal places instead of Python's default 6-significant-figure formatting, which could produce long, unreadable numbers for small-magnitude fields (a 0–1 ratio field, for instance) and made the chart hard to read.
+
+### Fixed
+- **Suggest on a wide/tall layer no longer pulls every field into memory before even deciding whether to sample.** The 0.15.4 fix bounded the O(fields²·rows) correlation *scan*, but a report of the crash recurring twice more showed that wasn't the whole story: pulling every column of a genuinely wide grid/zonal-statistics layer into Python for up to 100,000 rows was itself heavy enough to strain memory, before any analysis began. The field count is now checked from cheap layer metadata and bounded up front — 60 numeric fields by default, 300 if you explicitly choose "Scan the full dataset" — independent of, and in addition to, the existing scan cap.
+
 ## [0.15.6] - 2026-08-12
 
 ### Fixed

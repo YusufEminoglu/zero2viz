@@ -70,6 +70,13 @@ CUSTOM_PALETTE_LABEL = "Custom…"
 
 PRESET_SETTINGS_KEY = "zero2viz/chart_presets"
 
+# 💡 Suggest: how many numeric fields it will ever pull into Python for one
+# click, independent of core.assistant's O(fields^2) scan cap — a wide
+# grid/zonal-stats layer's raw field*row pull is itself heavy enough to
+# strain memory before any analysis even starts.
+_SUGGEST_FIELD_CAP = 60
+_SUGGEST_FULL_FIELD_CAP = 300  # after the user explicitly asks for a full scan
+
 # The studio has its own light visual identity (light root, white cards). On
 # QGIS 3 (Qt5) the host palette is light too, so unstyled child widgets looked
 # fine by accident. On QGIS 4 (Qt6) the host palette is often dark: every
@@ -97,13 +104,13 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-/* left padding is bigger than the right on purpose — a real Windows
-   screenshot showed every tab's FIRST letter missing (the native tab
-   style's own left inset fights the QSS one under a custom stylesheet);
-   the extra left room, plus the leading space in each tab's label text
-   (see StudioDockWidget._build_ui), gives that inset something other
-   than a real letter to eat into. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 20px 10px 26px;
+/* generously bigger than the text needs on every side, on purpose — left
+   padding still leads right (a real Windows screenshot showed every tab's
+   FIRST letter missing: the native tab style's own left inset fights the
+   QSS one under a custom stylesheet); the extra left room, plus the
+   leading space in each tab's label text (see StudioDockWidget._build_ui),
+   gives that inset something other than a real letter to eat into. */
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 13px 28px 13px 32px;
                margin-right: 4px; font-weight: 600;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
@@ -2017,20 +2024,25 @@ class StudioDockWidget(QDockWidget):
         if layer is None:
             self.set_status("Pick a layer first")
             return
-        try:
-            names = [f.name() for f in layer.fields()]
-            cols, fids = datasource.columns_with_ids(
-                layer, names, self.selected_only.isChecked())
-        except Exception as exc:
-            self.set_status(f"Suggest failed: {exc}")
-            return
+        # Cheap layer metadata only — no feature iteration yet — so the
+        # decision below (and the field cap it drives) happens BEFORE any
+        # data is pulled. Reported crash: even with the O(fields^2)
+        # correlation scan bounded (core/assistant.py), pulling EVERY field
+        # of a wide grid/zonal-stats layer into Python for up to 100k rows
+        # is itself heavy enough to strain memory — the scan cap alone
+        # wasn't the whole story.
+        all_fields = layer.fields()
+        numeric_names = [f.name() for f in all_fields if f.isNumeric()]
+        other_names = [f.name() for f in all_fields if not f.isNumeric()]
+        row_estimate = (len(layer.selectedFeatureIds())
+                        if self.selected_only.isChecked() else layer.featureCount())
         full = False
-        if assistant.scan_would_sample(cols):
+        if assistant.would_sample(len(numeric_names), row_estimate):
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Question)
             box.setWindowTitle("Suggest — large layer")
-            box.setText(f"This layer has {len(names)} fields and "
-                       f"{len(fids):,} feature(s).")
+            box.setText(f"This layer has {len(numeric_names)} numeric "
+                       f"field(s) and about {row_estimate:,} feature(s).")
             box.setInformativeText(
                 "To stay responsive, Suggest normally checks a representative "
                 "sample of the fields and rows for the strongest relationship "
@@ -2044,6 +2056,18 @@ class StudioDockWidget(QDockWidget):
             box.setDefaultButton(sample_btn)
             box.exec()
             full = box.clickedButton() is full_btn
+        # Bound the raw pull itself regardless of the choice above — "full
+        # scan" means "don't sub-sample the rows/fields we DID pull", not
+        # "pull literally every field of a 1000-column layer"; that upper
+        # bound (300) is generous enough to never matter on a real layer.
+        field_cap = _SUGGEST_FULL_FIELD_CAP if full else _SUGGEST_FIELD_CAP
+        names = numeric_names[:field_cap] + other_names[:20]
+        try:
+            cols, fids = datasource.columns_with_ids(
+                layer, names, self.selected_only.isChecked())
+        except Exception as exc:
+            self.set_status(f"Suggest failed: {exc}")
+            return
         sug = assistant.suggest_chart(cols, fids, full=full)
         if not sug:
             self.set_status("No clear chart suggestion — try ✨ Explore for an overview")

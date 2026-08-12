@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.15.6
+version=0.15.7
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.15.7 - Tabs are noticeably bigger than their own text now, not just barely fitting. Suggest on a wide/tall layer no longer pulls every field into memory before deciding whether to sample — the field count itself is now bounded up front (the O(fields^2) scan cap alone wasn't the whole story behind the earlier crash report). Removed the toolbar's separate "About" icon; its content already lives in the Guide. The Guide now links to the online documentation site. Histogram axis labels are rounded to at most 3 decimal places instead of Python's 6-significant-figure default, which could produce long, unreadable numbers for small-magnitude fields.
     0.15.6 - Found the actual cause of the tab-label clipping, from a user screenshot: every tab was missing its first letter ("Charts"→"harts", "Diagrams"→"iagram", "Labels"→"abels"), a known Qt/Windows quirk where the native tab style's own left inset fights a custom stylesheet's padding under real Windows theming (not reproducible in this project's offscreen test harness, which is why earlier attempts missed it). Fixed with extra left padding on each tab plus a small leading space in the label text, so whatever gets eaten from the left is never a real letter.
     0.15.5 - Gave the tab strip more visible breathing room (more padding around each label, without a fixed minimum width, so tabs still shrink to fit any dock size). Suggest on a wide/tall layer now asks first: use a fast representative sample (recommended, the previous default) or scan the entire dataset. Either way the studio tells you which one it used, and offers a full re-scan when a sample was used.
     0.15.4 - Fixed a real regression from 0.15.2/0.15.3: forcing the tab strip to expand and stay at a fixed minimum width meant it held that size even on a dock too narrow to show it, and with the panel's horizontal scrollbar disabled the overflow simply ran off the edge — worse than the original clipping. Tabs are back to their natural, always-fit size with a graceful fallback, and the panel's horizontal scrollbar now shows when something genuinely needs it, so nothing can go silently unreachable again. Also fixed the actual driver of an oversized panel: two tab intro sentences (Map diagrams and Labels) were missing word-wrap and were forcing the whole studio more than 1000px wide on their own. Fixed a real crash/hang risk in 💡 Suggest: scanning every pair of numeric fields for the strongest correlation is quadratic in field count — harmless on a normal layer, but a grid/zonal-statistics layer with dozens of derived numeric columns and up to 100,000 rows could turn that into hundreds of millions of operations on the UI thread. The scan is now bounded to a sample of rows and the first 40 numeric fields, so Suggest stays fast and safe regardless of how wide or tall the layer is.

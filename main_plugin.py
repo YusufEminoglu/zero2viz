@@ -49,11 +49,6 @@ class O2VizPlugin:
             checkable=True,
             status_tip="Open or close the 02viz visualization studio",
         )
-        self._add_action(
-            ":/images/themes/default/mActionHelpContents.svg",
-            "About",
-            self._show_about,
-        )
 
     def unload(self) -> None:
         if self._dock:
@@ -137,17 +132,3 @@ class O2VizPlugin:
             self.toolbar.addAction(action)
         self.actions.append(action)
         return action
-
-    def _show_about(self) -> None:
-        QMessageBox.about(
-            self.iface.mainWindow(),
-            PLUGIN_TITLE,
-            "<h3>02viz · Zero2Visual</h3>"
-            "<p><i>From zero to elegant visuals — fast.</i></p>"
-            "<p>Geospatial Visualization Studio — charts, on-canvas diagrams "
-            "and labels from QGIS layers and external data.</p>"
-            "<p>Open the <b>❔ Guide</b> in the studio dock for a full, offline "
-            "walk-through of every feature.</p>"
-            "<p><a href='https://github.com/YusufEminoglu/zero2viz'>"
-            "github.com/YusufEminoglu/zero2viz</a></p>",
-        )

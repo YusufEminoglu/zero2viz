@@ -183,6 +183,26 @@ def test_lifecycle(iface):
     )
 
 
+def test_only_the_toggle_icon(iface):
+    """The toolbar has exactly one action: the panel toggle. The old
+    "About" icon was removed — its content already lives in the dock's own
+    Guide, so a second toolbar icon was pure redundancy."""
+    module = __import__(PACKAGE)
+    plugin = module.classFactory(iface)
+    plugin.initGui()
+    try:
+        labels = [a.text() for a in plugin.actions]
+        return _ok(
+            "toolbar has exactly one action (the toggle, no About)",
+            labels == ["02viz Studio"], f"actions={labels}",
+        )
+    finally:
+        plugin.unload()
+        app = QgsApplication.instance()
+        app.sendPostedEvents()
+        app.processEvents()
+
+
 def test_toggle_shows_on_first_click(iface):
     """The toolbar icon is a single toggle: one click must open the dock, not
     build it and leave it hidden. ``iface.addDockWidget`` already makes a
@@ -229,6 +249,7 @@ def run_all(iface):
         test_icon_exists(),
         test_class_factory(),
         test_lifecycle(iface),
+        test_only_the_toggle_icon(iface),
         test_toggle_shows_on_first_click(iface),
     ]
     passed = sum(1 for r in results if r)
