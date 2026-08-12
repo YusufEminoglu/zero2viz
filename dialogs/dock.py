@@ -97,8 +97,8 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 22px;
-               margin-right: 2px; font-weight: 600; min-width: 13ex;
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 8px 14px;
+               margin-right: 2px; font-weight: 600;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover { color: #16323f; }
@@ -302,21 +302,25 @@ class StudioDockWidget(QDockWidget):
         root.addWidget(self._build_data_card())
 
         self.tabs = QTabWidget()
-        # stretch the 3 tabs to fill the whole ribbon width instead of only
-        # their own text + padding, so the busiest label gets real breathing
-        # room whatever the dock's width happens to be; still set an elide
-        # fallback ("…") rather than a silent hard pixel-clip on a genuinely
-        # narrow dock (real desktop fonts can render wider than expected)
+        # Each tab is sized to its own (short) text — do NOT force expanding
+        # or a minimum width here: a forced minimum cannot shrink on a
+        # narrow dock, and with expanding on, Qt held the whole bar at that
+        # forced size regardless of the dock's actual width (verified: bar
+        # width stayed fixed from 140px to 360px), so the excess silently
+        # ran off the edge — a hard mid-glyph clip, worse than the original
+        # bug. Left at Qt's default: `usesScrollButtons` is already on for
+        # this style, so if the 3 short tabs genuinely don't fit, small
+        # arrows let you reach the rest instead of any tab ever being
+        # rendered smaller than its own text. ElideRight is still set as a
+        # last-resort fallback so any edge case degrades to "…", never a
+        # raw pixel clip.
         tabbar = self.tabs.tabBar()
-        tabbar.setExpanding(True)
         with suppress(Exception):
             tabbar.setElideMode(Qt.TextElideMode.ElideRight)
-        # "Map diagrams" was still the tightest label at real desktop font
-        # metrics even after widening the ribbon — "Diagrams" alone reads
-        # just as clearly in a tab next to "Charts" and "Labels", and a
-        # shorter string is the only fit that is guaranteed regardless of
-        # the dock's width or the host's font (the tab's own card title
-        # inside still says "Map diagrams — on canvas" in full)
+        # "Map diagrams" ran tight against real desktop font metrics on a
+        # narrow dock — "Diagrams" alone reads just as clearly next to
+        # "Charts" and "Labels" (the tab's own card title inside still says
+        # "Map diagrams — on canvas" in full)
         for page, label in ((self._build_charts_tab(), "Charts"),
                             (self._build_diagrams_tab(), "Diagrams"),
                             (self._build_labels_tab(), "Labels")):
@@ -342,7 +346,12 @@ class StudioDockWidget(QDockWidget):
         scroll.setObjectName("o2vizScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # AsNeeded, not AlwaysOff: widgetResizable=True does not shrink a
+        # child below its own minimum-size-hint, so if anything inside ever
+        # needs more width than a narrow dock offers (verified for the tab
+        # bar; possible for other rows too), disabling this would make that
+        # excess silently unreachable rather than a click-and-drag away.
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("QScrollArea#o2vizScroll { background: #fbfbfd; border: none; }")
         scroll.setWidget(container)
         self.setWidget(scroll)
@@ -616,6 +625,7 @@ class StudioDockWidget(QDockWidget):
             "Pick a layer, choose a chart type and hit Render."
         )
         self._view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._view_placeholder.setWordWrap(True)
         self._view_placeholder.setStyleSheet("color: #8d99ae; padding: 22px;")
         self._view_slot.addWidget(self._view_placeholder)
         outer.addLayout(self._view_slot, 1)
@@ -629,9 +639,11 @@ class StudioDockWidget(QDockWidget):
         outer.setContentsMargins(0, 8, 0, 0)
         outer.setSpacing(8)
         card, c = self._card("Map diagrams — on canvas")
-        c.addWidget(QLabel(
+        diag_intro = QLabel(
             "Draw a diagram on every feature, on the map canvas, "
-            "coloured with the studio palette."))
+            "coloured with the studio palette.")
+        diag_intro.setWordWrap(True)
+        c.addWidget(diag_intro)
         trow = QHBoxLayout()
         trow.addWidget(QLabel("Type"))
         self.diag_type_combo = QComboBox()
@@ -722,9 +734,11 @@ class StudioDockWidget(QDockWidget):
         outer.setContentsMargins(0, 8, 0, 0)
         outer.setSpacing(8)
         card, c = self._card("Labels — format, round & multi-line")
-        c.addWidget(QLabel(
+        label_intro = QLabel(
             "Turn fields into well-placed labels — round numbers, stack a second "
-            "line, add units, or write your own expression."))
+            "line, add units, or write your own expression.")
+        label_intro.setWordWrap(True)
+        c.addWidget(label_intro)
         form = QFormLayout()
         form.setHorizontalSpacing(8)
         form.setVerticalSpacing(6)

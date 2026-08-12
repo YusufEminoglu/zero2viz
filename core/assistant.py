@@ -12,9 +12,41 @@ from __future__ import annotations
 
 from . import expressions, fields, stats, transform
 
+# The "most correlated pair" scan below is O(fields^2 * rows): a plain
+# vector/CSV layer has a handful of numeric fields, but a grid / zonal-stats
+# layer routinely carries dozens to hundreds of derived numeric columns over
+# up to datasource.MAX_ROWS (100k) rows — uncapped, that is easily hundreds
+# of millions of pure-Python operations run synchronously on the UI thread,
+# which reads to the user as QGIS freezing or being killed outright rather
+# than a slow Suggest. Bound both dimensions: only the first
+# _CORR_FIELD_CAP numeric fields enter the pairwise scan, and each pair's
+# correlation is computed over an evenly-spaced sample of at most
+# _CORR_SAMPLE_CAP rows — plenty to find a strong linear relationship,
+# nowhere near enough to hang the app.
+_CORR_FIELD_CAP = 40
+_CORR_SAMPLE_CAP = 5000
+# classify() also scans every value of every field just to tell numeric from
+# categorical from noise — same F*N cost, same fix: a sample is enough to
+# call the type with high confidence.
+_CLASSIFY_SAMPLE_CAP = 10_000
+
+
+def _sample_indices(n: int, cap: int) -> list[int]:
+    if n <= cap:
+        return list(range(n))
+    step = n / cap
+    return [int(i * step) for i in range(cap)]
+
+
+def _sample(values: list, cap: int) -> list:
+    if len(values) <= cap:
+        return values
+    return [values[i] for i in _sample_indices(len(values), cap)]
+
 
 def _kinds(cols: dict) -> dict:
-    return {name: ("id" if fields.is_id_name(name) else fields.classify(values))
+    return {name: ("id" if fields.is_id_name(name)
+                   else fields.classify(_sample(values, _CLASSIFY_SAMPLE_CAP)))
             for name, values in cols.items()}
 
 
@@ -66,12 +98,14 @@ def suggest_chart(cols: dict, fids: list | None = None) -> dict | None:
 
     # 1) two numerics that move together → scatter with a trend line
     if len(num) >= 2:
+        scan = num[:_CORR_FIELD_CAP]
+        sampled = {name: _sample(cols[name], _CORR_SAMPLE_CAP) for name in scan}
         best, best_r = None, 0.0
-        for i in range(len(num)):
-            for j in range(i + 1, len(num)):
-                r = stats.pearson(cols[num[i]], cols[num[j]])
+        for i in range(len(scan)):
+            for j in range(i + 1, len(scan)):
+                r = stats.pearson(sampled[scan[i]], sampled[scan[j]])
                 if r is not None and abs(r) > abs(best_r):
-                    best, best_r = (num[i], num[j]), r
+                    best, best_r = (scan[i], scan[j]), r
         if best and abs(best_r) >= 0.4:
             a, b = best
             return {"type": "scatter", "x": a, "y": b, "group": "", "value": "",

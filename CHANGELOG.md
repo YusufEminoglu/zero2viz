@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.4] - 2026-08-12
+
+### Fixed
+- **A real regression from 0.15.2/0.15.3.** Forcing the tab strip to expand and hold a fixed minimum width meant Qt kept it at that size even when the dock was too narrow to show it — and with the panel's horizontal scrollbar disabled (from the earlier scrollable-panel fix), the overflow simply ran off the right edge with no way to reach it. That is worse than the original "tab looks tight" complaint: a real user report confirmed part of the "Diagrams" label was being clipped mid-letter. Tabs are back to their natural, always-fit width (verified: every tab's text fits its own box at every dock width from 140px to 600px) with an ellipsis fallback for a genuine edge case, and the panel's horizontal scrollbar is now shown whenever something actually needs it, so nothing can become silently unreachable again.
+- **The real cause of an oversized panel.** Two tab intro sentences ("Draw a diagram on every feature…" and "Turn fields into well-placed labels…") were missing word-wrap, so Qt sized them to fit their *entire sentence on one line* — over 1000px each — which alone was forcing the whole studio panel more than 1500px wide. Both now wrap normally.
+- **A crash/hang risk in 💡 Suggest on wide layers.** Scanning every pair of numeric fields for the strongest correlation is quadratic in field count. A typical layer has a handful of numeric fields and this is instant, but a grid or zonal-statistics layer can carry dozens to hundreds of derived numeric columns over up to 100,000 rows — uncapped, that is hundreds of millions of pure-Python operations run synchronously on the UI thread, which can read as QGIS freezing or being killed outright rather than a slow click. The scan is now bounded to an evenly-sampled subset of rows and the first 40 numeric fields, so Suggest stays fast and safe regardless of the layer's width or height.
+
 ## [0.15.3] - 2026-08-12
 
 ### Changed
