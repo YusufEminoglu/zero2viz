@@ -18,8 +18,8 @@ import tempfile
 import time
 from contextlib import suppress
 
-from qgis.PyQt.QtCore import Qt, QTimer, QSettings
-from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtCore import Qt, QTimer, QSettings, QSize
+from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPixmap
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -114,8 +114,11 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    StudioDockWidget._build_ui), gives that inset something other than a
    real letter to eat into. The elide-fallback set in _build_ui
    (ElideRight) is the safety net for the rare case this still isn't quite
-   enough on an unusual font — a graceful "…" instead of a raw clip. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 3px 24px 3px 28px;
+   enough on an unusual font — a graceful "…" instead of a raw clip.
+   0.15.11's shorter (3px) vertical padding didn't land well — reverted the
+   height back to 0.15.10's 10px, and scaled the horizontal padding up by
+   the requested ×1.2 from that same 0.15.10 baseline (16/20 → 19/24). */
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 19px 10px 24px;
                margin-right: 4px; font-weight: 600;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 /* REVERTED (0.15.9 → 0.15.10): a QSS border-top accent stripe on the
@@ -300,6 +303,38 @@ class StudioDockWidget(QDockWidget):
         combo.setAllowEmptyFieldName(True)
         return combo
 
+    @staticmethod
+    def _dot_icon(color: str) -> QIcon:
+        """A small filled circle, used as the active tab's indicator.
+
+        Deliberately an ICON, not a border/padding QSS property: this tab
+        bar's native "windowsvista" style has twice (0.15.6, 0.15.9) shown
+        it does not reliably honour a custom QSS box-model addition, but
+        tab icons are a first-class QTabBar feature Qt paints in its own
+        dedicated, native-theme-compatible slot — it can't collide with the
+        box-model math a border does.
+        """
+        size = 8
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(0, 0, size, size)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _sync_tab_dot(self, *_args) -> None:
+        """Show a small teal dot on the active tab only — the "nice effect"
+        for which tab is open, without touching border/padding (see
+        _dot_icon)."""
+        if not hasattr(self, "tabs"):
+            return
+        current = self.tabs.currentIndex()
+        for i in range(self.tabs.count()):
+            self.tabs.setTabIcon(i, self._tab_dot_icon if i == current else QIcon())
+
     def _build_ui(self) -> None:
         container = QWidget()
         container.setObjectName("o2vizRoot")
@@ -379,6 +414,11 @@ class StudioDockWidget(QDockWidget):
             # bleed through the chart area or the gaps around the cards
             page.setObjectName("o2vizTabPage")
             self.tabs.addTab(page, label)
+        # a small teal dot marks the active tab (see _dot_icon/_sync_tab_dot)
+        self.tabs.setIconSize(QSize(8, 8))
+        self._tab_dot_icon = self._dot_icon("#2a8f85")
+        self.tabs.currentChanged.connect(self._sync_tab_dot)
+        self._sync_tab_dot()
         root.addWidget(self.tabs, 1)
 
         self.status = QLabel("Ready")

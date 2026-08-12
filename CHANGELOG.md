@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.12] - 2026-08-12
+
+### Changed
+- **Reverted 0.15.11's shorter tabs** back to the original height, and widened them by the requested 1.2× instead.
+- **Brought back a clear "this tab is open" indicator** — a small teal dot icon on the active tab, instead of 0.15.9's border accent stripe. Tab icons are a native `QTabBar` feature Qt paints in its own dedicated slot, so it can't collide with this tab bar's native-theme box-model quirks the way a border property did.
+
 ## [0.15.11] - 2026-08-12
 
 ### Changed

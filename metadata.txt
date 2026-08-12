@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.15.11
+version=0.15.12
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.15.12 - Reverted the shorter tabs from 0.15.11 (back to the original height) and widened them by the requested 1.2x instead. Brought back a clear visual "this tab is open" indicator, this time as a small teal dot icon on the active tab rather than a border — icons are a native QTabBar feature that can't collide with this tab bar's box-model quirks the way a border did in 0.15.9.
     0.15.11 - Shorter, wider tabs: the tab strip's vertical padding is cut roughly in half and the horizontal padding is increased, direct feedback on how the tab row should read. The Charts tab's X/Category+Y and Group/Color+Value/Size field pickers are now paired two-up in one row each instead of four separate full-width rows, saving vertical space in an already long card.
     0.15.10 - Reverted 0.15.9's accent-stripe border on the active tab: a real screenshot showed it covering part of the tab text with a white strip instead. The active tab is shown with its background/text colour again, same as every release before 0.15.9 — no border property on this tab bar at all, since this native tab style has already shown once that it does not reliably honour a custom QSS border addition. Tab widths remain proportionate to each label (unchanged from 0.15.9).
     0.15.9 - Redesigned the tab strip: each tab is now sized to its own label instead of all three being forced to match the widest one ("Diagrams"), which had made "Charts" and "Labels" look oversized and inconsistent. The active tab is now shown with a clean teal accent stripe along its top edge, a clearer and more standard way to say "this one is open" than a size/colour difference alone.
