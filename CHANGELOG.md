@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.9] - 2026-08-12
+
+### Changed
+- **Redesigned the tab strip.** Each tab is now sized to its own label instead of every tab being forced to match the widest one ("Diagrams") — the shared minimum-width fix from 0.15.8 fixed the fit, but made the two shorter tabs ("Charts", "Labels") look oversized and out of proportion. The active tab is now shown with a clean teal accent stripe along its top edge — a clearer, more conventional way to signal "this one is open" than relying on a size or colour difference alone, and it holds the same reserved thickness whether selected or not, so choosing a tab never resizes it.
+
 ## [0.15.8] - 2026-08-12
 
 ### Fixed

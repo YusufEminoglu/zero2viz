@@ -19,7 +19,7 @@ import time
 from contextlib import suppress
 
 from qgis.PyQt.QtCore import Qt, QTimer, QSettings
-from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -104,26 +104,28 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-/* generously bigger than the text needs on every side, on purpose — left
-   padding still leads right (a real Windows screenshot showed every tab's
-   FIRST letter missing: the native tab style's own left inset fights the
-   QSS one under a custom stylesheet); the extra left room, plus the
-   leading space in each tab's label text (see StudioDockWidget._build_ui),
-   gives that inset something other than a real letter to eat into.
-   min-width is filled in at runtime from THIS machine's actual measured
-   font metrics (__TAB_MIN_WIDTH__ is replaced in _build_ui, not a QSS
-   variable) — every fixed padding number tried in 0.15.2-0.15.7 fit fine
-   in this project's offscreen test harness and still fell short on a real
-   screenshot (a second real screenshot showed "Diagrams"/"Labels" eliding
-   their LAST letter this time), because real desktop font rendering keeps
-   coming out wider than anything measurable headless. Measuring with
-   QFontMetrics on the live app font removes the guesswork: whatever Qt
-   itself will use to paint the text is exactly what decided this width. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 13px 28px 13px 32px;
-               margin-right: 4px; font-weight: 600; min-width: __TAB_MIN_WIDTH__px;
+/* each tab sizes to its OWN text + this modest padding — a shared
+   min-width (tried in 0.15.8) forced every tab to match the widest one
+   ("Diagrams"), which read as oversized and inconsistent for the two
+   shorter tabs ("Charts", "Labels"). Left padding still leads right: a
+   real screenshot showed every tab's FIRST letter missing without it (the
+   native Windows tab style's own left inset fights a custom QSS one); the
+   extra left room, plus the leading space in each tab's label text (see
+   StudioDockWidget._build_ui), gives that inset something other than a
+   real letter to eat into. The elide-fallback set in _build_ui
+   (ElideRight) is the safety net for the rare case this still isn't quite
+   enough on an unusual font — a graceful "…" instead of a raw clip. */
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 16px 10px 20px;
+               margin-right: 4px; font-weight: 600;
+               border-top: 3px solid transparent;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
-QTabBar::tab:selected { background: #ffffff; color: #16323f; }
-QTabBar::tab:hover { color: #16323f; }
+/* the active tab reads unambiguously from a teal accent stripe along the
+   top edge (kept the same 3px width as the unselected state above, so
+   selecting a tab never resizes it) instead of leaning on a size/colour
+   difference alone to say "this one is open". */
+QTabBar::tab:selected { background: #ffffff; color: #16323f;
+                        border-top: 3px solid #2a8f85; }
+QTabBar::tab:hover:!selected { background: #e7ebee; color: #16323f; }
 
 /* ── text + form labels (pinned dark so they never inherit a light palette
       text colour and vanish on the white cards) ── */
@@ -295,16 +297,7 @@ class StudioDockWidget(QDockWidget):
     def _build_ui(self) -> None:
         container = QWidget()
         container.setObjectName("o2vizRoot")
-        # See the QTabBar::tab comment in _DOCK_QSS: size the tabs from
-        # THIS machine's actually-measured font, not a hardcoded padding
-        # guess. Bold, since font-weight:600 applies to every tab — a
-        # slightly wider (safe) estimate beats an exact-but-fragile one.
-        _tab_font = QFont(QApplication.font())
-        _tab_font.setBold(True)
-        _tab_fm = QFontMetrics(_tab_font)
-        _tab_min_w = max(_tab_fm.horizontalAdvance(t)
-                         for t in (" Charts", " Diagrams", " Labels")) + 70
-        container.setStyleSheet(_DOCK_QSS.replace("__TAB_MIN_WIDTH__", str(_tab_min_w)))
+        container.setStyleSheet(_DOCK_QSS)
         root = QVBoxLayout(container)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
