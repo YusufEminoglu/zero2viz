@@ -97,7 +97,13 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    re-lay-out the tab on a pseudo-state change, so the wider glyphs got
    clipped/overlapped ("kendi metin bloğuna sığmıyor"). Keeping the weight
    constant and varying only colour/background avoids the mismatch entirely. */
-QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 20px;
+/* left padding is bigger than the right on purpose — a real Windows
+   screenshot showed every tab's FIRST letter missing (the native tab
+   style's own left inset fights the QSS one under a custom stylesheet);
+   the extra left room, plus the leading space in each tab's label text
+   (see StudioDockWidget._build_ui), gives that inset something other
+   than a real letter to eat into. */
+QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 20px 10px 26px;
                margin-right: 4px; font-weight: 600;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
 QTabBar::tab:selected { background: #ffffff; color: #16323f; }
@@ -314,6 +320,26 @@ class StudioDockWidget(QDockWidget):
         # rendered smaller than its own text. ElideRight is still set as a
         # last-resort fallback so any edge case degrades to "…", never a
         # raw pixel clip.
+        #
+        # A real screenshot on Windows QGIS showed every tab missing its
+        # FIRST letter ("Charts"→"harts", "Diagrams"→"iagram", "Labels"→
+        # "abels") — a known Qt/Windows quirk: the native "windowsvista"
+        # style paints QTabBar tabs through the real Windows theme engine
+        # (UxTheme), which reserves its own internal left inset that a
+        # custom QSS stylesheet doesn't fully override, so the leading
+        # glyph is painted under the tab's rounded left edge. (Tried
+        # forcing this tab bar onto the Fusion style, which draws purely
+        # from QSS geometry and would have sidestepped the native theme
+        # entirely — reverted: it segfaulted on dock teardown in real
+        # QGIS and the applied style didn't even verify as Fusion, likely
+        # from mixing an explicit setStyle() with the container's own
+        # QSS-driven QStyleSheetStyle proxy. Not worth the crash risk.)
+        # Two purely-QSS/string fixes instead, layered for safety since
+        # this can't be reproduced headless (no native Windows theme
+        # engine under offscreen — verified against the screenshot, not a
+        # pixel test): extra LEFT padding beyond the right, and a leading
+        # space in each label, so whatever gets eaten from the left is the
+        # padding/space, not a real letter, regardless of the exact cause.
         tabbar = self.tabs.tabBar()
         with suppress(Exception):
             tabbar.setElideMode(Qt.TextElideMode.ElideRight)
@@ -321,9 +347,9 @@ class StudioDockWidget(QDockWidget):
         # narrow dock — "Diagrams" alone reads just as clearly next to
         # "Charts" and "Labels" (the tab's own card title inside still says
         # "Map diagrams — on canvas" in full)
-        for page, label in ((self._build_charts_tab(), "Charts"),
-                            (self._build_diagrams_tab(), "Diagrams"),
-                            (self._build_labels_tab(), "Labels")):
+        for page, label in ((self._build_charts_tab(), " Charts"),
+                            (self._build_diagrams_tab(), " Diagrams"),
+                            (self._build_labels_tab(), " Labels")):
             # pin a light page background so a dark host *stylesheet* (e.g. a
             # Night-Mapping UI theme that sets QWidget{background:dark}) can't
             # bleed through the chart area or the gaps around the cards

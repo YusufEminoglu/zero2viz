@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.6] - 2026-08-12
+
+### Fixed
+- **Found the actual cause of the tab-label clipping**, from a user screenshot rather than another guess: every tab was missing its *first letter* — "Charts" read "harts", "Diagrams" read "iagram", "Labels" read "abels". That is a known Qt/Windows quirk: the native Windows tab style paints tabs through the real Windows theme engine, which reserves its own internal left inset that a custom stylesheet doesn't fully override, so the leading glyph gets painted under the tab's rounded left edge. This project's offscreen test harness has no native Windows theme engine to reproduce it against, which is why the previous few rounds (width, padding, label length) all missed the real mechanism. Fixed with extra left padding on each tab plus a small leading space in the label text — whatever gets eaten from the left edge is now blank space, never a real letter, regardless of the exact pixel amount. (An attempt to force the tab bar onto Qt's own Fusion style — which draws purely from the stylesheet and would have sidestepped the native theme rendering entirely — was tried and reverted: it segfaulted on dock teardown and didn't reliably apply anyway, likely from mixing an explicit style override with the panel's own stylesheet-driven style proxy. Not worth the crash risk for an unproven fix.)
+
 ## [0.15.5] - 2026-08-12
 
 ### Changed
