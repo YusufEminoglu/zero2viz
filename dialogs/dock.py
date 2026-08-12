@@ -117,14 +117,20 @@ QTabWidget::pane { border: 1px solid #e3e7ec; border-radius: 8px; top: -1px;
    enough on an unusual font — a graceful "…" instead of a raw clip. */
 QTabBar::tab { background: #eef1f4; color: #5b6b73; padding: 10px 16px 10px 20px;
                margin-right: 4px; font-weight: 600;
-               border-top: 3px solid transparent;
                border-top-left-radius: 7px; border-top-right-radius: 7px; }
-/* the active tab reads unambiguously from a teal accent stripe along the
-   top edge (kept the same 3px width as the unselected state above, so
-   selecting a tab never resizes it) instead of leaning on a size/colour
-   difference alone to say "this one is open". */
-QTabBar::tab:selected { background: #ffffff; color: #16323f;
-                        border-top: 3px solid #2a8f85; }
+/* REVERTED (0.15.9 → 0.15.10): a QSS border-top accent stripe on the
+   selected tab covered part of the text with a white strip on a real
+   Windows screenshot — this native "windowsvista" tab style has already
+   shown once (0.15.6, the missing-first-letter bug) that it does not
+   reliably honour a custom QSS box-model addition; adding border-top most
+   likely grew the box by 3px without the native sizeFromContents
+   calculation reserving matching space, pushing the text down into the
+   zone the content pane below already owns. Back to a background/colour
+   difference only — no border property at all — which is exactly what
+   shipped from 0.15.0 through 0.15.8 without this complaint. Lesson: on
+   THIS specific tab bar, treat any new border/padding/margin property as
+   suspect until proven on a real screenshot, not just headless. */
+QTabBar::tab:selected { background: #ffffff; color: #16323f; }
 QTabBar::tab:hover:!selected { background: #e7ebee; color: #16323f; }
 
 /* ── text + form labels (pinned dark so they never inherit a light palette

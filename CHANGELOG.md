@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.10] - 2026-08-12
+
+### Fixed
+- **Reverted 0.15.9's accent-stripe border on the active tab.** A real screenshot showed it covering part of the tab's text with a white strip, not highlighting it — this native Windows tab style had already shown once (0.15.6) that it doesn't reliably honour a custom QSS border addition, and the accent stripe turned out to be another instance of the same problem. The active tab is shown with a background/text-colour difference again, exactly as it was in every release before 0.15.9, with no border property on this tab bar at all. Tab widths remain proportionate to each label (unchanged from 0.15.9 — that part wasn't the problem).
+
 ## [0.15.9] - 2026-08-12
 
 ### Changed
