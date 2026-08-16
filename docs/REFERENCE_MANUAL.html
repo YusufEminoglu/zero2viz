@@ -286,6 +286,8 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 }
 .data-box strong { color: var(--ov-green); }
 .data-box .src { display: block; margin-top: 4px; font-size: .76rem; color: var(--ov-slate-500); font-style: italic; }
+.data-box a { color: #1a7a4a; text-decoration: underline; text-underline-offset: 2px; }
+.data-box a:hover { color: #0d5c34; }
 
 .alg-card-body h5 {
   font-family: var(--font-display); font-size: .82rem; font-weight: 700;
@@ -668,7 +670,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-bar.png" alt="Bar chart of population by district" loading="lazy">
   <p class="chart-caption">İzmir district population (2023) — one bar per district, height encodes population on a common axis.</p>
-  <div class="data-box"><strong>Real data.</strong> Buca 523,487 · Karabağlar 476,500 · Bornova 447,553 · Karşıyaka 341,857 · Konak 327,300 · Bayraklı 300,949 · Çiğli 215,172 · Torbalı 214,059. <span class="src">Source: TÜİK — Address-Based Population Registration System (ADNKS), 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Buca 523,487 · Karabağlar 476,500 · Bornova 447,553 · Karşıyaka 341,857 · Konak 327,300 · Bayraklı 300,949 · Çiğli 215,172 · Torbalı 214,059. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Whenever the question is "which category is larger, and by how much": comparing one numeric measure across districts, land-use classes, or periods. Prefer it over a pie chart once categories exceed a handful. Use <strong>grouped bars</strong> (<em>Group</em> field) to add a second categorical dimension, and <strong>stacked bars</strong> (checkbox) to show additive composition.</p>
   <h5>What data you need</h5>
@@ -705,7 +707,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-line.png" alt="Line chart of population trend over years" loading="lazy">
   <p class="chart-caption">Türkiye population 2015–2024 — slope between points encodes the rate of change.</p>
-  <div class="data-box"><strong>Real data.</strong> 78.22 million (2015) rising to 85.52 million (2024); annual growth slows from ~1.3% to ~0.2%. <span class="src">Source: TÜİK / World Bank.</span></div>
+  <div class="data-box"><strong>Real data.</strong> 78.22 million (2015) rising to 85.52 million (2024); annual growth slows from ~1.3% to ~0.2%. <span class="src">Source: <a href="https://www.macrotrends.net/global-metrics/countries/tur/turkey/population" target="_blank" rel="noopener">TÜİK / World Bank</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When the X axis is <strong>ordered</strong> — time, distance, phases — and you want to show change over that order. Pair with <em>Animate by</em> to unfold the trajectory over time, or with a <em>Group</em> field to overlay multiple series on one axis. Bars suit unordered categories; lines suit sequences.</p>
   <h5>What data you need</h5>
@@ -741,7 +743,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-area.png" alt="Stacked area chart of land-use change over years" loading="lazy">
   <p class="chart-caption">Türkiye age structure 2015–2024 (stacked) — band heights show how age groups shift.</p>
-  <div class="data-box"><strong>Real data.</strong> The 0–14 share falls 23.99% → 20.93% while the 65+ share rises 8.25% → 10.64% — a visibly ageing population. <span class="src">Source: TÜİK ADNKS.</span></div>
+  <div class="data-box"><strong>Real data.</strong> The 0–14 share falls 23.99% → 20.93% while the 65+ share rises 8.25% → 10.64% — a visibly ageing population. <span class="src">Source: <a href="https://countryeconomy.com/demography/population-structure/turkey" target="_blank" rel="noopener">TÜİK ADNKS</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ordered X with a magnitude story. <strong>Stacked</strong> areas show how parts of a total evolve together (composition over time); <strong>unstacked</strong> areas compare magnitudes directly, overlapping where one exceeds another. The <em>Stacked</em> checkbox toggles between the two.</p>
   <h5>What data you need</h5>
@@ -769,7 +771,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-scatter.png" alt="Scatter plot of population vs density with a trend line" loading="lazy">
   <p class="chart-caption">İzmir districts: population vs area, with a least-squares trend line.</p>
-  <div class="data-box"><strong>Real data.</strong> Nine districts with both figures — e.g. Buca 523.5k / 181.9 km², Karşıyaka 341.9k / 72.3 km², Menemen 207.7k / 612.4 km². <span class="src">Source: TÜİK ADNKS 2023; areas from İzmir-MOD spatial analysis.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Nine districts with both figures — e.g. Buca 523.5k / 181.9 km², Karşıyaka 341.9k / 72.3 km², Menemen 207.7k / 612.4 km². <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>; areas from <a href="http://www.izmimod.org.tr/iknip/03_mekansalanaliz.pdf" target="_blank" rel="noopener">İzmir-MOD</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you have <strong>two numeric fields</strong> and want to know whether they are related — the first look at any suspected association. The optional <em>trend line</em> overlays a least-squares regression; <em>Group</em> colours points by category to expose structure within the cloud.</p>
   <h5>What data you need</h5>
@@ -802,7 +804,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-bubble.png" alt="Bubble chart of population vs GDP with area encoding size" loading="lazy">
   <p class="chart-caption">İzmir districts: area vs density — bubble size is population.</p>
-  <div class="data-box"><strong>Real data.</strong> Karşıyaka 72.3 km² / 4,728 ppl/km² versus Menemen 612.4 km² / 339 ppl/km²; bubble area = population. <span class="src">Source: TÜİK ADNKS 2023; areas from İzmir-MOD.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Karşıyaka 72.3 km² / 4,728 ppl/km² versus Menemen 612.4 km² / 339 ppl/km²; bubble area = population. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>; areas from <a href="http://www.izmimod.org.tr/iknip/03_mekansalanaliz.pdf" target="_blank" rel="noopener">İzmir-MOD</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you have <strong>three numeric fields</strong>: two for position and one for magnitude. It is the classic way to show which entities are both extreme on two measures <em>and</em> large on a third — and it animates into a Gapminder-style bubble race.</p>
   <h5>What data you need</h5>
@@ -834,7 +836,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-histogram.png" alt="Histogram of building heights" loading="lazy">
   <p class="chart-caption">İzmir district populations — the shape of 30 districts' population distribution.</p>
-  <div class="data-box"><strong>Real data.</strong> Thirty districts from Beydağ 12,094 up to Buca 523,487 — a heavily right-skewed distribution. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Thirty districts from Beydağ 12,094 up to Buca 523,487 — a heavily right-skewed distribution. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Whenever you meet an unfamiliar numeric field and want its distribution before anything else. It is also the honest pre-check for "is this roughly normal?" before methods that assume normality.</p>
   <h5>What data you need</h5>
@@ -866,7 +868,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-pie.png" alt="Pie chart of land-use composition" loading="lazy">
   <p class="chart-caption">Türkiye employment by sector (2024) — angle encodes each sector's share.</p>
-  <div class="data-box"><strong>Real data.</strong> Services 57.9% · Industry 20.7% · Agriculture 14.8% · Construction 6.6%. <span class="src">Source: TÜİK Labour Force Statistics, 2024.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Services 57.9% · Industry 20.7% · Agriculture 14.8% · Construction 6.6%. <span class="src">Source: <a href="https://www.hurriyetdailynews.com/amp/service-sector-tops-enterprise-and-employment-share-212954" target="_blank" rel="noopener">TÜİK Labour Force Statistics, 2024</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A handful of categories summing to a meaningful whole (≤ 5–6). The donut variant opens the centre for a total label. The <em>Top-N</em> control collapses a long tail into "Other" so the pie stays readable.</p>
   <h5>What data you need</h5>
@@ -900,7 +902,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-box.png" alt="Box plot of house prices by district" loading="lazy">
   <p class="chart-caption">İzmir district population by zone — box = IQR, line = median, whiskers = range.</p>
-  <div class="data-box"><strong>Real data.</strong> Central (11 districts) vs North (6) vs South &amp; West (13); the Central zone has the highest and most variable district populations. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Central (11 districts) vs North (6) vs South &amp; West (13); the Central zone has the highest and most variable district populations. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">To compare the distribution — centre, spread, and outliers — of a numeric field <strong>across groups</strong>. A box plot is the compact alternative to side-by-side histograms when you have several groups.</p>
   <h5>What data you need</h5>
@@ -932,7 +934,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-heatmap.png" alt="Heatmap of daily trips by origin and destination" loading="lazy">
   <p class="chart-caption">Türkiye age structure by year (%) — colour intensity encodes each share.</p>
-  <div class="data-box"><strong>Real data.</strong> Nine years × three age groups; the 65+ row brightens from 8.25% (2015) to 10.64% (2024). <span class="src">Source: TÜİK ADNKS.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Nine years × three age groups; the 65+ row brightens from 8.25% (2015) to 10.64% (2024). <span class="src">Source: <a href="https://countryeconomy.com/demography/population-structure/turkey" target="_blank" rel="noopener">TÜİK ADNKS</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When two <strong>categorical dimensions</strong> cross and you want to see the pattern in the resulting matrix — flows, co-occurrence, or a two-way table too large to read as numbers.</p>
   <h5>What data you need</h5>
@@ -967,7 +969,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-treemap.png" alt="Treemap of employment by sector and subsector" loading="lazy">
   <p class="chart-caption">İzmir population by zone → district — rectangle area encodes population.</p>
-  <div class="data-box"><strong>Real data.</strong> All 30 districts grouped into Central / North / South &amp; West; the Central zone dominates the area. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> All 30 districts grouped into Central / North / South &amp; West; the Central zone dominates the area. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When a <strong>two-level hierarchy</strong> has many categories and you want part-to-whole at both levels — outer rectangles are the top-level groups, inner rectangles their sub-division.</p>
   <h5>What data you need</h5>
@@ -1001,7 +1003,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-sunburst.png" alt="Sunburst chart of budget by department and program" loading="lazy">
   <p class="chart-caption">İzmir population by zone → district — rings are hierarchy levels, angle is population.</p>
-  <div class="data-box"><strong>Real data.</strong> The same 30-district hierarchy, radially — Central dominates, then a long tail of smaller districts. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> The same 30-district hierarchy, radially — Central dominates, then a long tail of smaller districts. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The same two-level hierarchy as a treemap, chosen for its visual impact in presentations and reports. Best for shallow hierarchies where rings stay readable.</p>
   <h5>What data you need</h5>
@@ -1035,7 +1037,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-errorband.png" alt="Mean and standard-deviation band of crop yield by type" loading="lazy">
   <p class="chart-caption">Türkiye barley yield by period — the bar is the mean, the shaded band is ±1σ.</p>
-  <div class="data-box"><strong>Real data.</strong> 1990–1997 mean 2,179 kg/ha · 1998–2001 mean 2,191 · 2002–2007 mean 2,402 (with a wider band — the 2007 drought). <span class="src">Source: TÜİK crop-production statistics.</span></div>
+  <div class="data-box"><strong>Real data.</strong> 1990–1997 mean 2,179 kg/ha · 1998–2001 mean 2,191 · 2002–2007 mean 2,402 (with a wider band — the 2007 drought). <span class="src">Source: <a href="https://digital.sabanciuniv.edu/ebookacik/Reports/3011200000058.pdf" target="_blank" rel="noopener">TÜİK crop-production statistics</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When reporting a per-category average <em>and</em> its variability, so the reader sees both the typical value and how consistent it is. The band is ideal for a modest number of categories.</p>
   <h5>What data you need</h5>
@@ -1067,7 +1069,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-errorbar.png" alt="Mean and error bars of PM2.5 by station" loading="lazy">
   <p class="chart-caption">İzmir district population by zone — point is the mean, whisker is ±1σ.</p>
-  <div class="data-box"><strong>Real data.</strong> Central mean ≈ 268,000 · North ≈ 89,000 · South &amp; West ≈ 77,000. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Central mean ≈ 268,000 · North ≈ 89,000 · South &amp; West ≈ 77,000. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The same mean-plus-variability story as the band, but for <strong>many categories</strong> where whiskers read more cleanly than filled bands.</p>
   <h5>What data you need</h5>
@@ -1095,7 +1097,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-density.png" alt="Kernel density estimate of household income" loading="lazy">
   <p class="chart-caption">İzmir district populations (KDE) — a smoothed curve of the 30-district distribution.</p>
-  <div class="data-box"><strong>Real data.</strong> Most districts cluster below ~150,000 with a long tail toward Buca's 523,487. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Most districts cluster below ~150,000 with a long tail toward Buca's 523,487. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you want the <strong>smooth shape</strong> of a numeric distribution rather than blocky bins — especially to detect multimodality (two or more peaks = sub-populations) that a histogram's bin choice can obscure.</p>
   <h5>What data you need</h5>
@@ -1128,7 +1130,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-violin.png" alt="Violin plot of test scores by school" loading="lazy">
   <p class="chart-caption">İzmir district population by zone — width is density, the white dot is the median.</p>
-  <div class="data-box"><strong>Real data.</strong> Central (11) vs North (6) vs South &amp; West (13); the Central violin is tallest and widest. <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Central (11) vs North (6) vs South &amp; West (13); the Central violin is tallest and widest. <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When a box plot's five numbers are not enough and you want the <strong>shape</strong> of each group's distribution — to catch bimodality or skewness a box would flatten away.</p>
   <h5>What data you need</h5>
@@ -1158,7 +1160,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-radar.png" alt="Radar chart comparing quality-of-life across districts" loading="lazy">
   <p class="chart-caption">İzmir district profiles — each spoke is an indicator, each polygon a district.</p>
-  <div class="data-box"><strong>Real data.</strong> Konak 327.3k / 125.2 km² / 2,614 ppl/km² / ₺2.9M · Karşıyaka 341.9k / 72.3 km² / 4,728 / ₺3.9M · Bornova 447.6k / 218.6 km² / 2,047 / ₺4.2M (per 100 m²). <span class="src">Source: TÜİK ADNKS 2023; İzmir-MOD; Endeksa 2024.</span></div>
+  <div class="data-box"><strong>Real data.</strong> Konak 327.3k / 125.2 km² / 2,614 ppl/km² / ₺2.9M · Karşıyaka 341.9k / 72.3 km² / 4,728 / ₺3.9M · Bornova 447.6k / 218.6 km² / 2,047 / ₺4.2M (per 100 m²). <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>; <a href="http://www.izmimod.org.tr/iknip/03_mekansalanaliz.pdf" target="_blank" rel="noopener">İzmir-MOD</a>; <a href="https://turk.estate/en/question-answer/izmir-2024-property-market-figures-and-current-trends/" target="_blank" rel="noopener">Endeksa 2024</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">To compare a <strong>few entities across several indicators</strong> at once — when the shape of a profile matters more than any single value. Ideal for scoring or suitability profiles where "balanced" versus "specialised" is the question.</p>
   <h5>What data you need</h5>
@@ -1188,7 +1190,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <img class="chart-shot" src="chart-pareto.png" alt="Pareto chart of complaint types with cumulative line" loading="lazy">
   <p class="chart-caption">İzmir district population (80/20) — bars sorted descending, line is the cumulative share.</p>
-  <div class="data-box"><strong>Real data.</strong> The eight largest districts hold 2,846,877 of İzmir's 4,479,525 people (63.6%). <span class="src">Source: TÜİK ADNKS, 2023.</span></div>
+  <div class="data-box"><strong>Real data.</strong> The eight largest districts hold 2,846,877 of İzmir's 4,479,525 people (63.6%). <span class="src">Source: <a href="https://www.citypopulation.de/en/turkey/admin/TR310__%c4%b0zmir/" target="_blank" rel="noopener">TÜİK ADNKS 2023</a>.</span></div>
   <h5>When to use</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you need to rank causes, defects, or demands by impact and identify the few that account for most of the total — the classic prioritisation chart.</p>
   <h5>What data you need</h5>
