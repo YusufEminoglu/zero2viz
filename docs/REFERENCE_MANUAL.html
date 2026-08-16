@@ -261,6 +261,17 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 
 .alg-desc { color: var(--ov-slate-700); font-size: .90rem; line-height: 1.65; margin-bottom: 20px; }
 
+/* Rendered chart screenshot inside a card */
+.chart-shot {
+  width: 100%; height: auto; display: block;
+  border: 1px solid var(--ov-slate-200); border-radius: var(--radius-sm);
+  margin: 4px 0 18px; background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.chart-caption {
+  font-size: .76rem; color: var(--ov-slate-500); margin: -12px 0 18px; text-align: center;
+}
+
 .alg-card-body h5 {
   font-family: var(--font-display); font-size: .82rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .06em; color: var(--ov-indigo-700);
@@ -608,6 +619,8 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     The only engine with optional Python dependencies. It imports matplotlib and seaborn lazily, uses <code>matplotlib.use("Agg")</code> for headless rendering, applies <code>seaborn.set_theme(style="whitegrid")</code> when available, and produces a <strong>static</strong> 8.2″ × 5.0″ figure at 150 DPI, base64-encoded as PNG. It is the engine of choice when the goal is a fixed, print-ready figure rather than an interactive one.
   </div>
+  <img class="chart-shot" src="engine-matplotlib.png" alt="A static bar chart rendered by the optional matplotlib / seaborn engine" loading="lazy">
+  <p class="chart-caption">The same spec rendered by the optional matplotlib / seaborn engine as a publication-grade static figure.</p>
   <h5>Capabilities</h5>
   <table class="params-table">
     <tr><th>Dimension</th><th>Detail</th></tr>
@@ -623,8 +636,8 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 <div class="group-anchor" id="group-charts"></div>
 <div class="group-header"><span class="group-num">GROUP 2</span><h3>Chart Types (17)</h3></div>
 
-<section id="chart-bar" class="section-intro" style="margin-bottom:24px;padding-bottom:0;border-bottom:none;">
-<p style="max-width:760px;">Each chart type is documented below as a self-contained card — its perceptual basis, field bindings and controls, the statistical method when relevant, engine support, and how to read the result. Every card lists its internal id (<code>chart key</code>) so the same name is used across the UI, the preset schema, and the exported spec.</p>
+<section class="section-intro" style="margin-bottom:24px;padding-bottom:0;border-bottom:none;">
+<p style="max-width:760px;">Every chart type is documented as a self-contained card: a rendered screenshot, <strong>when to use it</strong>, <strong>what data it needs</strong>, <strong>how to read it</strong>, and <strong>how to interpret it and where it applies</strong> — followed by the exact field bindings and engine support.</p>
 </section>
 
 <!-- CHART: BAR -->
@@ -636,10 +649,18 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 </div>
 <div class="alg-card-body">
   <div class="alg-desc">
-    The workhorse of quantitative comparison. A bar chart encodes a numeric value as <em>position along a common scale</em> — the single most accurately-perceived visual channel in Cleveland &amp; McGill's (1984) ranking of graphical perception. Use it whenever the question is "which category is larger, and by how much".
+    The workhorse of quantitative comparison. A bar chart encodes a numeric value as <em>position along a common scale</em> — the single most accurately-perceived visual channel in Cleveland &amp; McGill's (1984) ranking of graphical perception.
   </div>
+  <img class="chart-shot" src="chart-bar.png" alt="Bar chart of population by district" loading="lazy">
+  <p class="chart-caption">Population by district — one bar per category, height encodes magnitude on a common axis.</p>
   <h5>When to use</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Comparing one numeric measure across categories, regions, or classes. Prefer it over pie charts whenever categories exceed a handful — position outperforms angle for magnitude comparison. Grouped bars (<em>Group</em> field) add a second categorical dimension as side-by-side series; the <em>Stacked</em> checkbox turns them into additive composition for part-to-whole reading.</p>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Whenever the question is "which category is larger, and by how much": comparing one numeric measure across districts, land-use classes, or periods. Prefer it over a pie chart once categories exceed a handful. Use <strong>grouped bars</strong> (<em>Group</em> field) to add a second categorical dimension, and <strong>stacked bars</strong> (checkbox) to show additive composition.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>categorical field</strong> for X and a <strong>numeric field</strong> for Y — or just the category plus a <em>count</em> aggregation. A <em>Group</em> field optionally splits into coloured series; an aggregation (sum / mean / …) is applied per category.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare the <em>tops</em> of the bars on the shared axis — the distance between two bar tops is the difference in value. In grouped bars, compare within a cluster and across clusters; in stacked bars, the total is the top edge and each segment is a part.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Spot the largest and smallest category, dominance, or balance. In planning: population by district, budget by department, area by land-use class. Always check the axis origin — a non-zero baseline exaggerates differences, so read the values, not just the visual gap.</p>
   <h5>Field bindings &amp; controls</h5>
   <table class="params-table">
     <tr><th>Binding</th><th>Role</th><th>Notes</th></tr>
@@ -666,12 +687,24 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A line chart connects ordered values to reveal <em>trend and trajectory</em>. The connective line encodes change between successive points, making it the natural choice when the X axis has an intrinsic order — time, distance, a ranked sequence, or a planning horizon.
   </div>
+  <img class="chart-shot" src="chart-line.png" alt="Line chart of population trend over years" loading="lazy">
+  <p class="chart-caption">Population trend 2015–2024 — slope between points encodes the rate of change.</p>
   <h5>When to use</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ordered X values (years, distances, phases). Pair with the <em>Animate by</em> field to unfold the trajectory over time, or with a <em>Group</em> field to overlay multiple series on one axis. Bars suit unordered categories; lines suit sequences.</p>
-  <h5>Method</h5>
-  <div class="formula-block">
-    Points \((x_i, y_i)\) joined in X order. An optional <em>Group</em> produces one polyline per category. Aggregation is applied per (X, group) pair before plotting.
-  </div>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When the X axis is <strong>ordered</strong> — time, distance, phases — and you want to show change over that order. Pair with <em>Animate by</em> to unfold the trajectory over time, or with a <em>Group</em> field to overlay multiple series on one axis. Bars suit unordered categories; lines suit sequences.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">An <strong>ordered X field</strong> (year, distance, rank) and a <strong>numeric Y field</strong>. A <em>Group</em> field produces one polyline per category; an aggregation is applied per (X, group) pair.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Follow the <em>slope</em> — a steep rise is fast growth, a steep fall is rapid decline, a flat run is stability. Peaks and troughs mark turning points. With multiple lines, compare their trajectories and where they cross.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Identify growth or decline, inflection points, and diverging series. In planning: population, housing starts, or land consumption over a plan horizon — and, animated, the evolving trajectory of each district.</p>
+  <h5>Field bindings &amp; controls</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">X</td><td class="param-type">Ordered category / numeric (time, sequence)</td></tr>
+    <tr><td class="param-name">Y</td><td class="param-type">Numeric</td></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">One polyline per category (optional)</td></tr>
+    <tr><td class="param-name">Aggregate / Top-N / Sort</td><td class="param-type">Applied per (X, group) pair</td></tr>
+  </table>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable; reference overlays available.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-area">Area</a> for a filled variant · <a href="#feature-animation">Animation</a> for the play axis · <a href="#feature-overlays">Overlays</a> to mark a target on the trend.</div>
@@ -689,8 +722,16 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A line chart with the region under the curve filled. The fill adds a <em>volume</em> reading — useful for emphasising magnitude over time or, when stacked, the changing composition of a whole across categories.
   </div>
+  <img class="chart-shot" src="chart-area.png" alt="Stacked area chart of land-use change over years" loading="lazy">
+  <p class="chart-caption">Land-use change 2015–2024 (stacked) — band heights show how parts of a whole evolve.</p>
   <h5>When to use</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ordered X with a magnitude story. Stacked areas show how parts of a total evolve; unstacked (overlapping) areas compare magnitudes directly. The <em>Stacked</em> checkbox toggles between the two.</p>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ordered X with a magnitude story. <strong>Stacked</strong> areas show how parts of a total evolve together (composition over time); <strong>unstacked</strong> areas compare magnitudes directly, overlapping where one exceeds another. The <em>Stacked</em> checkbox toggles between the two.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">An <strong>ordered X field</strong>, a <strong>numeric Y field</strong>, and (for the composition reading) a <strong>Group field</strong> that splits the total into coloured bands.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">In a stacked area the <em>top edge is the total</em> and each band's height is its share of that total; watch for bands widening or narrowing over time. In an unstacked area, compare the filled silhouettes' heights.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read structural shift: a band that grows while another shrinks is a reallocation. In planning: land-use or energy-mix change over a plan period, showing whether a city is densifying, sprawling, or greening.</p>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable (composition over years); reference overlays available.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-line">Line</a> · <a href="#chart-bar">Bar (stacked)</a> for categorical composition.</div>
@@ -708,23 +749,24 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     The fundamental bivariate display: two numeric fields plotted against each other, one point per feature. It exposes association, clusters, gaps, and outliers that summary statistics conceal. It is the first chart the Smart Assistant proposes when two numeric fields correlate.
   </div>
+  <img class="chart-shot" src="chart-scatter.png" alt="Scatter plot of population vs density with a trend line" loading="lazy">
+  <p class="chart-caption">Population vs density with a least-squares trend line — direction, form, and strength at a glance.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you have <strong>two numeric fields</strong> and want to know whether they are related — the first look at any suspected association. The optional <em>trend line</em> overlays a least-squares regression; <em>Group</em> colours points by category to expose structure within the cloud.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Two <strong>numeric fields</strong> (X and Y), one point per feature. A <em>Group</em> field is optional for colouring; the <em>trend</em> checkbox adds the regression line.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read four properties: <strong>direction</strong> (upward = positive association, downward = negative), <strong>form</strong> (linear or curved), <strong>strength</strong> (tight cloud = strong, diffuse = weak), and <strong>outliers</strong> (isolated points far from the cloud).</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ask whether X predicts Y and where the exceptions are. In planning: population vs density (sprawl check), income vs education, distance-to-transit vs property value. The trend line's slope and the Pearson \(r\) (available in the Explore dashboard) quantify the relationship.</p>
   <h5>Method — least-squares trend line</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-600);margin:6px 0 10px;">The optional trend line is ordinary least squares:</p>
   <div class="formula-block">
     \(\beta = \dfrac{S_{xy}}{S_{xx}}, \quad \alpha = \bar{y} - \beta \bar{x}\)
     <br>where \(S_{xy} = \sum (x_i-\bar{x})(y_i-\bar{y})\) and \(S_{xx} = \sum (x_i-\bar{x})^2\).
   </div>
-  <h5>Field bindings &amp; controls</h5>
-  <table class="params-table">
-    <tr><th>Binding</th><th>Role</th></tr>
-    <tr><td class="param-name">X</td><td class="param-type">Numeric</td></tr>
-    <tr><td class="param-name">Y</td><td class="param-type">Numeric</td></tr>
-    <tr><td class="param-name">Group</td><td class="param-type">Colour by category (optional)</td></tr>
-    <tr><td class="param-name">Trend line</td><td class="param-type">Checkbox — least-squares linear regression</td></tr>
-  </table>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable (Gapminder-style); reference overlays available.</p>
-  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bubble">Bubble</a> for a third dimension · <a href="#feature-stats">Correlation</a> for the Pearson \(r\) that motivates the pairing · <a href="#feature-dashboard">Explore dashboard</a> for the strongest-relationship scatter.</div>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bubble">Bubble</a> for a third dimension · <a href="#feature-stats">Correlation</a> for the Pearson \(r\) · <a href="#feature-dashboard">Explore dashboard</a> for the strongest-relationship scatter.</div>
 </div>
 </article>
 
@@ -739,18 +781,20 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A scatter plot with a third numeric dimension encoded as <em>area</em>. Because the eye reads area — not radius — a naive linear radius scaling systematically understates large values; 02viz therefore scales radii by square root so that perceived area is proportional to value.
   </div>
+  <img class="chart-shot" src="chart-bubble.png" alt="Bubble chart of population vs GDP with area encoding size" loading="lazy">
+  <p class="chart-caption">Population vs GDP — position on two axes, bubble area a third variable.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you have <strong>three numeric fields</strong>: two for position and one for magnitude. It is the classic way to show which entities are both extreme on two measures <em>and</em> large on a third — and it animates into a Gapminder-style bubble race.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Two <strong>numeric fields</strong> (X, Y) plus a <strong>numeric Value field</strong> for bubble area; <em>Group</em> is optional for colour.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare bubble <em>areas</em>, never diameters — a bubble twice the diameter is four times the value. Look for the largest bubbles and where they sit on the two axes; during animation, a fixed value keeps a fixed size across frames.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Identify the dominant entities and any trade-off between the three variables. In planning: GDP vs population with emissions as size, or district budget vs area with population as size.</p>
   <h5>Method — square-root radius scaling</h5>
   <div class="formula-block">
     \(r = r_{\min} + (r_{\max} - r_{\min}) \sqrt{\dfrac{v - v_{\min}}{v_{\max} - v_{\min}}}\)
   </div>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">During animation, bubble radii are scaled <em>globally</em> once, so the same value maps to the same size in every frame — a bar-race/Gapminder prerequisite for honest in-place comparison.</p>
-  <h5>Field bindings</h5>
-  <table class="params-table">
-    <tr><th>Binding</th><th>Role</th></tr>
-    <tr><td class="param-name">X / Y</td><td class="param-type">Numeric position</td></tr>
-    <tr><td class="param-name">Value (size)</td><td class="param-type">Numeric — bubble area</td></tr>
-    <tr><td class="param-name">Group</td><td class="param-type">Colour by category</td></tr>
-  </table>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable; reference overlays available.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-scatter">Scatter</a> · <a href="#feature-animation">Animation</a> for the Gapminder-style bubble race.</div>
@@ -768,11 +812,20 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     The canonical display of a single numeric field's distribution: value on the X axis, frequency on the Y. It reveals centre, spread, skew, and modality at a glance, and is the natural first look at any unfamiliar numeric attribute.
   </div>
+  <img class="chart-shot" src="chart-histogram.png" alt="Histogram of building heights" loading="lazy">
+  <p class="chart-caption">Building heights — the shape of a single numeric field's distribution.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Whenever you meet an unfamiliar numeric field and want its distribution before anything else. It is also the honest pre-check for "is this roughly normal?" before methods that assume normality.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A single <strong>numeric field</strong>. The <em>Bins</em> control sets the number of intervals — too few hide structure, too many reveal noise.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read four things: <strong>centre</strong> (where the peak is), <strong>spread</strong> (width of the mass), <strong>skew</strong> (a long tail to one side), and <strong>modality</strong> (one peak, two peaks = two sub-populations). Isolated bars at the edges are outliers.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Classify the distribution as symmetric, skewed, or multimodal and decide accordingly. In planning: building heights (character of a skyline), income (inequality), plot sizes, or commute distances. A log transform is often suggested for a strong right skew — the Explore dashboard flags this automatically.</p>
   <h5>Method — equal-width binning</h5>
   <div class="formula-block">
     bin width \(w = \dfrac{x_{\max} - x_{\min}}{k}\),  &nbsp; bin index \(i = \min\!\left(\lfloor \tfrac{v - x_{\min}}{w} \rfloor,\ k-1\right)\)
   </div>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Computed in pure Python by <code>stats.histogram()</code>. The <em>Bins</em> control sets \(k\); too few bins hide structure, too many reveal noise.</p>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — not animatable; no reference overlays.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-density">Density (KDE)</a> for a smoothed estimate · <a href="#chart-box">Box plot</a> for the quantile summary · <a href="#chart-violin">Violin</a> for shape plus quantiles.</div>
@@ -790,8 +843,16 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A part-to-whole display using angle and area. In Cleveland &amp; McGill's hierarchy, angle is a <em>lower</em> perceptual tier than position, so pies are recommended only for few categories where the question is "what share of the whole" rather than "which is larger by how much".
   </div>
+  <img class="chart-shot" src="chart-pie.png" alt="Pie chart of land-use composition" loading="lazy">
+  <p class="chart-caption">Land-use composition — angle and area encode each category's share of the whole.</p>
   <h5>When to use</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A handful of categories summing to a meaningful whole (e.g., land-use composition). The donut variant opens the centre for a total label. The <em>Top-N</em> control collapses a long tail into "Other" so the pie stays readable.</p>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A handful of categories summing to a meaningful whole (≤ 5–6). The donut variant opens the centre for a total label. The <em>Top-N</em> control collapses a long tail into "Other" so the pie stays readable.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>categorical field</strong> and a <strong>numeric value</strong> (or a plain <em>count</em>). Each slice is one category's share of the total.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare <em>angles</em> and areas — the largest slice is the dominant category. Don't ask a pie to answer "which is bigger by how much" for many similar slices; angles are hard to compare precisely.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Show dominance and balance of a whole. In planning: land-use composition, budget allocation, or housing tenure mix. If you need exact magnitude comparison, switch to a bar chart.</p>
   <h5>Field bindings</h5>
   <table class="params-table">
     <tr><th>Binding</th><th>Role</th></tr>
@@ -815,12 +876,20 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A compact five-number summary — minimum, Q1, median, Q3, maximum — drawn as a box and whiskers. It compares centre and spread across groups and flags outliers without a single distributional assumption.
   </div>
+  <img class="chart-shot" src="chart-box.png" alt="Box plot of house prices by district" loading="lazy">
+  <p class="chart-caption">House prices by district — box = IQR, line = median, whiskers = range, dots = outliers.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">To compare the distribution — centre, spread, and outliers — of a numeric field <strong>across groups</strong>. A box plot is the compact alternative to side-by-side histograms when you have several groups.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>numeric Y field</strong>, and optionally a <strong>category/group field</strong> to produce one box per category. Without a group, one box summarises the whole field.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The <strong>box</strong> spans Q1–Q3 (the middle half of the data); the <strong>line</strong> is the median; the <strong>whiskers</strong> reach the range within the Tukey fences; <strong>dots</strong> are outliers. A taller box = more spread; a higher line = higher centre.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare which groups have higher or lower centres, more or less variability, and where the outliers sit. In planning: house prices, rents, or income by district — the outliers often flag gentrified pockets or distressed areas worth a closer look.</p>
   <h5>Method — quantiles and Tukey fences</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-600);margin:6px 0 10px;">Quantiles use linear interpolation: for position \(p = q(n-1)\), integer index \(i = \lfloor p \rfloor\), fraction \(d = p - i\), the quantile is</p>
   <div class="formula-block">
-    \(x_{[i]}(1-d) + x_{[i+1]}d\)
+    quantile \(= x_{[i]}(1-d) + x_{[i+1]}d\), &nbsp; outliers outside \([Q_1 - 1.5\,\mathrm{IQR},\ Q_3 + 1.5\,\mathrm{IQR}]\)
   </div>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Outliers are values outside the Tukey fences \([Q_1 - 1.5\,\mathrm{IQR},\ Q_3 + 1.5\,\mathrm{IQR}]\).</p>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — not animatable.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-violin">Violin</a> for shape · <a href="#chart-histogram">Histogram</a> for the full distribution · <a href="#feature-dashboard">Normalised box plot</a> in the dashboard.</div>
@@ -838,6 +907,16 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A colour-encoded matrix crossing two categorical fields: each cell's colour intensity encodes an aggregated numeric value. It compresses a two-way table into a single image, making dense patterns (correlation structure, origin–destination flows, category co-occurrence) immediately legible.
   </div>
+  <img class="chart-shot" src="chart-heatmap.png" alt="Heatmap of daily trips by origin and destination" loading="lazy">
+  <p class="chart-caption">Daily trips by origin → destination — colour intensity encodes cell magnitude.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When two <strong>categorical dimensions</strong> cross and you want to see the pattern in the resulting matrix — flows, co-occurrence, or a two-way table too large to read as numbers.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Two <strong>categorical fields</strong> (X and Y) and a <strong>numeric Value field</strong> (or a plain <em>count</em>) aggregated per cell.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read colour intensity as magnitude. Scan for <strong>hot rows or columns</strong> (one category that dominates), a <strong>hot diagonal</strong> (self-interaction), and <strong>asymmetry</strong> (cell (i,j) differing from (j,i), a one-way flow).</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Find strong pairings and dominant directions. In planning: origin–destination commute or trip matrices, land-use transitions, or category co-occurrence. A hot diagonal means most flow stays within each zone; off-diagonal heat reveals the dominant corridor.</p>
   <h5>Field bindings</h5>
   <table class="params-table">
     <tr><th>Binding</th><th>Role</th></tr>
@@ -862,6 +941,16 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A nested-rectangle display of a two-level hierarchy, where each rectangle's <em>area</em> is proportional to a value. It scales to far more categories than a pie chart while preserving part-to-whole reading, built by <code>transform.tree_rows()</code>.
   </div>
+  <img class="chart-shot" src="chart-treemap.png" alt="Treemap of employment by sector and subsector" loading="lazy">
+  <p class="chart-caption">Employment by sector → subsector — rectangle area encodes magnitude, nesting the hierarchy.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When a <strong>two-level hierarchy</strong> has many categories and you want part-to-whole at both levels — outer rectangles are the top-level groups, inner rectangles their sub-division.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Two <strong>grouping fields</strong> (outer + inner hierarchy) and a <strong>numeric Value field</strong> aggregated per group.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read <em>area</em>, not linear dimensions — the largest rectangle is the largest value. Outer rectangles group sub-values; compare areas within a group for the sub-composition and across groups for the top-level composition.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Spot the dominant sector and its internal composition. In planning: employment by sector → subsector, budget by department → program, or land area by district → land-use class.</p>
   <h5>Field bindings</h5>
   <table class="params-table">
     <tr><th>Binding</th><th>Role</th></tr>
@@ -883,8 +972,18 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 </div>
 <div class="alg-card-body">
   <div class="alg-desc">
-    The radial counterpart of a treemap: concentric rings encode hierarchy levels, with each segment's <em>angular extent</em> proportional to a value. It reads beautifully for shallow hierarchies and reads the same two-field structure as the treemap via <code>transform.tree_rows()</code>.
+    The radial counterpart of a treemap: concentric rings encode hierarchy levels, with each segment's <em>angular extent</em> proportional to a value. It reads the same two-field structure as the treemap via <code>transform.tree_rows()</code> and shines for presentation of a shallow hierarchy.
   </div>
+  <img class="chart-shot" src="chart-sunburst.png" alt="Sunburst chart of budget by department and program" loading="lazy">
+  <p class="chart-caption">Budget by department → program — rings are hierarchy levels, angle is magnitude.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The same two-level hierarchy as a treemap, chosen for its visual impact in presentations and reports. Best for shallow hierarchies where rings stay readable.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Two <strong>grouping fields</strong> (outer + inner) and a <strong>numeric Value field</strong>.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read from the centre outward: the inner ring is the top level, each outer ring the next level; a segment's <em>angle</em> is its share. Larger arcs = larger values.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Communicate the structure of a whole at two levels. In planning: municipal budget by department → program, or energy consumption by sector → source.</p>
   <h5>Field bindings</h5>
   <table class="params-table">
     <tr><th>Binding</th><th>Role</th></tr>
@@ -906,12 +1005,21 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 </div>
 <div class="alg-card-body">
   <div class="alg-desc">
-    A per-category mean drawn as a bar or point with a shaded band one standard deviation either side. It communicates both central tendency <em>and</em> dispersion simultaneously — the honest alternative to a bare average that hides spread.
+    A per-category mean drawn with a shaded band one standard deviation either side. It communicates both central tendency <em>and</em> dispersion simultaneously — the honest alternative to a bare average that hides spread.
   </div>
+  <img class="chart-shot" src="chart-errorband.png" alt="Mean and standard-deviation band of crop yield by type" loading="lazy">
+  <p class="chart-caption">Crop yield by type — the bar is the mean, the shaded band is ±1σ.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When reporting a per-category average <em>and</em> its variability, so the reader sees both the typical value and how consistent it is. The band is ideal for a modest number of categories.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>categorical X field</strong> and a <strong>numeric Y field</strong>; the mean and sample standard deviation are computed per category.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The bar (or point) is the mean; the band spans one standard deviation. A wide band = high variability; overlapping bands suggest categories may not differ much, while non-overlapping ones suggest a real difference.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare both level and reliability across categories. In planning: crop yield by type, air-quality readings by station, or service response times by district — a high mean with a huge band is a very different story from a high mean with a tight band.</p>
   <h5>Method</h5>
   <div class="formula-block">
-    mean \(\bar{x} = \dfrac{1}{n}\sum x_i\), &nbsp; sample standard deviation \(s = \sqrt{\dfrac{1}{n-1}\sum (x_i - \bar{x})^2}\)
-    <br>band = \([\bar{x} - s,\ \bar{x} + s]\)
+    mean \(\bar{x} = \dfrac{1}{n}\sum x_i\), &nbsp; \(s = \sqrt{\dfrac{1}{n-1}\sum (x_i - \bar{x})^2}\), &nbsp; band \(= [\bar{x} - s,\ \bar{x} + s]\)
   </div>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✗.</p>
@@ -930,8 +1038,16 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     The whisker form of the mean-and-dispersion display: a point for each category's mean with an error bar spanning ±1σ. Cleaner than the band when many categories are compared, and the standard idiom for reporting group means with variability.
   </div>
-  <h5>Method</h5>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Identical statistics to the band — per-category mean and sample standard deviation — rendered as point plus whisker rather than shaded region.</p>
+  <img class="chart-shot" src="chart-errorbar.png" alt="Mean and error bars of PM2.5 by station" loading="lazy">
+  <p class="chart-caption">PM2.5 by station — point is the mean, whisker is ±1σ.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The same mean-plus-variability story as the band, but for <strong>many categories</strong> where whiskers read more cleanly than filled bands.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>categorical X field</strong> and a <strong>numeric Y field</strong>; mean and sample standard deviation are computed per category.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare the points (means) and the whiskers (spread). A longer whisker = more variable; a higher point = higher average. Overlapping whiskers suggest little difference; well-separated ones suggest a real gap.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Report group averages with honest uncertainty. In planning: monitoring-station readings, survey scores by neighbourhood, or infrastructure condition by zone.</p>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✗.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-errorband">Mean ± σ band</a> · <a href="#chart-box">Box plot</a>.</div>
@@ -949,12 +1065,21 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     Kernel density estimation smooths a histogram into a continuous probability-density curve, revealing modality and shape without the arbitrary choice of bin edges. The Gaussian kernel is used throughout.
   </div>
+  <img class="chart-shot" src="chart-density.png" alt="Kernel density estimate of household income" loading="lazy">
+  <p class="chart-caption">Household income — a smoothed density curve reveals the distribution's shape.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you want the <strong>smooth shape</strong> of a numeric distribution rather than blocky bins — especially to detect multimodality (two or more peaks = sub-populations) that a histogram's bin choice can obscure.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A single <strong>numeric field</strong>; an optional <em>Group</em> field overlays one curve per category.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read peaks as modes, the width of the curve as spread, and a long tail as skew. Two distinct peaks mean two underlying groups; a single tall peak means one dominant mode.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Diagnose the distribution before modelling. In planning: income (bimodality reveals inequality or a divided market), travel times, or property values. With a <em>Group</em>, compare the shape of several districts at once.</p>
   <h5>Method — Silverman bandwidth + Gaussian KDE</h5>
   <div class="formula-block">
     \(\hat{h} = 0.9 \min(\hat{\sigma},\ \mathrm{IQR}/1.34)\ n^{-1/5}\)
     <br>\(\hat{f}(x) = \dfrac{1}{n\hat{h}\sqrt{2\pi}}\displaystyle\sum_{i=1}^{n}\exp\!\left(-\tfrac{1}{2}\left(\tfrac{x-x_i}{\hat{h}}\right)^{2}\right)\)
   </div>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The grid extends one bandwidth past the data range so the density tapers to near zero at the boundaries. A <em>Group</em> field overlays one curve per category. Pure Python — no numpy, scipy, or pandas.</p>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-histogram">Histogram</a> · <a href="#chart-violin">Violin</a> (KDE mirrored around a median).</div>
@@ -972,6 +1097,16 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A KDE curve mirrored about a central axis, one "violin" per group, with the median marked. It fuses the box plot's quantile summary with the density curve's shape, exposing multimodality, skewness, and tail behaviour that a box hides.
   </div>
+  <img class="chart-shot" src="chart-violin.png" alt="Violin plot of test scores by school" loading="lazy">
+  <p class="chart-caption">Test scores by school — width is density, the white dot is the median.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When a box plot's five numbers are not enough and you want the <strong>shape</strong> of each group's distribution — to catch bimodality or skewness a box would flatten away.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>numeric Y field</strong> and an optional <strong>category/group field</strong> to produce one violin per group.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Read <strong>width</strong> as frequency (wider = more data at that value), the <strong>white dot</strong> as the median, and the thin line as the inter-quartile range. A bulge near the top = many high values; two bulges = bimodal.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Compare both shape and level across groups. In planning: test scores by school district (bimodality can flag a divided intake), commute times by zone, or environmental readings by site.</p>
   <h5>Method — mirrored density polygon</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;"><code>transform.violin_rows()</code> computes a per-group density, then builds a closed polygon — the left half at <code>[midpoint − half_width·d/peak, y]</code>, the right half mirrored. In ECharts this is drawn with a custom <code>renderItem</code>; in Vega-Lite a ranged-area workaround avoids the <code>order</code> channel so facets never collapse to zero width.</p>
   <h5>Engine support</h5>
@@ -991,14 +1126,18 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A multivariate profile drawn on N axes radiating from a centre, one spoke per numeric field. It compares several entities across many variables at once, revealing shape and trade-offs — invaluable for scoring, suitability, and indicator dashboards.
   </div>
+  <img class="chart-shot" src="chart-radar.png" alt="Radar chart comparing quality-of-life across districts" loading="lazy">
+  <p class="chart-caption">District quality of life — each spoke is an indicator, each polygon a district.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">To compare a <strong>few entities across several indicators</strong> at once — when the shape of a profile matters more than any single value. Ideal for scoring or suitability profiles where "balanced" versus "specialised" is the question.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>category X field</strong> with at least three values (the axes) and a <strong>numeric Y field</strong>, plus an optional <em>Group</em> to draw one polygon per entity.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Each spoke is one indicator (its own scale); a point far from the centre is high on that indicator. Compare polygon <em>shapes</em> — a large, balanced polygon is strong overall; a lopsided one is strong on some axes, weak on others.</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Expose strengths, weaknesses, and trade-offs per entity. In planning: district quality-of-life, site suitability, or service-coverage scoring — where the visual "footprint" of each alternative is the message.</p>
   <h5>Method — per-axis maxima</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Axes are computed by <code>transform.radar_axis_maxes()</code>, padding each field's maximum by 5% so the top of a profile never touches the outer ring. Fields are normalised against their own maxima, so differently-scaled indicators compare fairly.</p>
-  <h5>Field bindings</h5>
-  <table class="params-table">
-    <tr><th>Binding</th><th>Role</th></tr>
-    <tr><td class="param-name">Y (multiple fields)</td><td class="param-type">One spoke per selected numeric field</td></tr>
-    <tr><td class="param-name">Group</td><td class="param-type">One profile per category</td></tr>
-  </table>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✗ · Matplotlib ✗.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-errorbar">Error bars</a> for per-variable spread · <a href="#diagram-normalise">Normalisation</a> for the same scaling idea on map diagrams.</div>
@@ -1016,11 +1155,20 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     A bar chart of categories sorted descending, overlaid with a cumulative-share line. It operationalises Juran's (1954) principle — the vital few versus the trivial many — letting an analyst see instantly where the bulk of a total concentrates.
   </div>
+  <img class="chart-shot" src="chart-pareto.png" alt="Pareto chart of complaint types with cumulative line" loading="lazy">
+  <p class="chart-caption">Complaint types — bars sorted descending, line shows the running cumulative share.</p>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">When you need to rank causes, defects, or demands by impact and identify the few that account for most of the total — the classic prioritisation chart.</p>
+  <h5>What data you need</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A <strong>categorical X field</strong> and a <strong>numeric value</strong> (count or sum). Categories are sorted descending automatically.</p>
+  <h5>How to read it</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Bars descend from largest to smallest; the line climbs to 100%. The <strong>leftmost bars before the line reaches ~80%</strong> are the "vital few" that dominate the total; the long tail after is the "trivial many".</p>
+  <h5>Interpretation &amp; applications</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Prioritise interventions on the few categories that matter most. In planning: the top complaint types, the leading causes of permit delays, or the dominant land-use conflicts — focus effort where the line crosses 80%.</p>
   <h5>Method — cumulative share</h5>
   <div class="formula-block">
     cumulative share \(s_i = \dfrac{\sum_{j \le i} v_j}{\sum v} \times 100\)
   </div>
-  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Categories are sorted by descending value; the line marks the running percentage of the total. A classic use is defect or complaint triage in planning diagnostics.</p>
   <h5>Engine support</h5>
   <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✗.</p>
   <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bar">Bar</a> · <a href="#feature-dashboard">Insights</a> (which reports the top-category share automatically).</div>
@@ -1116,11 +1264,11 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   </div>
   <h5>Presets</h5>
   <table class="params-table">
-    <tr><th>Preset</th><th>Treatment</th></tr>
-    <tr><td class="param-name">Clean</td><td class="param-type">0.6 mm white halo — subtle, cartographic default</td></tr>
-    <tr><td class="param-name">Strong halo</td><td class="param-type">1.2 mm halo — labels survive busy basemaps</td></tr>
-    <tr><td class="param-name">Bold</td><td class="param-type">Heavy weight — emphasis, no halo</td></tr>
-    <tr><td class="param-name">Plain</td><td class="param-type">No halo — minimal, dense layouts</td></tr>
+    <tr><th>Preset</th><th>Treatment</th><th>Use</th></tr>
+    <tr><td class="param-name">Clean</td><td class="param-type">0.6 mm white halo</td><td>Subtle, cartographic default</td></tr>
+    <tr><td class="param-name">Strong halo</td><td class="param-type">1.2 mm halo</td><td>Labels survive busy basemaps</td></tr>
+    <tr><td class="param-name">Bold</td><td class="param-type">Heavy weight</td><td>Emphasis, no halo</td></tr>
+    <tr><td class="param-name">Plain</td><td class="param-type">No halo</td><td>Minimal, dense layouts</td></tr>
   </table>
   <div class="see-also-box"><strong>See also:</strong> <a href="#label-format">Formatting</a>.</div>
 </div>
@@ -1167,6 +1315,8 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="alg-desc">
     The <em>Explore layer</em> button profiles every field of a layer and renders a complete interactive dashboard in one operation — an automated exploratory data analysis (Tukey, 1977) with toggleable tiles.
   </div>
+  <img class="chart-shot" src="hero-dashboard.png" alt="The Explore dashboard — KPI cards, auto charts, correlation matrix and a trend scatter" loading="lazy">
+  <p class="chart-caption">The one-click Explore dashboard: KPI cards, field summaries, auto charts, correlation matrix, and a trend scatter.</p>
   <h5>Tiles</h5>
   <table class="params-table">
     <tr><th>Tile</th><th>Contents</th></tr>
