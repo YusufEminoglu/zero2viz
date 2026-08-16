@@ -1,391 +1,1451 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>02viz &mdash; Reference Manual</title>
-<style>
-:root {--bg:#fafaf8;--sidebar-bg:#f3f3f0;--text:#1a1a1a;--muted:#5a5a55;--accent:#2a6e5e;--border:#d8d5ce;--card-bg:#fff;--link:#1a6e5e;--code-bg:#edf4f2;--search-bg:#fff}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;display:flex;min-height:100vh}
-#sidebar{width:270px;min-width:270px;background:var(--sidebar-bg);border-right:1px solid var(--border);padding:24px 20px;position:sticky;top:0;height:100vh;overflow-y:auto}
-#sidebar h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
-#search{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--search-bg);margin-bottom:20px}
-#sidebar nav a{display:block;padding:5px 0;font-size:13px;color:var(--link);text-decoration:none}
-#sidebar nav a:hover{text-decoration:underline}
-#sidebar nav a.sub{padding-left:14px;font-size:12px}
-#main{flex:1;padding:40px 48px;max-width:860px}
-h1{font-size:28px;font-weight:700;color:var(--accent);margin-bottom:4px}
-h1+p{color:var(--muted);margin-bottom:32px}
-h2{font-size:20px;font-weight:600;color:var(--accent);margin:36px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--border)}
-h3{font-size:16px;font-weight:600;color:var(--text);margin:20px 0 8px}
-p,li{font-size:14px;color:var(--text)}
-p{margin-bottom:10px}
-.card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px}
-.card h4{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:6px}
-ul{margin:4px 0 10px 20px}
-li{margin-bottom:3px}
-code{font-family:Consolas,'Courier New',monospace;background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:13px}
-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
-th,td{border:1px solid var(--border);padding:8px 12px;text-align:left}
-th{background:var(--code-bg);font-weight:600}
-.refs{font-size:12px;color:var(--muted)}
-.refs a{color:var(--link)}
-.formula{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:10px 16px;margin:8px 0;font-family:Cambria,'Times New Roman',serif;font-size:15px;text-align:center}
-@media(max-width:760px){body{flex-direction:column}#sidebar{width:100%;min-width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}#main{padding:24px}}
-.hidden{display:none}
-</style>
-<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-</head>
-<body>
-<aside id="sidebar">
-  <input type="text" id="search" placeholder="Search manual&hellip;" autocomplete="off">
-  <h2>Contents</h2>
-  <nav id="toc">
-    <a href="#overview">1. Overview</a>
-    <a href="#theory" class="sub">2. Theoretical Foundations</a>
-    <a href="#engines" class="sub">3. Rendering Engines</a>
-    <a href="#charts" class="sub">4. Chart Types (17)</a>
-    <a href="#charts-tab" class="sub">5. Charts Tab</a>
-    <a href="#math" class="sub">6. Statistical Methods</a>
-    <a href="#diagrams" class="sub">7. Map Diagrams Tab</a>
-    <a href="#labels" class="sub">8. Labels Tab</a>
-    <a href="#dashboard" class="sub">9. Explore Dashboard</a>
-    <a href="#animation" class="sub">10. Animation (Play Axis)</a>
-    <a href="#overlays" class="sub">11. Reference Overlays</a>
-    <a href="#smart" class="sub">12. Smart Chart Assistant</a>
-    <a href="#presets" class="sub">13. Chart Presets</a>
-    <a href="#params" class="sub">14. Controls</a>
-    <a href="#workflow" class="sub">15. Workflow Guide</a>
-    <a href="#technical" class="sub">16. Technical Notes</a>
-    <a href="#literature" class="sub">17. Literature</a>
-  </nav>
-</aside>
-<main id="main">
-<h1>02viz</h1>
-<p>Geospatial Visualization Studio &mdash; multi-engine chart, diagram, and label studio &bull; v0.14.2</p>
-
-<h2 id="overview">1. Overview</h2>
-<p>02viz transforms the QGIS environment into a comprehensive data visualisation studio. It provides a single dock with three tabs&mdash;<strong>Charts</strong>, <strong>Map Diagrams</strong>, and <strong>Labels</strong>&mdash;all sharing a common layer and data selector. Four rendering engines (two zero-dependency offline JavaScript engines plus an optional Python engine) produce interactive, publishable charts from QGIS vector layers or external tabular data (CSV, XLSX, ODS, GPKG, DBF). The plugin runs entirely offline with no accounts, no network, and no mandatory external Python dependencies.</p>
-<p>The plugin ships with bundled, vendored copies of Apache ECharts, Plotly.js, Vega, and Vega-Lite in <code>web/</code>. The chart-to-map selection bridge uses the browser's <code>document.title</code> as a click-event transport channel&mdash;a design driven by the observation that <code>addToJavaScriptWindowObject</code> causes access violations in WebCore during page commit on Qt 5.15's QtWebKit fork. <code>QWebChannel</code> exists only on QtWebEngine, making <code>titleChanged</code> the single cross-platform signal for chart-to-map interaction.</p>
-
-<h2 id="theory">2. Theoretical Foundations</h2>
-
-<h3>2.1 The Grammar of Graphics</h3>
-<p>The plugin's architecture follows Wilkinson's (2005) <em>Grammar of Graphics</em>, which decomposes statistical graphics into independent components: data, aesthetic mappings, geometric objects, scales, statistical transformations, coordinate systems, and facets. The spec assembly layer (<code>core/transform.py</code> and <code>dock.py</code>) produces a <code>data</code> dictionary with typed rows and metadata, which each engine reinterprets through its own rendering primitives. This separation of data shaping from rendering is the central architectural principle&mdash;every engine exposes only <code>build_html(spec) &rarr; str</code>, consuming the same data structure and producing a fully self-contained HTML document.</p>
-<p>Vega-Lite (Satyanarayan et al., 2017), one of the four engines, is a direct realisation of the Grammar of Graphics as a declarative JSON specification language. Its compiler maps visual encoding channels to lower-level Vega rendering directives, providing theoretical continuity from Wilkinson's abstract framework to an executable visualisation. The plugin exposes a custom Vega-Lite spec editor, allowing users to directly manipulate the declarative specification.</p>
-
-<h3>2.2 Exploratory Data Analysis</h3>
-<p>The Smart Assistant and Explore Dashboard operationalise Tukey's (1977) framework for exploratory data analysis (EDA). Fields are classified into numeric, categorical, and identifier categories; visualisations are selected based on the data type combination. This follows Tukey's principle that visual summaries should precede formal modelling. The Explore Dashboard produces KPI cards, histograms, box plots, correlation matrices, and scatter plots in a single operation, enabling rapid assessment of distribution shape, central tendency, spread, association, and outliers.</p>
-
-<h3>2.3 Perceptual Principles</h3>
-<p>The plugin follows Cleveland and McGill's (1984) ranking of graphical perception accuracy. Position along a common scale (bar charts, line charts) is used for the most critical comparisons. Angle (pie charts) occupies a lower perceptual tier and is recommended only for part-to-whole comparisons with few categories. Area (bubble charts) uses square-root scaling via <code>transform.bubble_sizes()</code>: radii follow \(r \propto \sqrt{v}\) so that perceived area&mdash;not radius&mdash;is proportional to the data value, correcting the systematic underestimation that occurs with linear radius scaling.</p>
-
-<h2 id="engines">3. Rendering Engines</h2>
-<table>
-  <tr><th>Engine</th><th>Chart Types</th><th>Animation</th><th>WebKit OK</th><th>Interactive</th><th>Library Size</th></tr>
-  <tr><td><strong>Apache ECharts</strong></td><td>All 17</td><td>Timeline (autoPlay, loop)</td><td>Yes</td><td>Full cross-filter</td><td>~1 MB (Apache-2.0)</td></tr>
-  <tr><td><strong>Plotly.js</strong></td><td>All 17</td><td>Frames + slider + play/pause</td><td>No (ES6+)</td><td>Full cross-filter</td><td>~4.5 MB (MIT)</td></tr>
-  <tr><td><strong>Vega-Lite</strong></td><td>14</td><td>None</td><td>No</td><td>Declarative; JSON editor</td><td>~0.76 MB (BSD-3)</td></tr>
-  <tr><td><strong>Matplotlib / seaborn</strong></td><td>11</td><td>None</td><td>Yes (PNG)</td><td>None (static)</td><td>Optional pip</td></tr>
-</table>
-
-<h3>3.1 Apache ECharts Engine</h3>
-<p>ECharts (Li et al., 2018) is a declarative framework optimised for interactive web exploration. The plugin's ECharts engine (<code>engines/echarts.py</code>, 568 lines) produces self-contained HTML with the library inlined. It uses the <code>timeline</code> component for animation, <code>markLine</code> and <code>markArea</code> for reference overlays, and custom <code>renderItem</code> functions for violin plots (polygon rendering) and error-bar whiskers. As the only engine with full ES5 compatibility, it is the default on QGIS builds using Qt 5.15's QtWebKit fork.</p>
-
-<h3>3.2 Plotly.js Engine</h3>
-<p>The Plotly engine (<code>engines/plotly.py</code>, 466 lines) uses Plotly.js's frames-and-slider animation with play/pause <code>updatemenus</code>. Overlays are rendered as <code>layout.shapes</code> (lines and rectangles) with <code>layout.annotations</code>. Cross-filter highlighting uses <code>Plotly.restyle()</code> with per-trace <code>selected.marker.opacity</code> and <code>unselected.marker.opacity</code> attributes. On WebKit-only QGIS builds, a styled "explainer" fallback page informs the user why the panel is blank and offers the options of switching to ECharts, exporting to HTML, or opening in the system browser.</p>
-
-<h3>3.3 Vega-Lite Engine</h3>
-<p>The Vega-Lite engine (<code>engines/vegalite.py</code>, 573 lines) compiles declarative JSON specifications to Vega at runtime via <code>vegaLite.compile()</code>. It supports 14 of 17 chart types; treemap, sunburst, and radar are excluded because these hierarchical and radial layouts are not part of the Vega-Lite grammar. Users can edit the generated JSON specification directly with validation before rendering. Data rows carrying feature IDs are injected as a named dataset <code>o2viz</code>. The violin chart workaround avoids the <code>order</code> channel, using a ranged-area mark with re-paired polygon half-points to prevent the facets from collapsing to zero width.</p>
-
-<h3>3.4 Matplotlib / Seaborn Engine</h3>
-<p>The Matplotlib engine (<code>engines/mpl.py</code>, 276 lines) is the only engine with optional Python dependencies. It imports matplotlib and seaborn lazily, uses <code>matplotlib.use("Agg")</code> for headless rendering, and applies seaborn's <code>set_theme(style="whitegrid")</code> when available. Output is an 8.2" x 5.0" figure at 150 DPI, base64-encoded as PNG. Eleven chart types are supported. Optional dependency status is detected at startup via <code>core/requirements.py</code> without any pip invocation.</p>
-
-<h2 id="charts">4. Chart Types (17)</h2>
-<table>
-  <tr><th>Chart</th><th>ECharts</th><th>Plotly</th><th>Vega-Lite</th><th>Matplotlib</th><th>Data Requirement</th></tr>
-  <tr><td>Bar</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: categorical or numeric; Y: numeric</td></tr>
-  <tr><td>Line</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: ordered; Y: numeric</td></tr>
-  <tr><td>Area</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: ordered; Y: numeric</td></tr>
-  <tr><td>Scatter</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X, Y: numeric</td></tr>
-  <tr><td>Bubble</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X, Y, Size: numeric</td></tr>
-  <tr><td>Histogram</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: numeric; Y: frequency (auto)</td></tr>
-  <tr><td>Pie / Donut</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Category: categorical; Value: numeric</td></tr>
-  <tr><td>Box Plot</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: categorical (opt.); Y: numeric</td></tr>
-  <tr><td>Heatmap</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X, Y: categorical; Value: numeric</td></tr>
-  <tr><td>Treemap</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td><td>Two-level hierarchy; Value: numeric</td></tr>
-  <tr><td>Sunburst</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td><td>Two-level hierarchy; Value: numeric</td></tr>
-  <tr><td>Mean &plusmn; &sigma; band</td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>X: categorical; Y: numeric grouped</td></tr>
-  <tr><td>Mean &plusmn; &sigma; bars</td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>X: categorical; Y: numeric grouped</td></tr>
-  <tr><td>Density (KDE)</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: numeric; group optional</td></tr>
-  <tr><td>Violin Plot</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>X: categorical (opt.); Y: numeric</td></tr>
-  <tr><td>Radar / Spider</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td><td>Multiple numeric fields per category</td></tr>
-  <tr><td>Pareto (80/20)</td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>Category: categorical; Value: numeric</td></tr>
-</table>
-
-<h3>4.1 Bar and Scatter Charts</h3>
-<p>Bar charts encode numeric values using position along a common scale, the highest-accuracy channel in Cleveland and McGill's hierarchy. Grouped bars use the Group field for multi-series display; stacked bars use the <code>stacked</code> checkbox for additive composition. The Top-N control collapses categories beyond N into "Other".</p>
-<p>Scatter plots display bivariate numeric relationships with optional group-colouring and least-squares trend line: \(\beta = S_{xy} / S_{xx}\), \(\alpha = \bar{y} - \beta\bar{x}\). Bubble charts add a third numeric dimension with square-root-scaled radii: \(r = r_{\min} + (r_{\max} - r_{\min}) \sqrt{(v - v_{\min})/(v_{\max} - v_{\min})}\). During animation, bubble radii are scaled globally so the same value maps to the same size across all frames.</p>
-
-<h3>4.2 Histograms and Kernel Density Estimation</h3>
-<p>Histograms use equal-width binning via <code>stats.histogram()</code>: bin width \(w = (x_{\max} - x_{\min}) / k\), index \(i = \min(\lfloor (v - x_{\min}) / w \rfloor, k-1)\).</p>
-<p>Kernel density estimation uses a Gaussian kernel with Silverman's (1986) rule-of-thumb bandwidth:</p>
-<div class="formula">
-\(h = 0.9 \min(\hat{\sigma}, \mathrm{IQR}/1.34) \; n^{-1/5}\)
-</div>
-<div class="formula">
-\(\hat{f}(x) = \dfrac{1}{n h \sqrt{2\pi}} \displaystyle\sum_{i=1}^{n} \exp\left(-\dfrac{1}{2}\left(\dfrac{x - x_i}{h}\right)^2\right)\)
-</div>
-<p>The grid extends one bandwidth past the data range so the density tapers to approximately zero at boundaries. All computation is pure Python&mdash;no numpy, scipy, or pandas dependency.</p>
-
-<h3>4.3 Box Plots and Violin Plots</h3>
-<p>Box plots display the five-number summary (min, Q1, median, Q3, max) via linear-interpolation quantiles: for position \(p = q(n-1)\), integer index \(i = \lfloor p \rfloor\), fraction \(d = p - i\), the quantile is \(x_{[i]}(1-d) + x_{[i+1]}d\). Outlier detection uses Tukey fences: values outside \([Q_1 - 1.5 \times \mathrm{IQR}, Q_3 + 1.5 \times \mathrm{IQR}]\).</p>
-<p>Violin plots build on KDE: <code>transform.violin_rows()</code> computes per-group density, then constructs a closed polygon&mdash;the left half at <code>[midpoint - half_width * d/peak, y]</code>, right half mirrored. The resulting shape reveals multimodality, skewness, and tail behaviour invisible in a box plot.</p>
-
-<h3>4.4 Pareto and Other Charts</h3>
-<p>Pareto charts operationalise Juran's (1954) principle: categories are sorted descending by value, cumulative share \(s_i = \sum v_j / \sum v \times 100\) is overlaid as a line. Treemap and sunburst charts use two-level nested hierarchies built by <code>transform.tree_rows()</code>, rendering as ECharts or Plotly hierarchical layouts. Radar charts compute per-axis maxima padded by 5% via <code>transform.radar_axis_maxes()</code>.</p>
-
-<h2 id="charts-tab">5. Charts Tab</h2>
-
-<h3>5.1 Data Specification</h3>
-<p>The shared data card provides: a <code>QgsMapLayerComboBox</code> filtered to vector layers, an external file loader (CSV, XLSX, ODS, GPKG, DBF), a "selected features only" checkbox (auto-refreshes on <code>selectionChanged</code>), and a "live refresh" checkbox (re-renders on layer edit, capped at 100,000 rows). The last I/O directory persists via <code>QSettings("zero2viz/last_io_dir")</code>.</p>
-
-<h3>5.2 Field Classification</h3>
-<p>The field classifier (<code>core/fields.py</code>) assigns each attribute: <strong>numeric</strong> (&ge;60% numeric with &gt;8 distinct values), <strong>categorical</strong> (&le;30 distinct values, unless all unique with &gt;6 rows), or <strong>skip</strong> (identifiers matching <code>fid</code>, <code>id</code>, <code>gid</code>, <code>uuid</code>, <code>objectid</code>, <code>*_id</code>, <code>*_key</code>). The "Suggest a chart" button triggers <code>assistant.suggest_chart()</code> with priority heuristics: two numeric fields with \(|r| \ge 0.4 \rightarrow\) scatter+trend; categorical+numeric \(\rightarrow\) mean bar; categorical only \(\rightarrow\) count bar; numeric only \(\rightarrow\) histogram.</p>
-
-<h3>5.3 Themes and Palettes</h3>
-<div class="card">
-  <h4>Four Themes, Eight Palettes, Custom Editor</h4>
-  <p><strong>Themes:</strong> Studio Light (default, #fbfbfd), Ink Dark (#131c21, presentations), Soft Pastel (#ffffff, muted), Bold Print (#ffffff, publication-ready monochrome).</p>
-  <p><strong>Palettes:</strong> Vivid (high-chroma), Colorblind safe (8-colour, Wong 2011 guidance), Viridis (perceptually uniform sequential), Sunset (warm orange-&gt;purple), Ocean (cool teal-&gt;navy), Earth (beige-&gt;forest), Berry (red-violet), Grayscale print (distinct lightness steps).</p>
-  <p><strong>Custom palette editor:</strong> Inline swatch editor with click-to-change via <code>QColorDialog</code> and +/- buttons (up to 16 colours). Auto-switches to "Custom..." mode.</p>
-</div>
-
-<h3>5.4 Chart-to-Map Selection Bridge</h3>
-<div class="card">
-  <h4>Title-Based Click Transport</h4>
-  <p>Chart pages encode clicked feature IDs as <code>document.title = "o2viz-select:&lt;id,id,...&gt;:&lt;seq&gt;"</code> via <code>__o2vizSelect()</code>. The dock's <code>titleChanged</code> listener forwards to <code>SelectionBridge</code>, which calls <code>layer.selectByIds(ids)</code>. Reverse cross-filter (map-to-chart) pushes <code>__o2vizHighlight(ids)</code> to dim non-selected items to opacity 0.16. Selection lists exceeding 20,000 IDs skip highlighting for performance. The title-transport approach was adopted because <code>addToJavaScriptWindowObject</code> crashes in Qt 5.15's WebKit fork, and <code>QWebChannel</code> exists only on WebEngine.</p>
-</div>
-
-<h2 id="math">6. Statistical Methods</h2>
-
-<h3>6.1 Aggregation and Correlation</h3>
-<p>All aggregation is pure Python in <code>transform.py</code>: Count, Sum, Mean (\(\bar{x} = \frac{1}{n}\sum x_i\)), Median (linear interpolation), Min, Max. The Pearson correlation by <code>stats.pearson()</code> uses the standard formula with zero-variance degeneracy checks:</p>
-<div class="formula">
-\(r = \dfrac{\sum (x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum (x_i - \bar{x})^2} \sqrt{\sum (y_i - \bar{y})^2}}\)
-</div>
-
-<h3>6.2 Skewness and Outliers</h3>
-<p>Adjusted Fisher-Pearson sample skewness:</p>
-<div class="formula">
-\(g_1 = \dfrac{\sqrt{n(n-1)}}{n-2} \cdot \dfrac{m_3}{m_2^{3/2}}, \quad m_k = \frac{1}{n}\sum (x_i - \bar{x})^k\)
-</div>
-<p>The Explore Dashboard reports skewness with a log-transform hint when \(|g_1| \ge 0.5\). Outlier counts use Tukey's inner fences.</p>
-
-<h2 id="diagrams">7. Map Diagrams Tab</h2>
-<div class="card">
-  <h4>Native QGIS Per-Feature Diagrams</h4>
-  <p>Four diagram types via <code>QgsDiagramRenderer</code>: <strong>Pie</strong> (<code>QgsPieDiagram</code>), <strong>Bar</strong> (<code>QgsHistogramDiagram</code>), <strong>Stacked bar</strong> (<code>QgsStackedBarDiagram</code>, QGIS 3.14+), and <strong>Text</strong> (<code>QgsTextDiagram</code>). Size: 3&ndash;60 mm (default 14 mm). Placement adapts to geometry type (AroundPoint/Line/OverPoint).</p>
-  <table>
-    <tr><th>Mode</th><th>Expression</th><th>Use Case</th></tr>
-    <tr><td>None</td><td>Raw values</td><td>Same-scale fields (e.g., population components)</td></tr>
-    <tr><td>Min-max (0&ndash;1)</td><td>\(\dfrac{v - \min}{\max - \min}\)</td><td>Different ranges on one diagram</td></tr>
-    <tr><td>Z-score</td><td>\(\dfrac{v - \mu}{\sigma}\)</td><td>Statistical comparison; warns for pies (negative angles impossible)</td></tr>
-    <tr><td>Log</td><td>\(\ln(v - \min + 1)\)</td><td>Heavy-tailed distributions</td></tr>
-  </table>
-  <p>Normalisation expressions are baked into the diagram's classified expression using pre-computed field statistics via <code>core/expressions.py</code>&mdash;no new columns are written to source data. The dock's <code>_sync_diag_hint()</code> provides contextual warnings for mathematically problematic normalisation choices. Diagram colours use the active studio palette for visual consistency.</p>
-</div>
-
-<h2 id="labels">8. Labels Tab</h2>
-<div class="card">
-  <h4>Expression-Driven Feature Labels</h4>
-  <p>Uses <code>QgsPalLayerSettings</code> and <code>QgsVectorLayerSimpleLabeling</code>. Expressions are built by <code>core/expressions.py</code>, combining fields and formatting into a single <code>concat()</code> expression.</p>
-  <p><strong>Four presets:</strong> Clean (0.6 mm white halo), Strong halo (1.2 mm), Bold (heavy weight), Plain (no halo).</p>
-  <p><strong>Formatting:</strong> primary field, optional second-row field (joined with <code>char(10)</code>), decimal places (&minus;1&ndash;6 via <code>round()</code>), thousands separator (<code>format_number()</code>), prefix/suffix (<code>concat()</code>), case conversion (upper/lower/title), word wrap (<code>wordwrap()</code> with configurable limit).</p>
-  <p><strong>Number safety:</strong> Numeric fields receive rounding/number formatting; text fields never do. <strong>Advanced expression:</strong> Freeform QGIS expression overrides all formatting; validated before application. <strong>Live preview:</strong> Shows assembled expression and first feature's evaluated value, updating on every control change.</p>
-</div>
-
-<h2 id="dashboard">9. One-Click Explore Dashboard</h2>
-<div class="card">
-  <h4>Full Layer Analysis in One Click</h4>
-  <p>The "Explore layer" button triggers <code>core/profile.py</code>'s <code>build_profile()</code>, rendered as a responsive ECharts dashboard via <code>engines/dashboard.py</code>. Tiles (toggleable via Tile Picker):</p>
-  <p><strong>KPI Cards:</strong> Row count, field counts (total/numeric/categorical), cell completeness %.</p>
-  <p><strong>Field Summary Table:</strong> Per-field type badge, missing % (green &lt;5%, amber 5&ndash;20%, red &gt;20%), distinct count, context-sensitive summary.</p>
-  <p><strong>Categorical Bar Charts:</strong> Up to 4 fields with Top-N control.</p>
-  <p><strong>Histograms:</strong> Up to 6 numeric fields, 14 bins each.</p>
-  <p><strong>Normalised Box Plots:</strong> All numeric fields on one 0&ndash;1 axis via min-max normalisation for cross-scale comparison.</p>
-  <p><strong>Correlation Matrix:</strong> Pairwise Pearson \(r\) for up to 8 fields. Diverging colour (blue-negative, red-positive) with labelled cells.</p>
-  <p><strong>Strongest-Correlation Scatter:</strong> The field pair with the highest \(|r|\), sampled to 3,000 points, with trend line.</p>
-  <p><strong>Text Insights:</strong> Strongest correlations, widest range, skewness with log hints, outlier counts, near-constant fields, high-null fields, top category share.</p>
-</div>
-
-<h2 id="animation">10. Animation (Play Axis)</h2>
-<div class="card">
-  <h4>Temporal and Sequence Animation</h4>
-  <p>Available for Bar, Line, Area, Scatter, Bubble, and Pie charts via <code>core/transform.py</code>'s <code>build_frames()</code>:</p>
-  <ol>
-    <li><code>frame_groups()</code> partitions rows by the animate field value, ordered numerically or lexicographically.</li>
-    <li><code>union_categories()</code> merges all frames' categories into a stable axis order.</li>
-    <li><code>align_values()</code> pads missing categories with zeros.</li>
-    <li>Global numeric ranges are fixed across all frames so axes do not rescale.</li>
-    <li>Bubble radii are globally scaled once so the same value maps to the same size across frames.</li>
-  </ol>
-  <p>Playback: Slow (1600 ms/frame), Medium (900 ms), Fast (450 ms). ECharts uses timeline with autoPlay/loop; Plotly uses frames with slider/play-pause. Reference overlays are hidden during animation. Axis stability follows Tufte's (1983) principle of holding the frame of reference constant.</p>
-</div>
-
-<h2 id="overlays">11. Reference Overlays</h2>
-<div class="card">
-  <h4>Statistical Reference Lines and Bands</h4>
-  <p>Available for Bar, Line, Area, Scatter, Bubble. Computed in pure Python by <code>core/overlays.py</code>:</p>
-  <table>
-    <tr><th>Overlay</th><th>Computation</th><th>Style</th></tr>
-    <tr><td>Mean line</td><td>\(\bar{x} = \frac{1}{n}\sum x_i\)</td><td>Dashed line with label</td></tr>
-    <tr><td>Median line</td><td>Linear-interpolation median</td><td>Dotted line with label</td></tr>
-    <tr><td>&plusmn;1&sigma; band</td><td>\([\bar{x} - s, \bar{x} + s]\)</td><td>Shaded region</td></tr>
-    <tr><td>IQR band</td><td>Shaded from Q1 to Q3</td><td>Shaded region with label</td></tr>
-    <tr><td>Target value</td><td>User-entered constant</td><td>Solid emphasis line</td></tr>
-  </table>
-  <p>Rendered via: ECharts markLines/markAreas, Plotly layout.shapes, Vega-Lite rule/rect layers, matplotlib axhline/axhspan. Hidden during animation.</p>
-</div>
-
-<h2 id="smart">12. Smart Chart Assistant</h2>
-<div class="card">
-  <h4>Offline Recommendation Engine</h4>
-  <p><code>core/assistant.py</code>: pure-Python, zero-network. <code>suggest_chart()</code> analyses field types and recommends the most suitable chart with full control configuration. <code>suggestions()</code> also evaluates diagram normalisation (min-max/log when field-range ratio &ge;50x) and label configuration (two-line when name+measurement fields both present).</p>
-</div>
-
-<h2 id="presets">13. Chart Presets</h2>
-<div class="card">
-  <h4>Named, Versioned, Cross-Layer Presets</h4>
-  <p>Up to 50 presets stored in QSettings as JSON (schema v1). Each stores: engine, chart type, field bindings (by name), aggregation, bins, Top-N, sort, stacked/trend flags, overlays, theme, palette, animation speed. Fields remap by name across layers; unavailable fields are cleared with a status report.</p>
-</div>
-
-<h2 id="params">14. Controls Summary</h2>
-
-<h3>Shared Data Card</h3>
-<table>
-  <tr><th>Control</th><th>Description</th></tr>
-  <tr><td>Layer combo</td><td><code>QgsMapLayerComboBox</code> (vector) or external file (CSV/XLSX/ODS/GPKG/DBF)</td></tr>
-  <tr><td>Selected features only</td><td>Uses only selected features; auto-refreshes on <code>selectionChanged</code></td></tr>
-  <tr><td>Live refresh</td><td>Re-renders on layer edit; max 100,000 rows; guarded for deleted C++ objects</td></tr>
-</table>
-
-<h3>Charts Tab Controls</h3>
-<table>
-  <tr><th>Control</th><th>Description</th></tr>
-  <tr><td>Engine</td><td>ECharts / Plotly / Vega-Lite / Matplotlib</td></tr>
-  <tr><td>Chart type</td><td>17 types; unsupported types greyed per engine; field selectors adapt contextually</td></tr>
-  <tr><td>Field bindings</td><td>X, Y, Group, Value, Animate by (context-sensitive per type via <code>_CONTROLS</code> matrix)</td></tr>
-  <tr><td>Aggregation</td><td>Count / Sum / Mean / Median / Min / Max</td></tr>
-  <tr><td>Bins / Top-N / Sort</td><td>Context-sensitive; Top-N collapses remainder to "Other"</td></tr>
-  <tr><td>Stacked / Trend line</td><td>Checkboxes; trend = least-squares linear regression</td></tr>
-  <tr><td>Reference overlays</td><td>Mean, median, &plusmn;1&sigma; band, IQR band, target value</td></tr>
-  <tr><td>Theme / Palette</td><td>4 themes; 8 palettes + custom inline swatch editor</td></tr>
-  <tr><td>Animation speed</td><td>Slow (1600 ms) / Medium (900 ms) / Fast (450 ms)</td></tr>
-</table>
-
-<h3>Map Diagrams Tab Controls</h3>
-<table>
-  <tr><th>Control</th><th>Description</th></tr>
-  <tr><td>Diagram type</td><td>Pie / Bar / Stacked bar / Text</td></tr>
-  <tr><td>Size (mm)</td><td>3&ndash;60 mm, default 14</td></tr>
-  <tr><td>Fields</td><td>Multi-select numeric field checkboxes</td></tr>
-  <tr><td>Normalisation</td><td>None / Min-max / Z-score / Log; warns for pie+Z-score</td></tr>
-  <tr><td>Apply / Remove</td><td>Sets or clears diagram renderer</td></tr>
-</table>
-
-<h3>Labels Tab Controls</h3>
-<table>
-  <tr><th>Control</th><th>Description</th></tr>
-  <tr><td>Preset</td><td>Clean / Strong halo / Bold / Plain</td></tr>
-  <tr><td>Primary / Second field</td><td><code>QgsFieldComboBox</code> per row</td></tr>
-  <tr><td>Decimals / Separator</td><td>&minus;1&ndash;6; thousands separator checkbox</td></tr>
-  <tr><td>Prefix / Suffix / Case / Wrap</td><td>String; dropdown; spinbox</td></tr>
-  <tr><td>Advanced expression</td><td>Freeform QGIS expression (overrides formatting); validated</td></tr>
-  <tr><td>Live preview</td><td>Expression text + first feature evaluation</td></tr>
-</table>
-
-<h2 id="workflow">15. Workflow Guide</h2>
-<ol>
-  <li>Click the 02viz toolbar icon to toggle the dock.</li>
-  <li><strong>Data:</strong> Select a vector layer or load external file. Optionally enable "selected features only" or "live refresh".</li>
-  <li><strong>Charts:</strong> Choose engine (ECharts recommended). Select chart type and bind fields. Click <em>Suggest a chart</em> for automatic recommendations. Set aggregation, bins, Top-N. Click <em>Render chart</em>. Click elements to select features. Export as HTML/SVG/PNG/PDF.</li>
-  <li><strong>Diagrams:</strong> Switch to Diagrams tab. Check fields, choose type/size/normalisation. Click <em>Apply to layer</em>.</li>
-  <li><strong>Labels:</strong> Switch to Labels tab. Choose fields, configure formatting, verify in preview. Click <em>Apply to layer</em>.</li>
-  <li><strong>Explore:</strong> Click "Explore layer" for full statistical dashboard. Use Tile Picker to toggle tiles.</li>
-  <li><strong>Animation:</strong> Select an "Animate by" field. Chart renders with timeline controls. Optionally set speed.</li>
-  <li><strong>Presets:</strong> Save/load chart configurations. Fields remap by name across layers.</li>
-</ol>
-
-<h2 id="technical">16. Technical Notes</h2>
-<ul>
-  <li><strong>Pure-Python statistics:</strong> All aggregation, histogram, Pearson r, KDE (Silverman bandwidth), boxplot (linear-interpolation quantiles), skewness (adjusted Fisher-Pearson), outlier detection (Tukey 1.5&times;IQR), and min-max normalisation. Only the Matplotlib engine has optional Python dependencies.</li>
-  <li><strong>Data shaping:</strong> Group-by, pivot (category &times; series), heatmap matrix, treemap/sunburst hierarchies, Top-N with "Other" collapse, per-frame slicing for animation, bubble sqrt-scaling, least-squares trend line.</li>
-  <li><strong>Engine isolation:</strong> Every engine exposes only <code>build_html(spec) &rarr; str</code>. Never touch Qt. Testable in pure Python. Usable for batch export.</li>
-  <li><strong>WebView fallback:</strong> QtWebEngine &rarr; QtWebKit &rarr; system browser. Plotly/Vega-Lite on WebKit shows styled explainer page.</li>
-  <li><strong>Dock styling:</strong> Explicitly locked light theme for Qt5/Qt6 consistency.</li>
-  <li><strong>SmartModeler bridge:</strong> v0.14.0 adds <code>smartmodeler_suggest_chart(layer_id)</code> for integration. Narrow, reviewed interface: no file paths, URLs, exports, or feature values exposed.</li>
-  <li><strong>Accessibility:</strong> All buttons have <code>accessibleName</code>/<code>accessibleDescription</code>; <code>TabFocus</code> policy.</li>
-  <li><strong>QGIS compatibility:</strong> 3.28&ndash;4.99. Zero external Python dependencies. Bundled JS libraries inlined for fully offline operation.</li>
-</ul>
-
-<h2 id="literature">17. Literature</h2>
-<ol class="refs">
-  <li>Wilkinson, L. (2005). <em>The Grammar of Graphics</em> (2nd ed.). Springer. <a href="https://doi.org/10.1007/0-387-28695-0">DOI: 10.1007/0-387-28695-0</a></li>
-  <li>Tufte, E. R. (1983). <em>The Visual Display of Quantitative Information</em>. Graphics Press.</li>
-  <li>Tukey, J. W. (1977). <em>Exploratory Data Analysis</em>. Addison-Wesley.</li>
-  <li>Cleveland, W. S. &amp; McGill, R. (1984). Graphical perception: Theory, experimentation, and application to the development of graphical methods. <em>Journal of the American Statistical Association</em>, 79(387), 531&ndash;554. <a href="https://doi.org/10.1080/01621459.1984.10478080">DOI: 10.1080/01621459.1984.10478080</a></li>
-  <li>Satyanarayan, A., Moritz, D., Wongsuphasawat, K., &amp; Heer, J. (2017). Vega-Lite: A grammar of interactive graphics. <em>IEEE Transactions on Visualization and Computer Graphics</em>, 23(1), 341&ndash;350. <a href="https://doi.org/10.1109/TVCG.2016.2599030">DOI: 10.1109/TVCG.2016.2599030</a></li>
-  <li>Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. <em>Computing in Science &amp; Engineering</em>, 9(3), 90&ndash;95. <a href="https://doi.org/10.1109/MCSE.2007.55">DOI: 10.1109/MCSE.2007.55</a></li>
-  <li>Li, D., Mei, H., Shen, Y., Su, S., Zhang, W., Wang, J., Zu, M., &amp; Chen, W. (2018). ECharts: A declarative framework for rapid construction of web-based visualization. <em>Visual Informatics</em>, 2(2), 136&ndash;146. <a href="https://doi.org/10.1016/j.visinf.2018.04.011">DOI: 10.1016/j.visinf.2018.04.011</a></li>
-  <li>Silverman, B. W. (1986). <em>Density Estimation for Statistics and Data Analysis</em>. Chapman &amp; Hall. <a href="https://doi.org/10.1007/978-1-4899-3324-9">DOI: 10.1007/978-1-4899-3324-9</a></li>
-  <li>Wong, B. (2011). Points of view: Color blindness. <em>Nature Methods</em>, 8(6), 441. <a href="https://doi.org/10.1038/nmeth.1618">DOI: 10.1038/nmeth.1618</a></li>
-  <li>Juran, J. M. (1954). Universals in management planning and controlling. <em>Management Review</em>, 43(11), 748&ndash;761.</li>
-</ol>
-</main>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02viz — Comprehensive Reference Manual v0.15.13</title>
 <script>
-(function(){
-  var inp=document.getElementById('search');
-  var main=document.getElementById('main');
-  if(!inp||!main)return;
-  var all=main.querySelectorAll('h2,h3,p,li,td');
-  inp.addEventListener('input',function(){
-    var q=inp.value.trim().toLowerCase();
-    all.forEach(function(el){el.classList.remove('hidden');});
-    if(!q)return;
-    var sections=main.querySelectorAll('h2');
-    sections.forEach(function(h){
-      var next=h.nextElementSibling;
-      var keep=h.textContent.toLowerCase().indexOf(q)!==-1;
-      while(next && next.tagName!=='H2'){
-        if(next.textContent.toLowerCase().indexOf(q)!==-1)keep=true;
-        next=next.nextElementSibling;
-      }
-      if(!keep){
-        next=h.nextElementSibling;
-        while(next && next.tagName!=='H2'){next.classList.add('hidden');next=next.nextElementSibling;}
-        h.classList.add('hidden');
-      }
-    });
-  });
-})();
+MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    macros: {
+      xb: '\\bar{x}',
+      sxy: 'S_{xy}',
+      sxx: 'S_{xx}',
+      h: '\\hat{h}',
+      E: '\\mathbb{E}',
+      Var: '\\operatorname{Var}'
+    }
+  },
+  chtml: { scale: 0.95 }
+};
 </script>
-
-<!-- PDF PRINT BUTTON -->
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   02viz — Geospatial Visualization Studio · Reference Manual Design System
+   Palette: Deep indigo + vivid coral — a "colour studio" identity
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Primary — deep indigo family */
+  --ov-indigo-900: #241b4d;
+  --ov-indigo-800: #2e2266;
+  --ov-indigo-700: #3a2d78;
+  --ov-indigo-600: #463a90;
+  --ov-indigo-500: #5546a8;
+  --ov-indigo-400: #6f5cc9;
+  --ov-indigo-300: #9485dd;
+  --ov-indigo-200: #b9aeec;
+  --ov-indigo-100: #d9d4f6;
+  --ov-indigo-50:  #eeebfa;
+
+  /* Accent — vivid coral */
+  --ov-coral-600:  #d63b4e;
+  --ov-coral-500:  #ff5c6c;
+  --ov-coral-400:  #ff7a86;
+  --ov-coral-300:  #ff9aa4;
+  --ov-coral-200:  #ffc2c8;
+  --ov-coral-100:  #ffe0e4;
+  --ov-coral-50:   #fff0f2;
+
+  /* Neutrals */
+  --ov-slate-900: #0f1729;
+  --ov-slate-800: #1c2537;
+  --ov-slate-700: #2d3a4f;
+  --ov-slate-600: #455670;
+  --ov-slate-500: #647891;
+  --ov-slate-400: #8b9cb7;
+  --ov-slate-300: #b4c2d6;
+  --ov-slate-200: #d4dded;
+  --ov-slate-100: #e8eef7;
+  --ov-slate-50:  #f4f7fb;
+  --ov-slate-25:  #fafbfd;
+
+  /* Semantic */
+  --ov-red:    #c53030;
+  --ov-green:  #276749;
+  --ov-blue:   #2a5c8a;
+  --ov-purple: #6b46a1;
+  --ov-orange: #c05621;
+
+  /* Layout */
+  --sidebar-w: 280px;
+  --content-max: 960px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px rgba(15,23,41,.08);
+  --shadow-md: 0 4px 14px rgba(15,23,41,.10);
+  --shadow-lg: 0 12px 40px rgba(15,23,41,.12);
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Liberation Mono', monospace;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ov-slate-800);
+  background: var(--ov-slate-25);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════ SIDEBAR ═══════════════════════════ */
+nav#sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: linear-gradient(180deg, var(--ov-indigo-900) 0%, var(--ov-indigo-800) 100%);
+  color: #fff;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 2px 0 24px rgba(36,27,77,.28);
+}
+
+nav#sidebar::-webkit-scrollbar { width: 5px; }
+nav#sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+
+.sidebar-header { padding: 28px 22px 18px; border-bottom: 1px solid rgba(255,255,255,.10); }
+.sidebar-header .brand {
+  font-family: var(--font-display);
+  font-size: 1.18rem; font-weight: 700; letter-spacing: -0.01em;
+  color: #fff; line-height: 1.25;
+}
+.sidebar-header .brand span {
+  display: block; font-size: .72rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .12em;
+  color: var(--ov-indigo-200); margin-top: 2px;
+}
+.sidebar-header .version { font-size: .68rem; color: var(--ov-indigo-300); margin-top: 6px; font-family: var(--font-mono); }
+
+.sidebar-nav { flex: 1; padding: 12px 0; }
+.sidebar-nav a {
+  display: block; padding: 8px 22px;
+  color: rgba(255,255,255,.72); text-decoration: none;
+  font-size: .84rem; font-weight: 450; transition: all .15s;
+  border-left: 3px solid transparent;
+}
+.sidebar-nav a:hover { color: #fff; background: rgba(255,255,255,.06); border-left-color: var(--ov-indigo-300); }
+.sidebar-nav a:target,
+.sidebar-nav a.active { color: #fff; background: rgba(255,255,255,.08); border-left-color: var(--ov-coral-400); font-weight: 600; }
+
+.sidebar-nav .group-label {
+  font-size: .66rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .10em; color: var(--ov-indigo-200);
+  padding: 18px 22px 5px;
+}
+.sidebar-nav .group-label:first-child { padding-top: 2px; }
+
+.sidebar-footer {
+  padding: 16px 22px; border-top: 1px solid rgba(255,255,255,.10);
+  font-size: .66rem; color: rgba(255,255,255,.38); line-height: 1.6;
+}
+
+/* ═══════════════════════════ MAIN CONTENT ═══════════════════════════ */
+main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
+
+/* ═══════════════════════════ HERO ═══════════════════════════ */
+.hero {
+  background: linear-gradient(135deg, var(--ov-indigo-900) 0%, var(--ov-indigo-700) 45%, var(--ov-indigo-500) 100%);
+  color: #fff; padding: 64px 48px 56px; position: relative; overflow: hidden;
+}
+.hero::after {
+  content: ''; position: absolute; top: -60%; right: -15%;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(255,255,255,.07) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none;
+}
+.hero::before {
+  content: ''; position: absolute; bottom: -30%; left: 10%;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(255,92,108,.16) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none;
+}
+.hero-inner { position: relative; z-index: 1; max-width: var(--content-max); }
+.hero h1 { font-family: var(--font-display); font-size: 2.6rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.15; margin-bottom: 12px; }
+.hero h1 em { font-style: normal; color: var(--ov-coral-400); }
+.hero .tagline { font-size: 1.12rem; font-weight: 400; color: rgba(255,255,255,.78); max-width: 640px; line-height: 1.55; }
+.hero .meta-row { display: flex; gap: 14px; margin-top: 28px; flex-wrap: wrap; }
+.hero .meta-chip {
+  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14);
+  border-radius: 100px; padding: 6px 18px; font-size: .78rem; font-weight: 500;
+  color: rgba(255,255,255,.88); font-family: var(--font-mono); letter-spacing: .02em;
+}
+
+/* ═══════════════════════════ CONTENT CONTAINER ═══════════════════════════ */
+.content-area { max-width: var(--content-max); padding: 40px 48px 80px; }
+
+/* ═══════════════════════════ SECTION HEADINGS ═══════════════════════════ */
+.section-intro { margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid var(--ov-slate-200); }
+.section-intro h2 {
+  font-family: var(--font-display); font-size: 1.55rem; font-weight: 700;
+  color: var(--ov-slate-900); margin-bottom: 10px; letter-spacing: -0.01em;
+}
+.section-intro p { color: var(--ov-slate-600); font-size: .94rem; max-width: 720px; line-height: 1.7; }
+
+.group-anchor { scroll-margin-top: 28px; }
+
+.group-header {
+  margin: 56px 0 28px; padding-bottom: 14px;
+  border-bottom: 2px solid var(--ov-indigo-100);
+  display: flex; align-items: baseline; gap: 14px;
+}
+.group-header .group-num {
+  font-family: var(--font-mono); font-size: .80rem; font-weight: 700;
+  color: var(--ov-indigo-600); background: var(--ov-indigo-50);
+  padding: 3px 12px; border-radius: 100px; white-space: nowrap;
+}
+.group-header h3 { font-family: var(--font-display); font-size: 1.32rem; font-weight: 700; color: var(--ov-slate-900); letter-spacing: -0.01em; }
+
+/* ═══════════════════════════ TOOL CARD ═══════════════════════════ */
+.alg-card {
+  background: #fff; border: 1px solid var(--ov-slate-200);
+  border-radius: var(--radius-md); margin-bottom: 32px;
+  box-shadow: var(--shadow-sm); overflow: hidden; transition: box-shadow .2s;
+}
+.alg-card:hover { box-shadow: var(--shadow-md); }
+.alg-card:target { border-color: var(--ov-indigo-300); box-shadow: 0 0 0 3px rgba(111,92,201,.15); scroll-margin-top: 28px; }
+
+.alg-card-header { padding: 22px 28px 0; display: flex; align-items: flex-start; gap: 16px; }
+.alg-icon {
+  width: 44px; height: 44px; border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--ov-indigo-500), var(--ov-indigo-700));
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; color: #fff; font-size: 1.15rem;
+}
+.alg-card-header .alg-info { flex: 1; min-width: 0; }
+.alg-card-header h4 { font-family: var(--font-display); font-size: 1.18rem; font-weight: 700; color: var(--ov-slate-900); margin-bottom: 4px; }
+.alg-card-header .alg-id { font-family: var(--font-mono); font-size: .70rem; color: var(--ov-slate-500); letter-spacing: .04em; }
+
+.copy-anchor-btn {
+  flex-shrink: 0; width: 30px; height: 30px;
+  border: 1px solid var(--ov-slate-200); border-radius: var(--radius-sm);
+  background: #fff; color: var(--ov-slate-500); font-size: .92rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.copy-anchor-btn:hover { background: var(--ov-indigo-50); color: var(--ov-indigo-700); border-color: var(--ov-indigo-300); }
+.copy-anchor-btn.copied { background: var(--ov-indigo-500); color: #fff; border-color: var(--ov-indigo-500); }
+
+.perf-badge {
+  display: inline-block; font-family: var(--font-mono); font-size: .68rem;
+  font-weight: 700; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px;
+  background: var(--ov-coral-100); color: var(--ov-coral-600);
+  border: 1px solid var(--ov-coral-300); margin-left: 8px; vertical-align: middle;
+}
+
+.see-also-box {
+  background: var(--ov-indigo-50); border: 1px solid var(--ov-indigo-200);
+  border-radius: var(--radius-sm); padding: 12px 18px; margin: 14px 0;
+  font-size: .84rem; color: var(--ov-slate-700); line-height: 1.6;
+}
+.see-also-box strong { color: var(--ov-indigo-600); }
+.see-also-box a { color: var(--ov-indigo-700); font-weight: 600; text-decoration: none; }
+.see-also-box a:hover { text-decoration: underline; }
+
+.alg-card-body { padding: 18px 28px 24px; }
+
+.alg-desc { color: var(--ov-slate-700); font-size: .90rem; line-height: 1.65; margin-bottom: 20px; }
+
+.alg-card-body h5 {
+  font-family: var(--font-display); font-size: .82rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--ov-indigo-700);
+  margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--ov-indigo-50);
+}
+
+/* Parameters table */
+.params-table { width: 100%; border-collapse: collapse; font-size: .84rem; margin: 8px 0 16px; }
+.params-table th {
+  background: var(--ov-slate-50); color: var(--ov-slate-700);
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 9px 14px; text-align: left; border-bottom: 2px solid var(--ov-slate-200);
+}
+.params-table td { padding: 9px 14px; border-bottom: 1px solid var(--ov-slate-100); color: var(--ov-slate-700); vertical-align: top; }
+.params-table tr:last-child td { border-bottom: none; }
+.params-table .param-name { font-family: var(--font-mono); font-size: .82rem; font-weight: 600; color: var(--ov-slate-800); }
+.params-table .param-type { font-family: var(--font-mono); font-size: .76rem; color: var(--ov-indigo-600); }
+.params-table .param-default { font-family: var(--font-mono); font-size: .78rem; color: var(--ov-slate-500); }
+
+/* Formula block */
+.formula-block {
+  background: var(--ov-slate-50); border-left: 4px solid var(--ov-indigo-400);
+  padding: 16px 20px; margin: 14px 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-mono); font-size: .84rem; color: var(--ov-slate-800);
+  line-height: 1.8; overflow-x: auto;
+}
+.formula-block .var { color: var(--ov-indigo-700); font-weight: 600; }
+.formula-block .op  { color: var(--ov-slate-500); }
+
+/* Academic note */
+.acad-note {
+  background: linear-gradient(135deg, var(--ov-indigo-50), #fff);
+  border: 1px solid var(--ov-indigo-200); border-radius: var(--radius-sm);
+  padding: 14px 18px; margin: 14px 0; font-size: .84rem;
+  color: var(--ov-slate-700); line-height: 1.6;
+}
+.acad-note strong { color: var(--ov-indigo-600); }
+
+/* Interpretation box */
+.interp-box {
+  background: var(--ov-coral-50); border: 1px solid var(--ov-coral-200);
+  border-radius: var(--radius-sm); padding: 14px 18px; margin: 14px 0;
+  font-size: .84rem; color: var(--ov-slate-700); line-height: 1.6;
+}
+.interp-box strong { color: var(--ov-coral-600); }
+
+.output-fields { font-size: .82rem; line-height: 1.6; color: var(--ov-slate-700); }
+.output-fields code {
+  font-family: var(--font-mono); font-size: .80rem; background: var(--ov-slate-50);
+  padding: 1px 6px; border-radius: 3px; color: var(--ov-indigo-700);
+}
+
+.cite { font-size: .78rem; color: var(--ov-slate-500); line-height: 1.5; margin-top: 8px; font-style: italic; }
+
+/* ═══════════════════════════ INFO CALL-OUT BOXES ═══════════════════════════ */
+.callout { border-radius: var(--radius-md); padding: 20px 24px; margin: 28px 0; font-size: .88rem; line-height: 1.65; }
+.callout-tip { background: #f0fdf6; border: 1px solid #b7ebd0; color: #1a4a32; }
+.callout-tip strong { color: var(--ov-green); }
+.callout-warn { background: #fffbeb; border: 1px solid #fde68a; color: #5c3d0b; }
+.callout-warn strong { color: var(--ov-orange); }
+.callout-info { background: #f0f7fe; border: 1px solid #c4ddf7; color: #1a3650; }
+.callout-info strong { color: var(--ov-blue); }
+
+/* ═══════════════════════════ WORKFLOW DIAGRAM ═══════════════════════════ */
+.workflow-flow { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.workflow-step {
+  background: #fff; border: 1.5px solid var(--ov-slate-200);
+  border-radius: var(--radius-md); padding: 16px 18px; flex: 1 1 150px;
+  min-width: 140px; text-align: center; transition: all .15s; cursor: default;
+}
+.workflow-step:hover { border-color: var(--ov-indigo-300); box-shadow: var(--shadow-md); }
+.workflow-step .step-num { font-family: var(--font-mono); font-size: .66rem; font-weight: 700; color: var(--ov-indigo-600); letter-spacing: .08em; margin-bottom: 4px; }
+.workflow-step .step-name { font-size: .82rem; font-weight: 650; color: var(--ov-slate-800); }
+.workflow-step .step-tools { font-size: .70rem; color: var(--ov-slate-500); margin-top: 4px; }
+.workflow-arrow { display: flex; align-items: center; color: var(--ov-indigo-300); font-size: 1.4rem; font-weight: 300; }
+
+/* ═══════════════════════════ STATS GRID ═══════════════════════════ */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 20px 0; }
+.stat-tile { background: #fff; border: 1px solid var(--ov-slate-200); border-radius: var(--radius-sm); padding: 18px; text-align: center; }
+.stat-tile .stat-value { font-family: var(--font-display); font-size: 2rem; font-weight: 800; color: var(--ov-indigo-700); line-height: 1.1; }
+.stat-tile .stat-label { font-size: .72rem; color: var(--ov-slate-500); text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
+
+/* ═══════════════════════════ RESPONSIVE ═══════════════════════════ */
+@media (max-width: 900px) {
+  nav#sidebar { display: none; }
+  main { margin-left: 0; }
+  .hero { padding: 40px 24px 36px; }
+  .hero h1 { font-size: 1.8rem; }
+  .content-area { padding: 24px 20px 60px; }
+  .workflow-flow { flex-direction: column; }
+  .workflow-arrow { transform: rotate(90deg); justify-content: center; }
+}
+
+/* ═══════════════════════════ PRINT ═══════════════════════════ */
+@media print {
+  nav#sidebar { display: none; }
+  main { margin-left: 0; }
+  .alg-card { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+  .hero { background: #fff; color: #000; padding: 20px 0; }
+  .hero h1, .hero .tagline, .hero .meta-row { color: #000; }
+}
+
+/* ═══════════════════════════ FOOTER ═══════════════════════════ */
+.refman-footer { margin-top: 60px; padding-top: 28px; border-top: 2px solid var(--ov-slate-200); font-size: .78rem; color: var(--ov-slate-500); line-height: 1.7; }
+.refman-footer strong { color: var(--ov-slate-700); }
+
+/* ═══════════════════════════ SMOOTH HIGHLIGHT ═══════════════════════════ */
+@keyframes target-flash { from { background: var(--ov-indigo-50); } to { background: transparent; } }
+.alg-card:target { animation: target-flash 1.5s ease-out; }
+
+.video-embed { position: relative; width: 100%; padding-top: 56.25%; margin: 4px 0 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--ov-slate-200); background: #000; }
+.video-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+/* Print-to-PDF button */
 #print-pdf-btn {
   position: fixed; bottom: 24px; right: 24px; z-index: 9999;
-  background: #13a0a0; color: white; border: none; border-radius: 8px;
+  background: var(--ov-indigo-600); color: #fff; border: none; border-radius: 8px;
   padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
   box-shadow: 0 4px 14px rgba(0,0,0,.2); transition: all .2s;
   display: flex; align-items: center; gap: 8px;
 }
-#print-pdf-btn:hover { background: #0d7a7a; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+#print-pdf-btn:hover { background: var(--ov-indigo-800); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
 @media print { #print-pdf-btn { display: none !important; } }
 @media (max-width: 768px) { #print-pdf-btn { bottom: 12px; right: 12px; padding: 8px 14px; font-size: 12px; } }
 </style>
-<button id="print-pdf-btn" onclick="window.print()" title="Save as PDF / Print">&#x1F5A8;&#xFE0F; Save as PDF</button>
+</head>
+<body>
 
+<!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+<nav id="sidebar">
+<div class="sidebar-header">
+  <div class="brand">02viz<span>Geospatial Visualization Studio</span></div>
+  <div class="version">Reference Manual — v0.15.13</div>
+</div>
+<div class="sidebar-nav">
+  <a href="#overview">Overview &amp; Philosophy</a>
+  <a href="#quick-start">Quick Start</a>
+  <a href="#architecture">How the Studio Works</a>
+
+  <div class="group-label">Engines</div>
+  <a href="#engine-echarts">Apache ECharts</a>
+  <a href="#engine-plotly">Plotly.js</a>
+  <a href="#engine-vegalite">Vega-Lite</a>
+  <a href="#engine-mpl">Matplotlib / seaborn</a>
+
+  <div class="group-label">Chart Types (17)</div>
+  <a href="#chart-bar">Bar Chart</a>
+  <a href="#chart-line">Line Chart</a>
+  <a href="#chart-area">Area Chart</a>
+  <a href="#chart-scatter">Scatter Plot</a>
+  <a href="#chart-bubble">Bubble Chart</a>
+  <a href="#chart-histogram">Histogram</a>
+  <a href="#chart-pie">Pie / Donut</a>
+  <a href="#chart-box">Box Plot</a>
+  <a href="#chart-heatmap">Heatmap</a>
+  <a href="#chart-treemap">Treemap</a>
+  <a href="#chart-sunburst">Sunburst</a>
+  <a href="#chart-errorband">Mean ± σ Band</a>
+  <a href="#chart-errorbar">Mean ± σ Bars</a>
+  <a href="#chart-density">Density (KDE)</a>
+  <a href="#chart-violin">Violin Plot</a>
+  <a href="#chart-radar">Radar / Spider</a>
+  <a href="#chart-pareto">Pareto (80/20)</a>
+
+  <div class="group-label">Map Diagrams</div>
+  <a href="#diagram-types">Diagram Types</a>
+  <a href="#diagram-normalise">Normalisation</a>
+  <a href="#diagram-sizeby">Size-by (Proportional)</a>
+
+  <div class="group-label">Labels</div>
+  <a href="#label-presets">Label Presets</a>
+  <a href="#label-format">Label Formatting</a>
+
+  <div class="group-label">Studio Features</div>
+  <a href="#feature-dashboard">Explore Dashboard</a>
+  <a href="#feature-animation">Animation (Play Axis)</a>
+  <a href="#feature-overlays">Reference Overlays</a>
+  <a href="#feature-assistant">Smart Assistant</a>
+  <a href="#feature-presets">Chart Presets</a>
+  <a href="#feature-bridge">Chart ↔ Map Selection</a>
+  <a href="#feature-themes">Themes &amp; Palettes</a>
+  <a href="#feature-stats">Data Shaping &amp; Statistics</a>
+
+  <div class="group-label">Appendices</div>
+  <a href="#methodological-notes">Methodological Notes</a>
+  <a href="#references">Academic References</a>
+</div>
+<div class="sidebar-footer">
+  02viz · Geospatial Visualization Studio<br>
+  Yusuf Eminoğlu · Dokuz Eylül University<br>
+  Department of City &amp; Regional Planning
+</div>
+</nav>
+
+<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
+<main>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+<div class="hero-inner">
+  <h1>02<em>viz</em> — Geospatial Visualization Studio</h1>
+  <p class="tagline">A multi-engine, fully-offline chart, diagram, and label studio inside QGIS — from raw layer attributes to interactive, publication-grade visuals that stay linked to the map.</p>
+  <div class="video-embed">
+    <iframe src="https://www.youtube-nocookie.com/embed/65DM7H46Cg0" title="02viz — video walkthrough" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  </div>
+  <div class="meta-row">
+    <span class="meta-chip">v0.15.13</span>
+    <span class="meta-chip">17 chart types</span>
+    <span class="meta-chip">4 rendering engines</span>
+    <span class="meta-chip">3 studio tabs</span>
+    <span class="meta-chip">QGIS 3.28 – 4.99</span>
+    <span class="meta-chip">GPL-3.0</span>
+  </div>
+</div>
+</section>
+
+<div class="content-area">
+
+<!-- ═══════════ OVERVIEW ═══════════ -->
+<section id="overview" class="section-intro">
+<h2>Overview &amp; Philosophy</h2>
+<p><strong>02viz</strong> turns the QGIS environment into a full data-visualisation studio. Charting in GIS has historically meant exporting an attribute table to a spreadsheet or wrestling with a single fixed plotting library; 02viz removes that friction by putting one dock — three tabs — <strong>Charts</strong>, <strong>Map Diagrams</strong>, and <strong>Labels</strong> — directly onto the canvas, all sharing a single layer selector. The result is a visual that is not a screenshot, but a live artefact that remains bound to the layer it describes.</p>
+
+<div class="stats-grid" style="margin-top:24px;">
+  <div class="stat-tile"><div class="stat-value">17</div><div class="stat-label">Chart Types</div></div>
+  <div class="stat-tile"><div class="stat-value">4</div><div class="stat-label">Rendering Engines</div></div>
+  <div class="stat-tile"><div class="stat-value">6</div><div class="stat-label">Animatable Charts</div></div>
+  <div class="stat-tile"><div class="stat-value">5</div><div class="stat-label">Reference Overlays</div></div>
+  <div class="stat-tile"><div class="stat-value">8</div><div class="stat-label">Colour Palettes</div></div>
+</div>
+
+<p style="margin-top:20px;">Three engines are vendored into the plugin and run with <strong>no network, no account, and no external Python dependency</strong>; a fourth — matplotlib / seaborn — is optional and auto-detected. All statistics and data shaping are pure Python, so the studio works identically offline on QGIS 3.28 through the QGIS 4 line (Qt5 and Qt6).</p>
+
+<div class="callout callout-info">
+<strong>Design principle.</strong> 02viz separates <em>data shaping</em> from <em>rendering</em>. One typed spec — field bindings, aggregation, bins, palettes, overlays — is assembled in <code>core/</code> and then reinterpreted by whichever engine the user picks. Every engine exposes only <code>build_html(spec) → str</code> and never touches Qt, which is why the same chart reads identically in ECharts, Plotly, Vega-Lite, and matplotlib, and why the studio is batch-exportable and testable in pure Python.
+</div>
+</section>
+
+<!-- ═══════════ QUICK START ═══════════ -->
+<section id="quick-start" class="section-intro">
+<h2>Quick Start</h2>
+<div class="workflow-flow">
+  <div class="workflow-step"><div class="step-num">STEP 1</div><div class="step-name">Open the dock</div><div class="step-tools">02viz Studio toolbar button</div></div>
+  <div class="workflow-arrow">→</div>
+  <div class="workflow-step"><div class="step-num">STEP 2</div><div class="step-name">Bind a layer</div><div class="step-tools">vector layer or external CSV/XLSX/ODS/GPKG</div></div>
+  <div class="workflow-arrow">→</div>
+  <div class="workflow-step"><div class="step-num">STEP 3</div><div class="step-name">Choose engine + type</div><div class="step-tools">or press 💡 Suggest</div></div>
+  <div class="workflow-arrow">→</div>
+  <div class="workflow-step"><div class="step-num">STEP 4</div><div class="step-name">Render chart</div><div class="step-tools">interactive, click-to-select</div></div>
+  <div class="workflow-arrow">→</div>
+  <div class="workflow-step"><div class="step-num">STEP 5</div><div class="step-name">Export / style</div><div class="step-tools">one-file HTML, PNG, diagrams, labels</div></div>
+</div>
+<p>New to it all? Press <strong>❔ Guide</strong> for a self-contained, illustrated walkthrough of every feature, or press <strong>✨ Explore</strong> to have 02viz profile the whole layer into a dashboard in one click.</p>
+</section>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<section id="architecture" class="section-intro">
+<h2>How the Studio Works</h2>
+<p>02viz follows Wilkinson's (2005) <em>Grammar of Graphics</em>: a statistical graphic is decomposed into independent components — data, aesthetic mappings, geometric objects, scales, and transformations. The spec-assembly layer (<code>core/transform.py</code>, <code>core/stats.py</code>) produces a typed <code>data</code> dictionary; each engine re-expresses that one structure through its own primitives. This separation is the single most important architectural idea in the plugin — change the engine, and the data story does not change.</p>
+<p>The selection bridge (chart clicks → map selection, and map selection → dimmed chart) works through the browser page <code>document.title</code> rather than a JavaScript window object, because <code>addToJavaScriptWindowObject</code> crashes inside WebCore on Qt 5.15's QtWebKit fork and <code>QWebChannel</code> exists only on WebEngine. Title transport is the one mechanism safe and identical on every QGIS web stack; in a plain browser it is a harmless title blip.</p>
+</section>
+
+<div class="group-anchor" id="group-engines"></div>
+<div class="group-header"><span class="group-num">GROUP 1</span><h3>Rendering Engines</h3></div>
+
+<!-- ENGINE: ECHARTS -->
+<article class="alg-card" id="engine-echarts">
+<div class="alg-card-header">
+  <div class="alg-icon">⚡</div>
+  <div class="alg-info"><h4>Apache ECharts</h4><div class="alg-id">engines/echarts.py · 567 lines · ~1.0 MB vendored</div></div>
+  <button class="copy-anchor-btn" data-anchor="engine-echarts" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The default engine and the most compatible: ECharts (Li et al., 2018) is a declarative framework that renders all 17 chart types with full ES5 compatibility, so it is the only engine guaranteed to work on QGIS builds using Qt 5.15's QtWebKit fork. It drives the Explore dashboard and the animation timeline.
+  </div>
+  <h5>Capabilities</h5>
+  <table class="params-table">
+    <tr><th>Dimension</th><th>Detail</th></tr>
+    <tr><td class="param-name">Chart types</td><td>All 17</td></tr>
+    <tr><td class="param-name">Animation</td><td><code>timeline</code> component — autoPlay, loop, stable axes</td></tr>
+    <tr><td class="param-name">Reference overlays</td><td><code>markLine</code> / <code>markArea</code></td></tr>
+    <tr><td class="param-name">Special rendering</td><td>custom <code>renderItem</code> for violin polygons and error whiskers</td></tr>
+    <tr><td class="param-name">WebKit / ES5</td><td>Yes — safe on QtWebKit fork</td></tr>
+  </table>
+  <div class="acad-note"><strong>Why default.</strong> Plotly.js and Vega-Lite ship ES6+ bundles that QtWebKit cannot parse, leaving a blank panel. ECharts's ES5 build is the only fully-offline option that renders identically on both the modern WebEngine and the legacy WebKit fork — so 02viz defaults to it unless you specifically choose another engine.</div>
+</div>
+</article>
+
+<!-- ENGINE: PLOTLY -->
+<article class="alg-card" id="engine-plotly">
+<div class="alg-card-header">
+  <div class="alg-icon">📈</div>
+  <div class="alg-info"><h4>Plotly.js</h4><div class="alg-id">engines/plotly.py · 465 lines · ~4.5 MB vendored</div></div>
+  <button class="copy-anchor-btn" data-anchor="engine-plotly" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Plotly.js renders all 17 chart types and provides the richest animation controls — a frames-plus-slider model with explicit play/pause <code>updatemenus</code>, ideal for Gapminder-style bubble races and exploratory temporal playback. Because its bundle is ES6+, it requires WebEngine (or the external browser fallback), not WebKit.
+  </div>
+  <h5>Capabilities</h5>
+  <table class="params-table">
+    <tr><th>Dimension</th><th>Detail</th></tr>
+    <tr><td class="param-name">Chart types</td><td>All 17</td></tr>
+    <tr><td class="param-name">Animation</td><td>frames + slider + play/pause <code>updatemenus</code></td></tr>
+    <tr><td class="param-name">Reference overlays</td><td><code>layout.shapes</code> (lines / rects) + <code>layout.annotations</code></td></tr>
+    <tr><td class="param-name">Cross-filter</td><td><code>Plotly.restyle()</code> with per-trace <code>selected</code>/<code>unselected</code> opacity</td></tr>
+    <tr><td class="param-name">WebKit / ES5</td><td>No — shows a styled explainer page instead of a blank panel</td></tr>
+  </table>
+  <div class="acad-note"><strong>Fallback behaviour.</strong> On WebKit-only builds, 02viz does not fail silently: it renders an explainer page telling the user <em>why</em> the panel is blank and offering three options — switch to ECharts, export to HTML, or open in the system browser.</div>
+</div>
+</article>
+
+<!-- ENGINE: VEGA-LITE -->
+<article class="alg-card" id="engine-vegalite">
+<div class="alg-card-header">
+  <div class="alg-icon">🧩</div>
+  <div class="alg-info"><h4>Vega-Lite</h4><div class="alg-id">engines/vegalite.py · 572 lines · ~0.76 MB vendored</div></div>
+  <button class="copy-anchor-btn" data-anchor="engine-vegalite" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Vega-Lite (Satyanarayan et al., 2017) is the direct declarative realisation of the Grammar of Graphics: a JSON specification language compiled to Vega at runtime via <code>vegaLite.compile()</code>. It supports 14 of 17 chart types — treemap, sunburst, and radar are excluded because hierarchical and radial layouts are outside the Vega-Lite grammar. Users may edit the generated JSON directly, with validation before rendering.
+  </div>
+  <h5>Capabilities</h5>
+  <table class="params-table">
+    <tr><th>Dimension</th><th>Detail</th></tr>
+    <tr><td class="param-name">Chart types</td><td>14 — no treemap, sunburst, or radar</td></tr>
+    <tr><td class="param-name">Animation</td><td>None</td></tr>
+    <tr><td class="param-name">Data injection</td><td>feature rows with IDs injected as named dataset <code>o2viz</code></td></tr>
+    <tr><td class="param-name">Spec editing</td><td>custom JSON editor with validation</td></tr>
+    <tr><td class="param-name">Violin workaround</td><td>ranged-area mark, re-paired polygon half-points (avoids <code>order</code> channel collapse)</td></tr>
+  </table>
+</div>
+</article>
+
+<!-- ENGINE: MATPLOTLIB -->
+<article class="alg-card" id="engine-mpl">
+<div class="alg-card-header">
+  <div class="alg-icon">🎨</div>
+  <div class="alg-info"><h4>Matplotlib / seaborn <span class="perf-badge">OPTIONAL</span></h4><div class="alg-id">engines/mpl.py · 275 lines · auto-detected</div></div>
+  <button class="copy-anchor-btn" data-anchor="engine-mpl" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The only engine with optional Python dependencies. It imports matplotlib and seaborn lazily, uses <code>matplotlib.use("Agg")</code> for headless rendering, applies <code>seaborn.set_theme(style="whitegrid")</code> when available, and produces a <strong>static</strong> 8.2″ × 5.0″ figure at 150 DPI, base64-encoded as PNG. It is the engine of choice when the goal is a fixed, print-ready figure rather than an interactive one.
+  </div>
+  <h5>Capabilities</h5>
+  <table class="params-table">
+    <tr><th>Dimension</th><th>Detail</th></tr>
+    <tr><td class="param-name">Chart types</td><td>11 — bar, line, area, scatter, bubble, histogram, pie, box, heatmap, density, violin</td></tr>
+    <tr><td class="param-name">Output</td><td>8.2″ × 5.0″ @ 150 DPI, base64 PNG</td></tr>
+    <tr><td class="param-name">Interaction</td><td>None (static); bridge calls stubbed inert</td></tr>
+    <tr><td class="param-name">Dependency</td><td>Auto-detected at startup via <code>core/requirements.py</code> — never pip-installed for you</td></tr>
+  </table>
+  <div class="acad-note"><strong>Graceful absence.</strong> When matplotlib is missing, 02viz shows the exact install command for you to run yourself; the core studio remains dependency-free and fully functional with the three vendored JS engines.</div>
+</div>
+</article>
+
+<div class="group-anchor" id="group-charts"></div>
+<div class="group-header"><span class="group-num">GROUP 2</span><h3>Chart Types (17)</h3></div>
+
+<section id="chart-bar" class="section-intro" style="margin-bottom:24px;padding-bottom:0;border-bottom:none;">
+<p style="max-width:760px;">Each chart type is documented below as a self-contained card — its perceptual basis, field bindings and controls, the statistical method when relevant, engine support, and how to read the result. Every card lists its internal id (<code>chart key</code>) so the same name is used across the UI, the preset schema, and the exported spec.</p>
+</section>
+
+<!-- CHART: BAR -->
+<article class="alg-card" id="chart-bar">
+<div class="alg-card-header">
+  <div class="alg-icon">📊</div>
+  <div class="alg-info"><h4>Bar Chart</h4><div class="alg-id">chart key: bar · animatable · overlay-eligible</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-bar" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The workhorse of quantitative comparison. A bar chart encodes a numeric value as <em>position along a common scale</em> — the single most accurately-perceived visual channel in Cleveland &amp; McGill's (1984) ranking of graphical perception. Use it whenever the question is "which category is larger, and by how much".
+  </div>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Comparing one numeric measure across categories, regions, or classes. Prefer it over pie charts whenever categories exceed a handful — position outperforms angle for magnitude comparison. Grouped bars (<em>Group</em> field) add a second categorical dimension as side-by-side series; the <em>Stacked</em> checkbox turns them into additive composition for part-to-whole reading.</p>
+  <h5>Field bindings &amp; controls</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th><th>Notes</th></tr>
+    <tr><td class="param-name">X</td><td class="param-type">Category field</td><td>Categorical (or numeric binned)</td></tr>
+    <tr><td class="param-name">Y</td><td class="param-type">Value field</td><td>Numeric; aggregated with the chosen aggregate</td></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">Series field</td><td>Splits into coloured series; enables stacked bars</td></tr>
+    <tr><td class="param-name">Aggregate</td><td class="param-type">count · sum · mean · median · min · max</td><td>Applied per category</td></tr>
+    <tr><td class="param-name">Top-N / Sort</td><td class="param-type">N + order</td><td>Collapses remainder into "Other"</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animation (play axis) and reference overlays (mean / median / ±1σ / IQR / target) both available.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-line">Line</a> for ordered trends · <a href="#chart-histogram">Histogram</a> for the distribution of a single numeric field · <a href="#feature-overlays">Reference overlays</a> to annotate the value axis.</div>
+</div>
+</article>
+
+<!-- CHART: LINE -->
+<article class="alg-card" id="chart-line">
+<div class="alg-card-header">
+  <div class="alg-icon">📈</div>
+  <div class="alg-info"><h4>Line Chart</h4><div class="alg-id">chart key: line · animatable · overlay-eligible</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-line" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A line chart connects ordered values to reveal <em>trend and trajectory</em>. The connective line encodes change between successive points, making it the natural choice when the X axis has an intrinsic order — time, distance, a ranked sequence, or a planning horizon.
+  </div>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ordered X values (years, distances, phases). Pair with the <em>Animate by</em> field to unfold the trajectory over time, or with a <em>Group</em> field to overlay multiple series on one axis. Bars suit unordered categories; lines suit sequences.</p>
+  <h5>Method</h5>
+  <div class="formula-block">
+    Points \((x_i, y_i)\) joined in X order. An optional <em>Group</em> produces one polyline per category. Aggregation is applied per (X, group) pair before plotting.
+  </div>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable; reference overlays available.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-area">Area</a> for a filled variant · <a href="#feature-animation">Animation</a> for the play axis · <a href="#feature-overlays">Overlays</a> to mark a target on the trend.</div>
+</div>
+</article>
+
+<!-- CHART: AREA -->
+<article class="alg-card" id="chart-area">
+<div class="alg-card-header">
+  <div class="alg-icon">🏞️</div>
+  <div class="alg-info"><h4>Area Chart</h4><div class="alg-id">chart key: area · animatable · overlay-eligible</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-area" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A line chart with the region under the curve filled. The fill adds a <em>volume</em> reading — useful for emphasising magnitude over time or, when stacked, the changing composition of a whole across categories.
+  </div>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Ordered X with a magnitude story. Stacked areas show how parts of a total evolve; unstacked (overlapping) areas compare magnitudes directly. The <em>Stacked</em> checkbox toggles between the two.</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable (composition over years); reference overlays available.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-line">Line</a> · <a href="#chart-bar">Bar (stacked)</a> for categorical composition.</div>
+</div>
+</article>
+
+<!-- CHART: SCATTER -->
+<article class="alg-card" id="chart-scatter">
+<div class="alg-card-header">
+  <div class="alg-icon">⚫</div>
+  <div class="alg-info"><h4>Scatter Plot</h4><div class="alg-id">chart key: scatter · animatable · overlay-eligible</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-scatter" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The fundamental bivariate display: two numeric fields plotted against each other, one point per feature. It exposes association, clusters, gaps, and outliers that summary statistics conceal. It is the first chart the Smart Assistant proposes when two numeric fields correlate.
+  </div>
+  <h5>Method — least-squares trend line</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-600);margin:6px 0 10px;">The optional trend line is ordinary least squares:</p>
+  <div class="formula-block">
+    \(\beta = \dfrac{S_{xy}}{S_{xx}}, \quad \alpha = \bar{y} - \beta \bar{x}\)
+    <br>where \(S_{xy} = \sum (x_i-\bar{x})(y_i-\bar{y})\) and \(S_{xx} = \sum (x_i-\bar{x})^2\).
+  </div>
+  <h5>Field bindings &amp; controls</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">X</td><td class="param-type">Numeric</td></tr>
+    <tr><td class="param-name">Y</td><td class="param-type">Numeric</td></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">Colour by category (optional)</td></tr>
+    <tr><td class="param-name">Trend line</td><td class="param-type">Checkbox — least-squares linear regression</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable (Gapminder-style); reference overlays available.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bubble">Bubble</a> for a third dimension · <a href="#feature-stats">Correlation</a> for the Pearson \(r\) that motivates the pairing · <a href="#feature-dashboard">Explore dashboard</a> for the strongest-relationship scatter.</div>
+</div>
+</article>
+
+<!-- CHART: BUBBLE -->
+<article class="alg-card" id="chart-bubble">
+<div class="alg-card-header">
+  <div class="alg-icon">🫧</div>
+  <div class="alg-info"><h4>Bubble Chart</h4><div class="alg-id">chart key: bubble · animatable · overlay-eligible</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-bubble" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A scatter plot with a third numeric dimension encoded as <em>area</em>. Because the eye reads area — not radius — a naive linear radius scaling systematically understates large values; 02viz therefore scales radii by square root so that perceived area is proportional to value.
+  </div>
+  <h5>Method — square-root radius scaling</h5>
+  <div class="formula-block">
+    \(r = r_{\min} + (r_{\max} - r_{\min}) \sqrt{\dfrac{v - v_{\min}}{v_{\max} - v_{\min}}}\)
+  </div>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">During animation, bubble radii are scaled <em>globally</em> once, so the same value maps to the same size in every frame — a bar-race/Gapminder prerequisite for honest in-place comparison.</p>
+  <h5>Field bindings</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">X / Y</td><td class="param-type">Numeric position</td></tr>
+    <tr><td class="param-name">Value (size)</td><td class="param-type">Numeric — bubble area</td></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">Colour by category</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable; reference overlays available.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-scatter">Scatter</a> · <a href="#feature-animation">Animation</a> for the Gapminder-style bubble race.</div>
+</div>
+</article>
+
+<!-- CHART: HISTOGRAM -->
+<article class="alg-card" id="chart-histogram">
+<div class="alg-card-header">
+  <div class="alg-icon">📶</div>
+  <div class="alg-info"><h4>Histogram</h4><div class="alg-id">chart key: histogram</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-histogram" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The canonical display of a single numeric field's distribution: value on the X axis, frequency on the Y. It reveals centre, spread, skew, and modality at a glance, and is the natural first look at any unfamiliar numeric attribute.
+  </div>
+  <h5>Method — equal-width binning</h5>
+  <div class="formula-block">
+    bin width \(w = \dfrac{x_{\max} - x_{\min}}{k}\),  &nbsp; bin index \(i = \min\!\left(\lfloor \tfrac{v - x_{\min}}{w} \rfloor,\ k-1\right)\)
+  </div>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Computed in pure Python by <code>stats.histogram()</code>. The <em>Bins</em> control sets \(k\); too few bins hide structure, too many reveal noise.</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — not animatable; no reference overlays.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-density">Density (KDE)</a> for a smoothed estimate · <a href="#chart-box">Box plot</a> for the quantile summary · <a href="#chart-violin">Violin</a> for shape plus quantiles.</div>
+</div>
+</article>
+
+<!-- CHART: PIE -->
+<article class="alg-card" id="chart-pie">
+<div class="alg-card-header">
+  <div class="alg-icon">🥧</div>
+  <div class="alg-info"><h4>Pie / Donut</h4><div class="alg-id">chart key: pie · animatable</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-pie" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A part-to-whole display using angle and area. In Cleveland &amp; McGill's hierarchy, angle is a <em>lower</em> perceptual tier than position, so pies are recommended only for few categories where the question is "what share of the whole" rather than "which is larger by how much".
+  </div>
+  <h5>When to use</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">A handful of categories summing to a meaningful whole (e.g., land-use composition). The donut variant opens the centre for a total label. The <em>Top-N</em> control collapses a long tail into "Other" so the pie stays readable.</p>
+  <h5>Field bindings</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">Category</td><td class="param-type">Categorical field</td></tr>
+    <tr><td class="param-name">Value</td><td class="param-type">Numeric — aggregated (count / sum / mean / …)</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — animatable (composition over a play axis).</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bar">Bar</a> when magnitude comparison matters · <a href="#chart-treemap">Treemap</a> / <a href="#chart-sunburst">Sunburst</a> for nested part-to-whole.</div>
+</div>
+</article>
+
+<!-- CHART: BOX -->
+<article class="alg-card" id="chart-box">
+<div class="alg-card-header">
+  <div class="alg-icon">📦</div>
+  <div class="alg-info"><h4>Box Plot</h4><div class="alg-id">chart key: box</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-box" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A compact five-number summary — minimum, Q1, median, Q3, maximum — drawn as a box and whiskers. It compares centre and spread across groups and flags outliers without a single distributional assumption.
+  </div>
+  <h5>Method — quantiles and Tukey fences</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-600);margin:6px 0 10px;">Quantiles use linear interpolation: for position \(p = q(n-1)\), integer index \(i = \lfloor p \rfloor\), fraction \(d = p - i\), the quantile is</p>
+  <div class="formula-block">
+    \(x_{[i]}(1-d) + x_{[i+1]}d\)
+  </div>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Outliers are values outside the Tukey fences \([Q_1 - 1.5\,\mathrm{IQR},\ Q_3 + 1.5\,\mathrm{IQR}]\).</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — not animatable.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-violin">Violin</a> for shape · <a href="#chart-histogram">Histogram</a> for the full distribution · <a href="#feature-dashboard">Normalised box plot</a> in the dashboard.</div>
+</div>
+</article>
+
+<!-- CHART: HEATMAP -->
+<article class="alg-card" id="chart-heatmap">
+<div class="alg-card-header">
+  <div class="alg-icon">🔥</div>
+  <div class="alg-info"><h4>Heatmap (Matrix)</h4><div class="alg-id">chart key: heatmap</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-heatmap" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A colour-encoded matrix crossing two categorical fields: each cell's colour intensity encodes an aggregated numeric value. It compresses a two-way table into a single image, making dense patterns (correlation structure, origin–destination flows, category co-occurrence) immediately legible.
+  </div>
+  <h5>Field bindings</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">X</td><td class="param-type">Categorical (rows)</td></tr>
+    <tr><td class="param-name">Y</td><td class="param-type">Categorical (columns)</td></tr>
+    <tr><td class="param-name">Value</td><td class="param-type">Numeric — cell value, aggregated</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓ — not animatable.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#feature-dashboard">Correlation matrix</a> for the statistical heatmap · <a href="#chart-treemap">Treemap</a> for hierarchical magnitude.</div>
+</div>
+</article>
+
+<!-- CHART: TREEMAP -->
+<article class="alg-card" id="chart-treemap">
+<div class="alg-card-header">
+  <div class="alg-icon">🗂️</div>
+  <div class="alg-info"><h4>Treemap</h4><div class="alg-id">chart key: treemap</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-treemap" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A nested-rectangle display of a two-level hierarchy, where each rectangle's <em>area</em> is proportional to a value. It scales to far more categories than a pie chart while preserving part-to-whole reading, built by <code>transform.tree_rows()</code>.
+  </div>
+  <h5>Field bindings</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">Outer + inner hierarchy (two fields)</td></tr>
+    <tr><td class="param-name">Value</td><td class="param-type">Numeric — rectangle area, aggregated</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✗ · Matplotlib ✗.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-sunburst">Sunburst</a> for the radial equivalent · <a href="#chart-pie">Pie</a> for flat part-to-whole.</div>
+</div>
+</article>
+
+<!-- CHART: SUNBURST -->
+<article class="alg-card" id="chart-sunburst">
+<div class="alg-card-header">
+  <div class="alg-icon">☀️</div>
+  <div class="alg-info"><h4>Sunburst</h4><div class="alg-id">chart key: sunburst</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-sunburst" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The radial counterpart of a treemap: concentric rings encode hierarchy levels, with each segment's <em>angular extent</em> proportional to a value. It reads beautifully for shallow hierarchies and reads the same two-field structure as the treemap via <code>transform.tree_rows()</code>.
+  </div>
+  <h5>Field bindings</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">Outer + inner hierarchy (two fields)</td></tr>
+    <tr><td class="param-name">Value</td><td class="param-type">Numeric — segment angle, aggregated</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✗ · Matplotlib ✗.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-treemap">Treemap</a> · <a href="#chart-pie">Pie</a>.</div>
+</div>
+</article>
+
+<!-- CHART: ERROR BAND -->
+<article class="alg-card" id="chart-errorband">
+<div class="alg-card-header">
+  <div class="alg-icon">🎗️</div>
+  <div class="alg-info"><h4>Mean ± σ Band</h4><div class="alg-id">chart key: errorband</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-errorband" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A per-category mean drawn as a bar or point with a shaded band one standard deviation either side. It communicates both central tendency <em>and</em> dispersion simultaneously — the honest alternative to a bare average that hides spread.
+  </div>
+  <h5>Method</h5>
+  <div class="formula-block">
+    mean \(\bar{x} = \dfrac{1}{n}\sum x_i\), &nbsp; sample standard deviation \(s = \sqrt{\dfrac{1}{n-1}\sum (x_i - \bar{x})^2}\)
+    <br>band = \([\bar{x} - s,\ \bar{x} + s]\)
+  </div>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✗.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-errorbar">Mean ± σ bars</a> for the whisker variant · <a href="#chart-box">Box plot</a> for a full quantile summary.</div>
+</div>
+</article>
+
+<!-- CHART: ERROR BAR -->
+<article class="alg-card" id="chart-errorbar">
+<div class="alg-card-header">
+  <div class="alg-icon">📏</div>
+  <div class="alg-info"><h4>Mean ± σ Bars</h4><div class="alg-id">chart key: errorbar</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-errorbar" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The whisker form of the mean-and-dispersion display: a point for each category's mean with an error bar spanning ±1σ. Cleaner than the band when many categories are compared, and the standard idiom for reporting group means with variability.
+  </div>
+  <h5>Method</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Identical statistics to the band — per-category mean and sample standard deviation — rendered as point plus whisker rather than shaded region.</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✗.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-errorband">Mean ± σ band</a> · <a href="#chart-box">Box plot</a>.</div>
+</div>
+</article>
+
+<!-- CHART: DENSITY -->
+<article class="alg-card" id="chart-density">
+<div class="alg-card-header">
+  <div class="alg-icon">🌊</div>
+  <div class="alg-info"><h4>Density (KDE)</h4><div class="alg-id">chart key: density</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-density" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Kernel density estimation smooths a histogram into a continuous probability-density curve, revealing modality and shape without the arbitrary choice of bin edges. The Gaussian kernel is used throughout.
+  </div>
+  <h5>Method — Silverman bandwidth + Gaussian KDE</h5>
+  <div class="formula-block">
+    \(\hat{h} = 0.9 \min(\hat{\sigma},\ \mathrm{IQR}/1.34)\ n^{-1/5}\)
+    <br>\(\hat{f}(x) = \dfrac{1}{n\hat{h}\sqrt{2\pi}}\displaystyle\sum_{i=1}^{n}\exp\!\left(-\tfrac{1}{2}\left(\tfrac{x-x_i}{\hat{h}}\right)^{2}\right)\)
+  </div>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">The grid extends one bandwidth past the data range so the density tapers to near zero at the boundaries. A <em>Group</em> field overlays one curve per category. Pure Python — no numpy, scipy, or pandas.</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-histogram">Histogram</a> · <a href="#chart-violin">Violin</a> (KDE mirrored around a median).</div>
+</div>
+</article>
+
+<!-- CHART: VIOLIN -->
+<article class="alg-card" id="chart-violin">
+<div class="alg-card-header">
+  <div class="alg-icon">🎻</div>
+  <div class="alg-info"><h4>Violin Plot</h4><div class="alg-id">chart key: violin</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-violin" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A KDE curve mirrored about a central axis, one "violin" per group, with the median marked. It fuses the box plot's quantile summary with the density curve's shape, exposing multimodality, skewness, and tail behaviour that a box hides.
+  </div>
+  <h5>Method — mirrored density polygon</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;"><code>transform.violin_rows()</code> computes a per-group density, then builds a closed polygon — the left half at <code>[midpoint − half_width·d/peak, y]</code>, the right half mirrored. In ECharts this is drawn with a custom <code>renderItem</code>; in Vega-Lite a ranged-area workaround avoids the <code>order</code> channel so facets never collapse to zero width.</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✓.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-box">Box plot</a> · <a href="#chart-density">Density (KDE)</a> · <a href="#chart-histogram">Histogram</a>.</div>
+</div>
+</article>
+
+<!-- CHART: RADAR -->
+<article class="alg-card" id="chart-radar">
+<div class="alg-card-header">
+  <div class="alg-icon">🕸️</div>
+  <div class="alg-info"><h4>Radar / Spider</h4><div class="alg-id">chart key: radar</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-radar" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A multivariate profile drawn on N axes radiating from a centre, one spoke per numeric field. It compares several entities across many variables at once, revealing shape and trade-offs — invaluable for scoring, suitability, and indicator dashboards.
+  </div>
+  <h5>Method — per-axis maxima</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Axes are computed by <code>transform.radar_axis_maxes()</code>, padding each field's maximum by 5% so the top of a profile never touches the outer ring. Fields are normalised against their own maxima, so differently-scaled indicators compare fairly.</p>
+  <h5>Field bindings</h5>
+  <table class="params-table">
+    <tr><th>Binding</th><th>Role</th></tr>
+    <tr><td class="param-name">Y (multiple fields)</td><td class="param-type">One spoke per selected numeric field</td></tr>
+    <tr><td class="param-name">Group</td><td class="param-type">One profile per category</td></tr>
+  </table>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✗ · Matplotlib ✗.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-errorbar">Error bars</a> for per-variable spread · <a href="#diagram-normalise">Normalisation</a> for the same scaling idea on map diagrams.</div>
+</div>
+</article>
+
+<!-- CHART: PARETO -->
+<article class="alg-card" id="chart-pareto">
+<div class="alg-card-header">
+  <div class="alg-icon">📉</div>
+  <div class="alg-info"><h4>Pareto (80/20)</h4><div class="alg-id">chart key: pareto</div></div>
+  <button class="copy-anchor-btn" data-anchor="chart-pareto" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A bar chart of categories sorted descending, overlaid with a cumulative-share line. It operationalises Juran's (1954) principle — the vital few versus the trivial many — letting an analyst see instantly where the bulk of a total concentrates.
+  </div>
+  <h5>Method — cumulative share</h5>
+  <div class="formula-block">
+    cumulative share \(s_i = \dfrac{\sum_{j \le i} v_j}{\sum v} \times 100\)
+  </div>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Categories are sorted by descending value; the line marks the running percentage of the total. A classic use is defect or complaint triage in planning diagnostics.</p>
+  <h5>Engine support</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);">ECharts ✓ · Plotly ✓ · Vega-Lite ✓ · Matplotlib ✗.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bar">Bar</a> · <a href="#feature-dashboard">Insights</a> (which reports the top-category share automatically).</div>
+</div>
+</article>
+
+<div class="group-anchor" id="group-diagrams"></div>
+<div class="group-header"><span class="group-num">GROUP 3</span><h3>Map Diagrams</h3></div>
+
+<!-- DIAGRAM: TYPES -->
+<article class="alg-card" id="diagram-types">
+<div class="alg-card-header">
+  <div class="alg-icon">🧁</div>
+  <div class="alg-info"><h4>Diagram Types</h4><div class="alg-id">core/diagrams.py · native QgsDiagramRenderer</div></div>
+  <button class="copy-anchor-btn" data-anchor="diagram-types" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Map diagrams draw a small chart <em>on every feature</em>, using QGIS's native diagram renderer so the result is a real symbology that prints and exports like any other. Four types are available, all sized in millimetres and coloured with the active studio palette.
+  </div>
+  <h5>Types</h5>
+  <table class="params-table">
+    <tr><th>Type</th><th>QGIS class</th><th>Encodes</th></tr>
+    <tr><td class="param-name">Pie</td><td class="param-type">QgsPieDiagram</td><td>Composition of several numeric fields per feature</td></tr>
+    <tr><td class="param-name">Bar</td><td class="param-type">QgsHistogramDiagram</td><td>Side-by-side values of several fields</td></tr>
+    <tr><td class="param-name">Stacked bar</td><td class="param-type">QgsStackedBarDiagram (QGIS 3.14+)</td><td>Additive composition of fields</td></tr>
+    <tr><td class="param-name">Text</td><td class="param-type">QgsTextDiagram</td><td>Raw values as compact text</td></tr>
+  </table>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:8px 0;">Diagram size spans 3–60 mm (default 14 mm). Placement adapts to geometry type (AroundPoint / Line / OverPoint).</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#diagram-normalise">Normalisation</a> · <a href="#diagram-sizeby">Size-by</a> · <a href="#feature-themes">Palettes</a> (diagram colours follow the studio palette).</div>
+</div>
+</article>
+
+<!-- DIAGRAM: NORMALISE -->
+<article class="alg-card" id="diagram-normalise">
+<div class="alg-card-header">
+  <div class="alg-icon">⚖️</div>
+  <div class="alg-info"><h4>Diagram Normalisation</h4><div class="alg-id">core/expressions.py · baked into the diagram expression</div></div>
+  <button class="copy-anchor-btn" data-anchor="diagram-normalise" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    A pie or bar comparing fields on very different scales is dominated by the largest-magnitude field. Normalisation rescales each field before it is drawn, so every component contributes fairly. Statistics are computed from the features and baked into the diagram expressions — <em>nothing is written back to the data</em>.
+  </div>
+  <h5>Modes</h5>
+  <table class="params-table">
+    <tr><th>Mode</th><th>Expression</th><th>Use case</th></tr>
+    <tr><td class="param-name">None</td><td class="param-type">\(v\)</td><td>Same-scale fields (e.g. population components)</td></tr>
+    <tr><td class="param-name">Min–max (0–1)</td><td class="param-type">\(\dfrac{v - \min}{\max - \min}\)</td><td>Different ranges on one diagram</td></tr>
+    <tr><td class="param-name">Z-score</td><td class="param-type">\(\dfrac{v - \mu}{\sigma}\)</td><td>Statistical comparison; warns for pies (negative angles impossible)</td></tr>
+    <tr><td class="param-name">Log</td><td class="param-type">\(\ln(v - \min + 1)\)</td><td>Heavy-tailed distributions</td></tr>
+  </table>
+  <div class="interp-box"><strong>Watch the hint.</strong> The dock's <code>_sync_diag_hint()</code> warns for mathematically problematic choices — Z-score on a pie chart produces negative angles, and Log on values with zero or negative minima is undefined.</div>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#diagram-types">Diagram types</a> · <a href="#feature-stats">Statistics</a>.</div>
+</div>
+</article>
+
+<!-- DIAGRAM: SIZE-BY -->
+<article class="alg-card" id="diagram-sizeby">
+<div class="alg-card-header">
+  <div class="alg-icon">🔍</div>
+  <div class="alg-info"><h4>Size-by (Proportional Symbols)</h4><div class="alg-id">Size by · Avoid overlaps · Size (mm)</div></div>
+  <button class="copy-anchor-btn" data-anchor="diagram-sizeby" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The <em>Size by</em> control scales each diagram between a small and a full-size one according to a chosen field, turning every feature into a proportional symbol. It is the classic thematic-map idiom — larger value, larger diagram — layered on top of any of the four diagram types.
+  </div>
+  <h5>Controls</h5>
+  <table class="params-table">
+    <tr><th>Control</th><th>Effect</th></tr>
+    <tr><td class="param-name">Size by</td><td class="param-type">Field</td><td>Scales diagram size between min and full size</td></tr>
+    <tr><td class="param-name">Size (mm)</td><td class="param-type">3–60 mm</td><td>Full-size diagram; the small end is scaled proportionally</td></tr>
+    <tr><td class="param-name">Avoid overlaps</td><td class="param-type">Checkbox</td><td>Let QGIS displace diagrams to reduce collision</td></tr>
+  </table>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#diagram-types">Diagram types</a> · <a href="#diagram-normalise">Normalisation</a>.</div>
+</div>
+</article>
+
+<div class="group-anchor" id="group-labels"></div>
+<div class="group-header"><span class="group-num">GROUP 4</span><h3>Labels</h3></div>
+
+<!-- LABEL: PRESETS -->
+<article class="alg-card" id="label-presets">
+<div class="alg-card-header">
+  <div class="alg-icon">🏷️</div>
+  <div class="alg-info"><h4>Label Presets</h4><div class="alg-id">core/labels.py · QgsPalLayerSettings</div></div>
+  <button class="copy-anchor-btn" data-anchor="label-presets" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Four curated label styles, each a named combination of halo, weight, and treatment, applied via native <code>QgsPalLayerSettings</code> and <code>QgsVectorLayerSimpleLabeling</code> — so labels behave, render, and export like any QGIS labeling.
+  </div>
+  <h5>Presets</h5>
+  <table class="params-table">
+    <tr><th>Preset</th><th>Treatment</th></tr>
+    <tr><td class="param-name">Clean</td><td class="param-type">0.6 mm white halo — subtle, cartographic default</td></tr>
+    <tr><td class="param-name">Strong halo</td><td class="param-type">1.2 mm halo — labels survive busy basemaps</td></tr>
+    <tr><td class="param-name">Bold</td><td class="param-type">Heavy weight — emphasis, no halo</td></tr>
+    <tr><td class="param-name">Plain</td><td class="param-type">No halo — minimal, dense layouts</td></tr>
+  </table>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#label-format">Formatting</a>.</div>
+</div>
+</article>
+
+<!-- LABEL: FORMAT -->
+<article class="alg-card" id="label-format">
+<div class="alg-card-header">
+  <div class="alg-icon">✍️</div>
+  <div class="alg-info"><h4>Label Formatting</h4><div class="alg-id">core/expressions.py · single concat() expression</div></div>
+  <button class="copy-anchor-btn" data-anchor="label-format" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Format a label without leaving the dock. Fields and formatting are combined into a single QGIS <code>concat()</code> expression, with a live preview showing the assembled expression and the first feature's evaluated value.
+  </div>
+  <h5>Formatting capabilities</h5>
+  <table class="params-table">
+    <tr><th>Control</th><th>Effect</th></tr>
+    <tr><td class="param-name">Primary / Second field</td><td class="param-type">Two fields; second row joined with <code>char(10)</code></td></tr>
+    <tr><td class="param-name">Decimals</td><td class="param-type">−1 to 6 via <code>round()</code></td></tr>
+    <tr><td class="param-name">Thousands separator</td><td class="param-type"><code>format_number()</code></td></tr>
+    <tr><td class="param-name">Prefix / Suffix</td><td class="param-type">Wrapped with <code>concat()</code></td></tr>
+    <tr><td class="param-name">Case</td><td class="param-type">upper / lower / title</td></tr>
+    <tr><td class="param-name">Word wrap</td><td class="param-type"><code>wordwrap()</code> with configurable limit</td></tr>
+    <tr><td class="param-name">Advanced expression</td><td class="param-type">Freeform QGIS expression overrides all formatting; validated</td></tr>
+  </table>
+  <div class="acad-note"><strong>Number safety.</strong> Numeric fields receive rounding and number formatting; text fields never do — 02viz never applies a numeric function to a string and corrupts the label.</div>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#label-presets">Presets</a> · <a href="#feature-assistant">Smart Assistant</a> (which proposes a two-line label when name + measurement fields both exist).</div>
+</div>
+</article>
+
+<div class="group-anchor" id="group-features"></div>
+<div class="group-header"><span class="group-num">GROUP 5</span><h3>Studio Features</h3></div>
+
+<!-- FEATURE: DASHBOARD -->
+<article class="alg-card" id="feature-dashboard">
+<div class="alg-card-header">
+  <div class="alg-icon">🖥️</div>
+  <div class="alg-info"><h4>Explore Dashboard</h4><div class="alg-id">core/profile.py · engines/dashboard.py · one click</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-dashboard" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The <em>Explore layer</em> button profiles every field of a layer and renders a complete interactive dashboard in one operation — an automated exploratory data analysis (Tukey, 1977) with toggleable tiles.
+  </div>
+  <h5>Tiles</h5>
+  <table class="params-table">
+    <tr><th>Tile</th><th>Contents</th></tr>
+    <tr><td class="param-name">KPI cards</td><td>Row count, field counts (total / numeric / categorical), cell completeness %</td></tr>
+    <tr><td class="param-name">Field summary</td><td>Per-field type badge, missing % (green &lt;5%, amber 5–20%, red &gt;20%), distinct count, range / top category</td></tr>
+    <tr><td class="param-name">Categorical bars</td><td>Up to 4 fields, Top-N control</td></tr>
+    <tr><td class="param-name">Histograms</td><td>Up to 6 numeric fields, 14 bins each</td></tr>
+    <tr><td class="param-name">Normalised box plot</td><td>All numeric fields on one 0–1 axis (min–max normalised) for cross-scale comparison</td></tr>
+    <tr><td class="param-name">Correlation matrix</td><td>Pairwise Pearson \(r\), diverging colour (blue-negative / red-positive), labelled cells, up to 8 fields</td></tr>
+    <tr><td class="param-name">Scatter + trend</td><td>Strongest \(|r|\) field pair, sampled to 3,000 points, with trend line</td></tr>
+    <tr><td class="param-name">Insights</td><td>Plain-English chips — dominant category, range, skew with log hint, outliers, near-constant and mostly-empty fields, notable correlations</td></tr>
+  </table>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:8px 0;">Identifier columns (<code>fid</code>/<code>id</code>/<code>gid</code>/<code>uuid</code>) are skipped automatically.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#feature-stats">Statistics</a> · <a href="#feature-assistant">Smart Assistant</a>.</div>
+</div>
+</article>
+
+<!-- FEATURE: ANIMATION -->
+<article class="alg-card" id="feature-animation">
+<div class="alg-card-header">
+  <div class="alg-icon">🎞️</div>
+  <div class="alg-info"><h4>Animation (Play Axis)</h4><div class="alg-id">core/transform.py · build_frames() · 6 chart types</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-animation" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Pick a time or sequence field and any of six chart types plays through it — bar-chart race, Gapminder bubbles, or composition unfolding over the years — with axes and colours held steady so values animate <em>in place</em>. This axis stability follows Tufte's (1983) principle of holding the frame of reference constant.
+  </div>
+  <h5>The five-stage pipeline</h5>
+  <ol style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:8px 0 14px 22px;">
+    <li><code>frame_groups()</code> partitions rows by the animate field, ordered numerically or lexicographically.</li>
+    <li><code>union_categories()</code> merges all frames' categories into a stable axis order.</li>
+    <li><code>align_values()</code> pads missing categories with zeros.</li>
+    <li>Global numeric ranges are fixed across frames so axes never rescale.</li>
+    <li>Bubble radii are globally scaled once so the same value maps to the same size across frames.</li>
+  </ol>
+  <h5>Playback &amp; scope</h5>
+  <table class="params-table">
+    <tr><th>Control</th><th>Values</th></tr>
+    <tr><td class="param-name">Speed</td><td class="param-type">Slow (1600 ms/frame) · Medium (900) · Fast (450)</td></tr>
+    <tr><td class="param-name">ECharts</td><td class="param-type">timeline with autoPlay + loop</td></tr>
+    <tr><td class="param-name">Plotly</td><td class="param-type">frames + slider + play/pause</td></tr>
+    <tr><td class="param-name">Eligible</td><td class="param-type">bar · line · area · scatter · bubble · pie</td></tr>
+  </table>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:8px 0;">Reference overlays are hidden during animation. Animated bars and points still click to select features on the map, and the animation exports in the one-file HTML.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-bubble">Bubble</a> · <a href="#feature-overlays">Overlays</a>.</div>
+</div>
+</article>
+
+<!-- FEATURE: OVERLAYS -->
+<article class="alg-card" id="feature-overlays">
+<div class="alg-card-header">
+  <div class="alg-icon">➖</div>
+  <div class="alg-info"><h4>Reference Overlays</h4><div class="alg-id">core/overlays.py · 5 overlays · 5 chart types</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-overlays" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Drop statistical reference lines and bands onto bar, line, area, scatter, and bubble charts: the mean, the median, a target value you type, a ±1σ band, and the inter-quartile (Q1–Q3) band. Computed in pure Python from the plotted values and drawn identically by all four engines, so they read the same in light and dark and export with the chart.
+  </div>
+  <h5>Overlays</h5>
+  <table class="params-table">
+    <tr><th>Overlay</th><th>Computation</th><th>Style</th></tr>
+    <tr><td class="param-name">Mean</td><td class="param-type">\(\bar{x} = \frac{1}{n}\sum x_i\)</td><td>Dashed line + label</td></tr>
+    <tr><td class="param-name">Median</td><td class="param-type">Linear-interpolation median</td><td>Dotted line + label</td></tr>
+    <tr><td class="param-name">±1σ band</td><td class="param-type">\([\bar{x} - s,\ \bar{x} + s]\)</td><td>Shaded region</td></tr>
+    <tr><td class="param-name">IQR band</td><td class="param-type">Shaded Q1 → Q3</td><td>Shaded region + label</td></tr>
+    <tr><td class="param-name">Target</td><td class="param-type">User-entered constant</td><td>Solid emphasis line</td></tr>
+  </table>
+  <h5>Engine rendering</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0;">ECharts <code>markLine</code>/<code>markArea</code> · Plotly <code>layout.shapes</code> · Vega-Lite rule/rect layers · matplotlib <code>axhline</code>/<code>axhspan</code>. Hidden during animation.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#feature-stats">Statistics</a> · <a href="#chart-bar">Bar</a>.</div>
+</div>
+</article>
+
+<!-- FEATURE: ASSISTANT -->
+<article class="alg-card" id="feature-assistant">
+<div class="alg-card-header">
+  <div class="alg-icon">💡</div>
+  <div class="alg-info"><h4>Smart Assistant</h4><div class="alg-id">core/assistant.py · 265 lines · zero network</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-assistant" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    The <em>Suggest a chart</em> button reads the active layer's fields and configures the most insightful chart for you — telling you <em>why</em>. It is a pure-Python, zero-network recommendation engine: no account, no internet, no new dependencies.
+  </div>
+  <h5>Recommendation heuristics</h5>
+  <table class="params-table">
+    <tr><th>Field signature</th><th>Recommendation</th></tr>
+    <tr><td class="param-name">Two numeric, \(|r| \ge 0.4\)</td><td class="param-type">Scatter + trend line</td></tr>
+    <tr><td class="param-name">Categorical + numeric</td><td class="param-type">Mean bar</td></tr>
+    <tr><td class="param-name">Categorical only</td><td class="param-type">Count bar</td></tr>
+    <tr><td class="param-name">Numeric only</td><td class="param-type">Histogram</td></tr>
+  </table>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:8px 0;"><code>suggestions()</code> also evaluates the other tabs: diagram normalisation (min–max / log when a field-range ratio ≥ 50×) and label configuration (two-line when name + measurement fields are both present).</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#feature-dashboard">Explore</a> · <a href="#feature-stats">Field classification</a>.</div>
+</div>
+</article>
+
+<!-- FEATURE: PRESETS -->
+<article class="alg-card" id="feature-presets">
+<div class="alg-card-header">
+  <div class="alg-icon">💾</div>
+  <div class="alg-info"><h4>Chart Presets</h4><div class="alg-id">core/presets.py · schema v1 · up to 50</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-presets" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Save a named chart setup and reuse it across QGIS sessions — and across <em>layers</em>. A preset records engine, chart type, field bindings, aggregation, bins, Top-N, sort, stacked/trend flags, overlays, theme, palette, and animation speed. On load, fields remap by name; unavailable fields are cleared and reported.
+  </div>
+  <h5>What a preset stores</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Engine · chart type · field bindings (by name) · aggregation · bins · Top-N · sort · stacked / trend flags · reference overlays · theme · palette · animation speed. Stored as JSON (schema v1) in <code>QSettings</code>.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#feature-themes">Themes &amp; palettes</a>.</div>
+</div>
+</article>
+
+<!-- FEATURE: BRIDGE -->
+<article class="alg-card" id="feature-bridge">
+<div class="alg-card-header">
+  <div class="alg-icon">🔗</div>
+  <div class="alg-info"><h4>Chart ↔ Map Selection</h4><div class="alg-id">title transport · SelectionBridge · cross-filter</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-bridge" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Charts and the map stay linked in both directions. Click a bar, slice, or point and the matching features are selected on the canvas; select features on the canvas and the chart instantly dims everything else — no re-render.
+  </div>
+  <h5>How the bridge works</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Chart pages encode clicked feature IDs as <code>document.title = "o2viz-select:&lt;id,id,…&gt;:&lt;seq&gt;"</code> via <code>__o2vizSelect()</code>; the dock's <code>titleChanged</code> listener forwards to <code>SelectionBridge</code>, which calls <code>layer.selectByIds(ids)</code>. Reverse cross-filter pushes <code>__o2vizHighlight(ids)</code> to dim non-selected items to opacity 0.16. Selection lists over 20,000 IDs skip highlighting for performance.</p>
+  <div class="acad-note"><strong>Why title transport.</strong> <code>addToJavaScriptWindowObject</code> crashes inside WebCore on Qt 5.15's QtWebKit fork, and <code>QWebChannel</code> exists only on WebEngine. The page title is the one signal safe and identical on both stacks — in a plain browser it is a harmless blip.</div>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#architecture">Architecture</a> · <a href="#feature-animation">Animation</a> (animated points still select).</div>
+</div>
+</article>
+
+<!-- FEATURE: THEMES -->
+<article class="alg-card" id="feature-themes">
+<div class="alg-card-header">
+  <div class="alg-icon">🎨</div>
+  <div class="alg-info"><h4>Themes &amp; Palettes</h4><div class="alg-id">engines/base.py · 4 themes · 8 palettes · swatch editor</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-themes" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Four themes and eight palettes give every chart a consistent typographic and colour voice; an inline swatch editor recolours any palette, and the override propagates identically across ECharts, Plotly, and Vega-Lite.
+  </div>
+  <h5>Themes</h5>
+  <table class="params-table">
+    <tr><th>Theme</th><th>Background</th><th>Use</th></tr>
+    <tr><td class="param-name">Studio Light</td><td class="param-type">#fbfbfd</td><td>Default</td></tr>
+    <tr><td class="param-name">Ink Dark</td><td class="param-type">#131c21</td><td>Presentations</td></tr>
+    <tr><td class="param-name">Soft Pastel</td><td class="param-type">#ffffff</td><td>Muted, light content</td></tr>
+    <tr><td class="param-name">Bold Print</td><td class="param-type">#ffffff</td><td>Publication-ready monochrome</td></tr>
+  </table>
+  <h5>Palettes</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0 14px;">Vivid (high-chroma) · Colorblind safe (8-colour, Wong 2011 guidance) · Viridis (perceptually uniform sequential) · Sunset (warm orange→purple) · Ocean (cool teal→navy) · Earth (beige→forest) · Berry (red-violet) · Grayscale print (distinct lightness steps).</p>
+  <h5>Custom swatches</h5>
+  <p style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:6px 0;">Inline swatches right in the dock — click one to recolour it via <code>QColorDialog</code>, <code>+</code>/<code>−</code> to resize the palette (up to 16 colours). Auto-switches to "Custom…" mode.</p>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#feature-presets">Presets</a> · <a href="#diagram-types">Map diagrams</a> (which follow the active palette).</div>
+</div>
+</article>
+
+<!-- FEATURE: STATS -->
+<article class="alg-card" id="feature-stats">
+<div class="alg-card-header">
+  <div class="alg-icon">🧮</div>
+  <div class="alg-info"><h4>Data Shaping &amp; Statistics</h4><div class="alg-id">core/stats.py · core/transform.py · pure Python</div></div>
+  <button class="copy-anchor-btn" data-anchor="feature-stats" title="Copy link to this section" type="button">🔗</button>
+</div>
+<div class="alg-card-body">
+  <div class="alg-desc">
+    Every statistic and data-shaping operation is pure Python — no pandas, no numpy. The result is a studio that runs identically offline, in tests, and inside QGIS.
+  </div>
+  <h5>Methods</h5>
+  <ul style="font-size:.84rem;color:var(--ov-slate-700);line-height:1.7;margin:8px 0 14px 22px;">
+    <li><strong>Aggregation</strong> — count, sum, mean, median (linear interpolation), min, max.</li>
+    <li><strong>Pearson correlation</strong> — \(r = \frac{\sum(x_i-\bar{x})(y_i-\bar{y})}{\sqrt{\sum(x_i-\bar{x})^2}\sqrt{\sum(y_i-\bar{y})^2}}\), with zero-variance degeneracy checks.</li>
+    <li><strong>Skewness</strong> — adjusted Fisher–Pearson \(g_1 = \frac{\sqrt{n(n-1)}}{n-2}\cdot\frac{m_3}{m_2^{3/2}}\); a log-transform hint fires when \(|g_1| \ge 0.5\).</li>
+    <li><strong>Outliers</strong> — Tukey inner fences \([Q_1 - 1.5\,\mathrm{IQR},\ Q_3 + 1.5\,\mathrm{IQR}]\).</li>
+    <li><strong>KDE</strong> — Silverman bandwidth, Gaussian kernel.</li>
+    <li><strong>Box plots</strong> — linear-interpolation quantiles.</li>
+    <li><strong>Field classification</strong> — numeric (≥60% numeric, &gt;8 distinct), categorical (≤30 distinct), identifier (skip).</li>
+    <li><strong>Data shaping</strong> — group-by, pivot, Top-N with "Other" collapse, per-frame slicing, bubble sqrt-scaling, trend line, treemap/sunburst hierarchies.</li>
+  </ul>
+  <div class="see-also-box"><strong>See also:</strong> <a href="#chart-density">KDE</a> · <a href="#chart-box">Box plot</a> · <a href="#feature-dashboard">Dashboard</a>.</div>
+</div>
+</article>
+
+<!-- ═══════════ METHODOLOGICAL NOTES ═══════════ -->
+<section id="methodological-notes" class="section-intro" style="margin-top:40px;">
+<h2>Methodological Notes</h2>
+<p>Design decisions worth recording — the "why" behind the plugin's behaviour, drawn from the visualisation and cartography literature.</p>
+
+<div class="callout callout-tip">
+<strong>Position over angle.</strong> Cleveland &amp; McGill (1984) rank position along a common scale as the most accurately perceived encoding and angle as one of the least. 02viz defaults to bar charts for magnitude comparison and reserves pie/angle encoding for few-category part-to-whole questions.
+</div>
+
+<div class="callout callout-tip">
+<strong>Area, not radius.</strong> The eye perceives bubble <em>area</em>, so radius is scaled by square root (\(\sqrt{v}\)) to keep perceived size proportional to value. The same principle governs map-diagram "Size by", which scales diagram area rather than linear extent.
+</div>
+
+<div class="callout callout-info">
+<strong>Hold the frame of reference.</strong> Following Tufte (1983), animation fixes axes, category order, colours, and bubble scaling across frames so movement reads as data change rather than axis rescaling. Reference overlays are hidden during animation for the same reason.
+</div>
+
+<div class="callout callout-warn">
+<strong>Normalisation is not data edit.</strong> Diagram normalisation (min–max / Z-score / log) is baked into the diagram expression from feature statistics; it never writes new columns, so the source layer is untouched. Z-score on a pie chart produces negative angles — the dock warns rather than silently rendering nonsense.
+</div>
+
+<div class="callout callout-info">
+<strong>Pure Python by construction.</strong> Aggregation, correlation, skewness, KDE, quantiles, and outlier detection are implemented directly rather than delegated to pandas/numpy, keeping the core studio dependency-free and its behaviour verifiable in plain unit tests.
+</div>
+</section>
+
+<!-- ═══════════ REFERENCES ═══════════ -->
+<section id="references" class="section-intro" style="margin-top:40px;">
+<h2>Academic References</h2>
+<ol class="refs" style="font-size:.82rem;color:var(--ov-slate-500);line-height:1.8;margin-left:22px;">
+  <li>Wilkinson, L. (2005). <em>The Grammar of Graphics</em> (2nd ed.). Springer. <a href="https://doi.org/10.1007/0-387-28695-0" style="color:var(--ov-indigo-700);">DOI: 10.1007/0-387-28695-0</a></li>
+  <li>Tufte, E. R. (1983). <em>The Visual Display of Quantitative Information</em>. Graphics Press.</li>
+  <li>Tukey, J. W. (1977). <em>Exploratory Data Analysis</em>. Addison-Wesley.</li>
+  <li>Cleveland, W. S. &amp; McGill, R. (1984). Graphical perception: Theory, experimentation, and application to the development of graphical methods. <em>Journal of the American Statistical Association</em>, 79(387), 531–554. <a href="https://doi.org/10.1080/01621459.1984.10478080" style="color:var(--ov-indigo-700);">DOI: 10.1080/01621459.1984.10478080</a></li>
+  <li>Satyanarayan, A., Moritz, D., Wongsuphasawat, K., &amp; Heer, J. (2017). Vega-Lite: A grammar of interactive graphics. <em>IEEE Transactions on Visualization and Computer Graphics</em>, 23(1), 341–350. <a href="https://doi.org/10.1109/TVCG.2016.2599030" style="color:var(--ov-indigo-700);">DOI: 10.1109/TVCG.2016.2599030</a></li>
+  <li>Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. <em>Computing in Science &amp; Engineering</em>, 9(3), 90–95. <a href="https://doi.org/10.1109/MCSE.2007.55" style="color:var(--ov-indigo-700);">DOI: 10.1109/MCSE.2007.55</a></li>
+  <li>Li, D., Mei, H., Shen, Y., Su, S., Zhang, W., Wang, J., Zu, M., &amp; Chen, W. (2018). ECharts: A declarative framework for rapid construction of web-based visualization. <em>Visual Informatics</em>, 2(2), 136–146. <a href="https://doi.org/10.1016/j.visinf.2018.04.011" style="color:var(--ov-indigo-700);">DOI: 10.1016/j.visinf.2018.04.011</a></li>
+  <li>Silverman, B. W. (1986). <em>Density Estimation for Statistics and Data Analysis</em>. Chapman &amp; Hall. <a href="https://doi.org/10.1007/978-1-4899-3324-9" style="color:var(--ov-indigo-700);">DOI: 10.1007/978-1-4899-3324-9</a></li>
+  <li>Wong, B. (2011). Points of view: Color blindness. <em>Nature Methods</em>, 8(6), 441. <a href="https://doi.org/10.1038/nmeth.1618" style="color:var(--ov-indigo-700);">DOI: 10.1038/nmeth.1618</a></li>
+  <li>Juran, J. M. (1954). Universals in management planning and controlling. <em>Management Review</em>, 43(11), 748–761.</li>
+</ol>
+</section>
+
+<div class="refman-footer">
+<strong>02viz — Geospatial Visualization Studio</strong> · Reference Manual v0.15.13<br>
+Yusuf Eminoğlu · Dokuz Eylül University · Department of City &amp; Regional Planning<br>
+GPL-3.0 · Part of the PlanX open-source QGIS plugin ecosystem.
+</div>
+
+</div><!-- /content-area -->
+</main>
+
+<button id="print-pdf-btn" onclick="window.print()" title="Save as PDF / Print">🖨️ Save as PDF</button>
+
+<script>
+(function () {
+  // Copy-anchor buttons
+  document.querySelectorAll('.copy-anchor-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-anchor');
+      var url = location.origin + location.pathname + '#' + id;
+      function done() {
+        btn.classList.add('copied');
+        btn.textContent = '✓';
+        setTimeout(function () { btn.classList.remove('copied'); btn.textContent = '🔗'; }, 1200);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(function () { fallback(); });
+      } else { fallback(); }
+      function fallback() {
+        var ta = document.createElement('textarea');
+        ta.value = url; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta); done();
+      }
+    });
+  });
+
+  // Scroll-spy: highlight the active sidebar link
+  var links = document.querySelectorAll('.sidebar-nav a');
+  var sections = [];
+  links.forEach(function (a) {
+    var el = document.getElementById(a.getAttribute('href').slice(1));
+    if (el) sections.push({ link: a, top: el.offsetTop });
+  });
+  window.addEventListener('scroll', function () {
+    var y = window.scrollY + 80, current = links[0];
+    sections.forEach(function (s) { if (s.top <= y) current = s.link; });
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (current) current.classList.add('active');
+  });
+})();
+</script>
 </body>
 </html>
