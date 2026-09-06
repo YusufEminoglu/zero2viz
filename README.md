@@ -8,7 +8,7 @@
 
 [![QGIS](https://img.shields.io/badge/QGIS-3.28%2B-93b023?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/zero2viz/)
 [![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://geophilo.com/zero2viz/)
-[![Version](https://img.shields.io/github/v/tag/YusufEminoglu/zero2viz?label=version&color=blue)](https://gitlab.com/geospacephilo/EasyFillet/releases)
+[![Version](https://img.shields.io/github/v/tag/YusufEminoglu/zero2viz?label=version&color=blue)](https://github.com/YusufEminoglu/zero2viz/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](LICENSE)
 [![QGIS Plugin Hub](https://img.shields.io/badge/QGIS%20Hub-install-589632?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/zero2viz/)
 
@@ -78,7 +78,7 @@ The optional **matplotlib / seaborn** engine renders the same spec as a publicat
 
 **From the QGIS Plugin Hub (recommended):** `Plugins → Manage and Install Plugins…` → search for **"02viz"** → *Install*.
 
-**From a release zip:** download the latest zip from [Releases](https://gitlab.com/geospacephilo/EasyFillet/releases) → `Plugins → Install from ZIP`.
+**From a release zip:** download the latest zip from [Releases](https://github.com/YusufEminoglu/zero2viz/releases) → `Plugins → Install from ZIP`.
 
 Requires QGIS 3.28 or newer. **No external Python dependencies for the core studio** (the three JS engines are vendored). The optional matplotlib/seaborn engine is auto-detected; when it is missing, the plugin shows you the exact install command to run yourself (it never runs pip for you).
 
@@ -117,12 +117,12 @@ layer with a matching schema; unavailable fields are cleared and reported.
 
 | Planning & analysis | CAD & production | 3D & visualization |
 |---|---|---|
-| [PlanX](https://gitlab.com/geospacephilo/EasyFillet) — spatial-planning suite | [PlanX CAD Toolset](https://gitlab.com/geospacephilo/EasyFillet) — drafting-grade CAD | [PlanX 3D City](https://gitlab.com/geospacephilo/EasyFillet) — Three.js city viewer |
-| [GeoStats Lab](https://gitlab.com/geospacephilo/EasyFillet) — spatial statistics | [EasyFillet](https://gitlab.com/geospacephilo/EasyFillet) — tangent-arc fillet | [3D OSM Model](https://gitlab.com/geospacephilo/EasyFillet) — OSM → 3D city in browser |
-| [Suitability Lab](https://gitlab.com/geospacephilo/EasyFillet) — raster MCDA | [Settlement Toolset](https://gitlab.com/geospacephilo/EasyFillet) — 9-stage settlement plans | [OSM Quick 3D](https://gitlab.com/geospacephilo/EasyFillet) — OSM → native QGIS 3D |
-| [DataCube Lab](https://gitlab.com/geospacephilo/EasyFillet) — spatiotemporal cubes | [UIP Toolset](https://gitlab.com/geospacephilo/EasyFillet) — Turkish master-plan automation | [Urban Procedural 3D](https://gitlab.com/geospacephilo/EasyFillet) — parametric zoning lab |
-| [Urban Resilience](https://gitlab.com/geospacephilo/EasyFillet) — 28 resilience tools | [ParcelFlux](https://gitlab.com/geospacephilo/EasyFillet) — parcel subdivision | [CartoLab](https://gitlab.com/geospacephilo/EasyFillet) — publication cartography |
+| [PlanX](https://github.com/YusufEminoglu/zero2viz) — spatial-planning suite | [PlanX CAD Toolset](https://github.com/YusufEminoglu/zero2viz) — drafting-grade CAD | [PlanX 3D City](https://github.com/YusufEminoglu/zero2viz) — Three.js city viewer |
+| [GeoStats Lab](https://github.com/YusufEminoglu/zero2viz) — spatial statistics | [EasyFillet](https://github.com/YusufEminoglu/zero2viz) — tangent-arc fillet | [3D OSM Model](https://github.com/YusufEminoglu/zero2viz) — OSM → 3D city in browser |
+| [Suitability Lab](https://github.com/YusufEminoglu/zero2viz) — raster MCDA | [Settlement Toolset](https://github.com/YusufEminoglu/zero2viz) — 9-stage settlement plans | [OSM Quick 3D](https://github.com/YusufEminoglu/zero2viz) — OSM → native QGIS 3D |
+| [DataCube Lab](https://github.com/YusufEminoglu/zero2viz) — spatiotemporal cubes | [UIP Toolset](https://github.com/YusufEminoglu/zero2viz) — Turkish master-plan automation | [Urban Procedural 3D](https://github.com/YusufEminoglu/zero2viz) — parametric zoning lab |
+| [Urban Resilience](https://github.com/YusufEminoglu/zero2viz) — 28 resilience tools | [ParcelFlux](https://github.com/YusufEminoglu/zero2viz) — parcel subdivision | [CartoLab](https://github.com/YusufEminoglu/zero2viz) — publication cartography |
 
 ## 📜 License & author
 
-GPL-3.0 © [Yusuf Eminoğlu](https://github.com/YusufEminoglu) — bug reports and feature requests welcome in [Issues](https://gitlab.com/geospacephilo/EasyFillet/-/issues).
+GPL-3.0 © [Yusuf Eminoğlu](https://github.com/YusufEminoglu) — bug reports and feature requests welcome in [Issues](https://github.com/YusufEminoglu/zero2viz/issues).
