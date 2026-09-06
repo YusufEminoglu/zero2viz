@@ -6,8 +6,10 @@ zip's top-level directory to be a valid Python identifier, so the original
 stays "02viz". Convention kept from the digit-first era: every import
 inside this package is relative (``from .module import X``).
 """
-from .main_plugin import O2VizPlugin
-
-
 def classFactory(iface):
+    # QGIS calls this only when it actually enables the plugin. Keeping the
+    # UI import here lets metadata discovery and pure core tests import the
+    # package without loading Qt/QGIS modules eagerly.
+    from .main_plugin import O2VizPlugin
+
     return O2VizPlugin(iface)

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.16.0] - 2026-09-06
+
+### Added
+
+- Completed the chart delivery toolbar with real PNG, SVG and PDF exports
+  from the embedded chart view, alongside the existing self-contained HTML
+  export.
+- Added pure publishing tests and real Qt/QGIS raster, vector and PDF export
+  verification on both QGIS 3.44 LTR and QGIS 4.2.
+- Added explicit extraction provenance for bounded datasets. Chart status and
+  Explore dashboards now say whether they use every available row or the first
+  100,000-row safety window.
+
+### Fixed
+
+- Replaced the previous PNG and SVG placeholder actions, which reported a
+  message but never asked for a destination or wrote a file.
+- Corrected PDF rendering to use a real `QPainter`, fit the chart to the print
+  viewport and close the `QPrinter` before publication.
+- Made HTML, PNG, SVG and PDF publication atomic, preserving an existing
+  deliverable if capture or encoding fails and reporting the verified output
+  size after success.
+- Released SVG/PDF writer handles before atomic rename, preventing Windows file
+  locking failures on QGIS 4.
+- Deferred QGIS UI imports until `classFactory()` is called so package metadata
+  discovery and pure-core tests no longer require a live QGIS runtime.
+
 ## [0.15.14] - 2026-09-06
 
 - Migrate repository and documentation URLs to GitLab and Cloudflare Pages.

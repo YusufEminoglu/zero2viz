@@ -51,7 +51,14 @@ remain inside QGIS and 02viz.
 - **Built-in data shaping & statistics** — aggregation (count/sum/mean/median/min/max), group/color-by field, Top-N with "Other" collapse, value sorting, least-squares trend line, reference & statistics overlays (mean, median, target, ±1σ and inter-quartile bands), histogram binning, box-plot quartiles, sample standard deviation, Silverman-bandwidth Gaussian KDE and cumulative shares — all pure Python, no pandas/numpy needed.
 - **Layers and beyond** — chart any vector layer or attribute table, or load external CSV/XLSX/ODS tables straight into the studio.
 - **Four themes, eight palettes + an embedded swatch editor** — Studio Light, Ink Dark, Soft Pastel and Bold Print themes, a Colors selector with 8 curated palettes (Vivid, Colorblind safe, Viridis, Sunset, Ocean, Earth, Berry, Grayscale print), and **inline swatches right in the dock** — click one to recolour it, `+`/`−` to resize the palette. All override the theme palette identically in every engine.
-- **One-file export** — every chart saves as a single self-contained interactive HTML; PNG export via the chart toolbox.
+- **Verified multi-format export** — save the current chart as a single
+  self-contained interactive HTML page, a captured PNG, an SVG document or a
+  print-ready PDF. Every format is staged and atomically published, so a failed
+  writer cannot destroy an existing deliverable.
+- **Visible data scope** — the render status and Explore dashboard state whether
+  every available row was analysed or the responsive 100,000-row safety window
+  was used; large-layer charts are never silently presented as full-dataset
+  results.
 - **Qt5 and Qt6 ready** — runs on QGIS 3.28+ and the QGIS 4 line, with a WebEngine → WebKit → browser viewer fallback chain.
 
 ## 🖼️ Gallery
@@ -93,7 +100,10 @@ layer with a matching schema; unavailable fields are cleared and reported.
 2. Pick a layer (or **Load external table…** for a CSV/XLSX), optionally tick *Only selected features*.
 3. On the **Charts** tab pick the engine and chart type, set the X/Y fields and an aggregation if you want grouping — or press **💡 Suggest** to let 02viz configure the most suitable chart for your fields.
 4. Hit **Render chart** — the interactive chart appears right in the dock.
-5. **Export HTML…** saves it as a single self-contained file; the chart toolbox saves PNG. The **Map diagrams** (with Min–max / Z-score / Log normalisation) and **Labels** (round / multi-line / expressions) tabs draw straight onto the canvas. New to it all? Open **❔ Guide**.
+5. Export as **HTML, PNG, SVG or PDF**. HTML stays interactive and completely
+   offline; the three rendered formats capture the active embedded chart. The
+   **Map diagrams** and **Labels** tabs draw straight onto the canvas. New to it
+   all? Open **❔ Guide**.
 
 ## ⚙️ Reference
 
@@ -106,7 +116,7 @@ layer with a matching schema; unavailable fields are cleared and reported.
 | Charts | X / Y / Group / Value-Size / Title | Field bindings + a chart-title override; Group splits colored series, Value drives bubble size, heatmap cells and treemap weights |
 | Charts | Animate by ▶ / Play speed | Play a bar/line/area/scatter/bubble/pie chart through a time or sequence field — bar-chart race, Gapminder bubbles, composition over years (ECharts timeline / Plotly slider) |
 | Charts | Aggregate / Bins / Top N / Sort | count·sum·mean·median·min·max, histogram bins, Top-N with "Other", value sorting |
-| Charts | Render / 💡 Suggest / ✨ Explore / Export / ↗ | Render to the embedded viewer (WebEngine → WebKit → browser), one-click chart suggestion, one-click Explore dashboard, one-file HTML export, open-in-browser fallback |
+| Charts | Render / 💡 Suggest / ✨ Explore / Export / ↗ | Render to the embedded viewer (WebEngine → WebKit → browser), one-click chart suggestion, one-click Explore dashboard, atomic HTML/PNG/SVG/PDF export, open-in-browser fallback |
 | Header | ❔ Guide | Full offline user guide with per-layer suggestions and copy-ready expression/AI-prompt recipes |
 | Map diagrams | Type / Fields / Size / Opacity / **Size by** / Avoid overlaps / **Normalize** | Native QGIS pie/bar/stacked/text diagrams on every feature; Size by scales each diagram between a small and a full-size one by a chosen field (proportional-symbol maps); Normalize = None / Min–max (0–1) / Z-score / Log makes differently-scaled fields comparable |
 | Labels | Field / Second line / Decimals / Thousands / Prefix-Suffix / Case / Wrap / Expression / Style (incl. **Chip**) / Size | Formatted, multi-line, expression-driven labels via native QGIS labeling, with a live preview |

@@ -158,9 +158,9 @@ _BODY = """
   <li>On the <b>Charts</b> tab choose an <b>Engine</b>, a chart <b>Type</b>, set <b>X</b>/<b>Y</b> and hit <b>Render chart</b>.</li>
   <li>Not sure what to make? Click <b>💡 Suggest</b> for an instant chart, or <b>✨ Explore layer</b> for a full dashboard.</li>
 </ol>
-<div class="note">Everything is offline. Charts export as a single self-contained
-HTML file (<b>Export HTML…</b>), and clicking a bar/point selects those features
-on the map.</div>
+<div class="note">Everything is offline. Export the chart as one self-contained
+HTML file or capture the active embedded view as PNG, SVG or PDF. Every output
+is published atomically. Clicking a bar/point selects those features on the map.</div>
 </section>
 
 <section id="data"><h2><span class="n">2</span>Choosing data</h2>
@@ -228,7 +228,8 @@ types grey out) — then the <b>Type</b>.</p>
       to edit your own; applied identically across every engine.</li>
   <li><b>Click selects on map</b> — clicking a bar/slice/point selects those features
       in QGIS; selecting on the canvas dims the non-selected chart items (cross-filter).</li>
-  <li><b>Export HTML…</b> writes the chart as one portable file; <b>↗</b> opens it in your browser.</li>
+  <li><b>Export HTML / PNG / SVG / PDF</b> writes a verified deliverable;
+      <b>↗</b> opens the interactive chart in your browser.</li>
 </ul>
 </section>
 
