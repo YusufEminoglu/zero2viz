@@ -54,6 +54,12 @@ from ..core import (
     assistant, datasource, diagrams, expressions, labels,
     overlays, presets, profile as profiler, requirements, stats, transform,
 )
+from ..core.export_utils import (
+    atomic_output,
+    atomic_write_text,
+    ensure_extension,
+    human_size,
+)
 from ..engines import engines
 from ..engines.base import DEFAULT_THEME, PALETTES, THEMES, webkit_fallback_page
 from ..engines.dashboard import build_dashboard
@@ -275,6 +281,7 @@ class StudioDockWidget(QDockWidget):
         self._view_slot: QVBoxLayout | None = None
         self._last_html: str | None = None
         self._last_path: str | None = None
+        self._last_extraction_info = None
         self._tmp_dir: str | None = None
         self._watched_layer = None
         self._suppress_refresh_until = 0.0
@@ -1474,7 +1481,9 @@ class StudioDockWidget(QDockWidget):
             self.set_status("Pick at least an X field")
             return None
         try:
-            cols, fids = datasource.columns_with_ids(layer, fields, sel)
+            cols, fids, extraction = datasource.columns_with_ids_info(
+                layer, fields, sel)
+            self._last_extraction_info = extraction
         except ValueError as exc:
             self.set_status(str(exc))
             return None
@@ -1963,6 +1972,10 @@ class StudioDockWidget(QDockWidget):
                          if self.link_check.isChecked() else None)
         embedded = show_html_file(self._view_kind, self._view, load_path)
         self.export_btn.setEnabled(True)
+        can_capture = bool(embedded and self._view is not None)
+        self.export_svg_btn.setEnabled(can_capture)
+        self.export_png_btn.setEnabled(can_capture)
+        self.export_pdf_btn.setEnabled(can_capture)
         self.browser_btn.setEnabled(True)
         if embedded:
             where = f" · {self._view_kind}"
@@ -2009,7 +2022,10 @@ class StudioDockWidget(QDockWidget):
                 f"view can't run it (try the ECharts engine for an embedded chart)",
                 embed_html=webkit_fallback_page(engine.label, spec.get("type", "")))
         else:
-            self._show_html(html, f"Rendered {spec['type']} · {engine.label}")
+            scope = (f" · {self._last_extraction_info.status_note}"
+                     if self._last_extraction_info is not None else "")
+            self._show_html(
+                html, f"Rendered {spec['type']} · {engine.label}{scope}")
 
     # ───────────────────────── advanced engine availability ─────────────────────────
 
@@ -2183,35 +2199,110 @@ class StudioDockWidget(QDockWidget):
             self, "Export chart as HTML", os.path.join(self._last_io_dir(), "02viz_chart.html"), "HTML (*.html)")
         if not path:
             return
-        self._remember_io_dir(path)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(self._last_html)
-        self.set_status(f"Exported: {os.path.basename(path)}")
-
-    def _export_svg(self) -> None:
-        self.set_status("SVG export uses the rendered engine view")
-
-    def _export_png(self) -> None:
-        self.set_status("PNG export uses the rendered engine view")
-
-    def _export_pdf(self) -> None:
-        if not self._view:
-            self.set_status("PDF export needs a rendered view")
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export chart as PDF", os.path.join(self._last_io_dir(), "02viz_chart.pdf"), "PDF (*.pdf)")
-        if not path:
-            return
+        path = ensure_extension(path, ".html")
         self._remember_io_dir(path)
         try:
-            from qgis.PyQt.QtPrintSupport import QPrinter
-            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-            printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-            printer.setOutputFileName(path)
-            self._view.render(printer)
-            self.set_status(f"Exported: {os.path.basename(path)}")
+            size = atomic_write_text(path, self._last_html)
+            self.set_status(
+                f"Exported HTML: {os.path.basename(path)} · {human_size(size)}")
         except Exception as exc:
-            self.set_status(f"PDF export failed: {exc}")
+            self.set_status(f"HTML export failed: {exc}")
+
+    def _export_svg(self) -> None:
+        self._export_rendered_dialog("SVG", ".svg", "SVG (*.svg)")
+
+    def _export_png(self) -> None:
+        self._export_rendered_dialog("PNG", ".png", "PNG (*.png)")
+
+    def _export_pdf(self) -> None:
+        self._export_rendered_dialog("PDF", ".pdf", "PDF (*.pdf)")
+
+    def _export_rendered_dialog(self, output_format: str, extension: str,
+                                file_filter: str) -> None:
+        if not self._view:
+            self.set_status(f"{output_format} export needs a rendered view")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export chart as {output_format}",
+            os.path.join(self._last_io_dir(), f"02viz_chart{extension}"),
+            file_filter,
+        )
+        if not path:
+            return
+        path = ensure_extension(path, extension)
+        self._remember_io_dir(path)
+        try:
+            size = self._export_view_to(path, output_format)
+            self.set_status(
+                f"Exported {output_format}: {os.path.basename(path)} · "
+                f"{human_size(size)}")
+        except Exception as exc:
+            self.set_status(f"{output_format} export failed: {exc}")
+
+    def _export_view_to(self, path: str, output_format: str) -> int:
+        """Render the current embedded chart to an atomic raster/vector file.
+
+        Kept separate from the file dialog so it can be exercised against a
+        real Qt widget on both supported QGIS runtimes.
+        """
+        if self._view is None:
+            raise ValueError("No rendered chart view is available.")
+        fmt = output_format.upper()
+        if fmt not in {"PNG", "SVG", "PDF"}:
+            raise ValueError(f"Unsupported rendered export format: {fmt}")
+        if self._view.width() <= 0 or self._view.height() <= 0:
+            raise ValueError("The rendered chart view has no visible size.")
+
+        with atomic_output(path) as temporary_path:
+            if fmt == "PNG":
+                pixmap = self._view.grab()
+                if pixmap.isNull() or not pixmap.save(temporary_path, "PNG"):
+                    raise ValueError("Qt could not capture the chart as PNG.")
+            elif fmt == "SVG":
+                from qgis.PyQt.QtSvg import QSvgGenerator
+
+                generator = QSvgGenerator()
+                generator.setFileName(temporary_path)
+                generator.setSize(self._view.size())
+                generator.setViewBox(self._view.rect())
+                generator.setTitle("02viz chart")
+                painter = QPainter()
+                if not painter.begin(generator):
+                    raise ValueError("Qt could not initialize the SVG writer.")
+                try:
+                    self._view.render(painter)
+                finally:
+                    painter.end()
+                # QSvgGenerator owns the QFile handle until its wrapper is
+                # destroyed. Release it before atomic_output renames the
+                # staging file (required on Windows/QGIS 4).
+                del generator
+            else:
+                from qgis.PyQt.QtPrintSupport import QPrinter
+
+                printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+                printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+                printer.setOutputFileName(temporary_path)
+                printer.setDocName("02viz chart")
+                painter = QPainter()
+                if not painter.begin(printer):
+                    raise ValueError("Qt could not initialize the PDF writer.")
+                try:
+                    viewport = painter.viewport()
+                    fitted = self._view.size()
+                    fitted.scale(
+                        viewport.size(), Qt.AspectRatioMode.KeepAspectRatio)
+                    painter.setViewport(
+                        viewport.x(), viewport.y(), fitted.width(), fitted.height())
+                    painter.setWindow(self._view.rect())
+                    self._view.render(painter)
+                finally:
+                    painter.end()
+                # QPrinter likewise keeps the PDF handle open for its
+                # lifetime; release it before publishing the staging file.
+                del printer
+        return os.path.getsize(os.path.abspath(path))
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)

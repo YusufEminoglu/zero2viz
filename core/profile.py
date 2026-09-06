@@ -31,7 +31,8 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
     """→ {"title", "meta", "kpis", "insights", "tiles": [{"spec", "span"}]}"""
     wanted = set(SECTION_NAMES if sections is None else sections)
     field_names = [f.name() for f in layer.fields()][:MAX_FIELDS]
-    cols, fids = datasource.columns_with_ids(layer, field_names, selected_only)
+    cols, fids, extraction = datasource.columns_with_ids_info(
+        layer, field_names, selected_only)
     n_rows = len(fids)
 
     # provider primary-key columns are identifiers by definition (GPKG fid,
@@ -233,6 +234,8 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
     return {"title": layer.name(),
             "meta": f"{n_rows:,} rows · {len(field_names)} fields · "
                     f"{completeness:.0f}% complete"
-                    + (" · selection only" if selected_only else ""),
+                    + (" · selection only" if selected_only else "")
+                    + (f" · limited: {extraction.status_note}"
+                       if extraction.truncated else ""),
             "kpis": kpis if "kpis" in wanted else [], "insights": insights[:7] if "insights" in wanted else [], "tiles": tiles,
             "fields": field_rows if "fields" in wanted else []}
