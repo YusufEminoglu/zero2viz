@@ -7,7 +7,7 @@
 **Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.**
 
 [![QGIS](https://img.shields.io/badge/QGIS-3.28%2B-93b023?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/zero2viz/)
-[![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://geophilo.pages.dev/zero2viz/)
+[![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://geophilo.com/zero2viz/)
 [![Version](https://img.shields.io/github/v/tag/YusufEminoglu/zero2viz?label=version&color=blue)](https://gitlab.com/geospacephilo/EasyFillet/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](LICENSE)
 [![QGIS Plugin Hub](https://img.shields.io/badge/QGIS%20Hub-install-589632?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/zero2viz/)
@@ -20,7 +20,7 @@
 
 ## 📖 Documentation
 
-**[Comprehensive Academic Reference Manual](https://geophilo.pages.dev/zero2viz/)** — complete documentation of every feature, parameter, and workflow. Hosted on Web Documentation.
+**[Comprehensive Academic Reference Manual](https://geophilo.com/zero2viz/)** — complete documentation of every feature, parameter, and workflow. Hosted on Web Documentation.
 
 
 ## Why 02viz?
