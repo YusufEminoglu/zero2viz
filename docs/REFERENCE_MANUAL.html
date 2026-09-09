@@ -132,6 +132,21 @@ nav#sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border
 }
 .sidebar-header .version { font-size: .68rem; color: var(--ov-indigo-300); margin-top: 6px; font-family: var(--font-mono); }
 
+.sidebar-search {
+  width: 100%; margin-top: 14px; padding: 7px 11px;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
+  border-radius: var(--radius-sm); color: #fff; font-size: .8rem;
+  font-family: var(--font-body);
+}
+.sidebar-search::placeholder { color: var(--ov-indigo-300); }
+.sidebar-search:focus { outline: none; border-color: var(--ov-coral-400); background: rgba(255,255,255,.1); }
+
+.sidebar-nav a.nav-hidden,
+.sidebar-nav .group-label.nav-hidden { display: none; }
+.sidebar-nav .no-results {
+  display: none; padding: 10px 22px; font-size: .78rem; color: var(--ov-indigo-300);
+}
+
 .sidebar-nav { flex: 1; padding: 12px 0; }
 .sidebar-nav a {
   display: block; padding: 8px 22px;
@@ -422,6 +437,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 <div class="sidebar-header">
   <div class="brand">02viz<span>Geospatial Visualization Studio</span></div>
   <div class="version">Reference Manual — v0.15.13</div>
+  <input type="text" id="sidebar-search" class="sidebar-search" placeholder="Search manual…" autocomplete="off">
 </div>
 <div class="sidebar-nav">
   <a href="#overview">Overview &amp; Philosophy</a>
@@ -475,6 +491,7 @@ main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
   <div class="group-label">Appendices</div>
   <a href="#methodological-notes">Methodological Notes</a>
   <a href="#references">Academic References</a>
+  <div class="no-results" id="sidebar-no-results">No matches</div>
 </div>
 <div class="sidebar-footer">
   02viz · Geospatial Visualization Studio<br>
@@ -1629,6 +1646,39 @@ GPL-3.0 · Part of the PlanX open-source QGIS plugin ecosystem.
     links.forEach(function (l) { l.classList.remove('active'); });
     if (current) current.classList.add('active');
   });
+
+  // Sidebar search: matches a link's own label OR its target section's full
+  // text, so (e.g.) searching "kernel density" finds the Density (KDE) chart
+  // entry even though "kernel" itself never appears in the sidebar label.
+  var searchInput = document.getElementById('sidebar-search');
+  var noResults = document.getElementById('sidebar-no-results');
+  if (searchInput) {
+    var sectionTextByLink = links.length
+      ? Array.prototype.map.call(links, function (a) {
+          var el = document.getElementById(a.getAttribute('href').slice(1));
+          return el ? el.textContent.toLowerCase() : '';
+        })
+      : [];
+    searchInput.addEventListener('input', function () {
+      var q = searchInput.value.trim().toLowerCase();
+      var anyVisible = false;
+      links.forEach(function (a, i) {
+        var match = !q || a.textContent.toLowerCase().indexOf(q) !== -1 ||
+          (sectionTextByLink[i] || '').indexOf(q) !== -1;
+        a.classList.toggle('nav-hidden', !match);
+        if (match) anyVisible = true;
+      });
+      document.querySelectorAll('.sidebar-nav .group-label').forEach(function (label) {
+        var next = label.nextElementSibling, hasVisible = false;
+        while (next && !next.classList.contains('group-label')) {
+          if (next.tagName === 'A' && !next.classList.contains('nav-hidden')) hasVisible = true;
+          next = next.nextElementSibling;
+        }
+        label.classList.toggle('nav-hidden', !hasVisible && !!q);
+      });
+      if (noResults) noResults.style.display = anyVisible || !q ? 'none' : 'block';
+    });
+  }
 })();
 </script>
 </body>
