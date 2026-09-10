@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.17.0] - 2026-09-10
+
+### Added
+
+- Add a versioned, read-only Print Layout theme provider API so sibling plugins
+  can reuse 02viz palettes, surfaces, typography, and chart stroke presets
+  without importing internal modules or requiring a web engine.
+
 ## [0.16.0] - 2026-09-06
 
 ### Added

@@ -77,6 +77,23 @@ class TestExportUtils(unittest.TestCase):
         self.assertEqual(human_size(1536), "1.5 KB")
 
 
+class TestThemeProvider(unittest.TestCase):
+
+    def test_catalog_is_versioned_complete_and_isolated(self):
+        from zero2viz.core.theme_provider import API_ID, theme_catalog
+        first = theme_catalog()
+        self.assertEqual(first["api"], API_ID)
+        self.assertEqual(first["api_version"], 1)
+        self.assertGreaterEqual(len(first["themes"]), 4)
+        required = {
+            "id", "label", "palette", "background", "text", "grid",
+            "font_family", "title_size_pt", "label_size_pt", "line_width_mm",
+        }
+        self.assertTrue(all(required <= set(theme) for theme in first["themes"]))
+        first["themes"][0]["palette"][0] = "#000000"
+        self.assertNotEqual(theme_catalog()["themes"][0]["palette"][0], "#000000")
+
+
 class TestOfflineEngines(unittest.TestCase):
 
     def test_all_vendored_engines_build_a_self_contained_bar_chart(self):

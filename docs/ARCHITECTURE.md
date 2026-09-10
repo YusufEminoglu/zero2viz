@@ -15,6 +15,7 @@ zero2viz/               # package dir (display name stays "02viz")
     diagrams.py         # on-canvas QgsDiagramRenderer (pie/bar/stacked/text per feature)
     labels.py           # on-canvas QgsPalLayerSettings quick-label presets
     requirements.py     # optional-dependency detection + on-demand pip install
+    theme_provider.py   # versioned plain-data theme catalog for sibling plugins
   engines/
     base.py             # ChartEngine contract (+available()), spec schema, themes, HTML shell
     echarts.py          # Apache ECharts engine (canvas)
@@ -60,6 +61,10 @@ zero2viz/               # package dir (display name stays "02viz")
   libraries are vendored JS.
 - **Engines never touch Qt.** `build_html(spec) -> str` keeps every engine
   testable on a bare Python interpreter and reusable for batch export.
+- **External theme consumers never import engine internals.** The plugin instance
+  exposes `print_layout_theme_catalog()`, a versioned deep-copied snapshot made
+  only of dictionaries, lists, strings and numbers. Consumers discover it via
+  QGIS's plugin registry and must retain their own fallback.
 
 ## Engine roadmap
 

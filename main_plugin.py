@@ -30,10 +30,14 @@ class O2VizPlugin:
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
         self.icon_dir = os.path.join(self.plugin_dir, "icons")
-
         self.actions: list[QAction] = []
         self.toolbar: QToolBar | None = None
         self._dock = None
+
+    def print_layout_theme_catalog(self) -> dict:
+        """Public v1 theme snapshot for optional Print Layout integrations."""
+        from .core.theme_provider import theme_catalog
+        return theme_catalog()
 
     # ───────────────────────── QGIS lifecycle ─────────────────────────
 

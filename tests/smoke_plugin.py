@@ -156,6 +156,21 @@ def test_class_factory():
                hasattr(module, "classFactory"), PACKAGE)
 
 
+def test_print_layout_theme_api(iface):
+    module = __import__(PACKAGE)
+    plugin = module.classFactory(iface)
+    catalog = plugin.print_layout_theme_catalog()
+    themes = catalog.get("themes", [])
+    return _ok(
+        "versioned Print Layout theme API exposes complete plain-data themes",
+        catalog.get("api") == "zero2viz.print_layout_themes"
+        and catalog.get("api_version") == 1
+        and len(themes) >= 4
+        and all(theme.get("palette") and theme.get("background") for theme in themes),
+        f"themes={len(themes)} api_version={catalog.get('api_version')}",
+    )
+
+
 def test_lifecycle(iface):
     module = __import__(PACKAGE)
     plugin = module.classFactory(iface)
@@ -248,6 +263,7 @@ def run_all(iface):
         test_no_percent_in_metadata(),
         test_icon_exists(),
         test_class_factory(),
+        test_print_layout_theme_api(iface),
         test_lifecycle(iface),
         test_only_the_toggle_icon(iface),
         test_toggle_shows_on_first_click(iface),
