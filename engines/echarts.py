@@ -151,17 +151,45 @@ def _nice_step(span: float, ticks: int = 5) -> float:
     return 10.0 * mag
 
 
-def _padded_range(lo: float, hi: float) -> tuple[float, float]:
-    """Pad a value range by 5 percent and snap both ends to a round tick step,
-    so a fixed axis ends on a readable label (6,000 — not 5,855). A range that
-    starts at or above zero is never padded below it."""
+def _axis_fit(lo: float, hi: float) -> tuple[float, float, float]:
+    """Pad a value range by 5 percent and snap both ends to a round tick
+    step. → ``(lo, hi, step)``: pass ``step`` as the axis ``interval`` so the
+    fixed ends are ticks too (no stray "5,855" or "14" label above the last
+    gridline). A range that starts at or above zero is never padded below it."""
     span = (hi - lo) or abs(hi) or 1.0
     p_lo, p_hi = lo - span * 0.05, hi + span * 0.05
     if lo >= 0 > p_lo:
         p_lo = 0.0
-    step = _nice_step(p_hi - p_lo, ticks=10)
-    return (round(math.floor(p_lo / step) * step, 10),
-            round(math.ceil(p_hi / step) * step, 10))
+    # every 1 / 2 / 2.5 / 5 x 10^k step giving 3-10 intervals (2 for integer
+    # data); keep the one
+    # that wastes the least range (ties: fewer ticks). Integer data (counts)
+    # never gets a fractional step.
+    integral = float(lo).is_integer() and float(hi).is_integer()
+    top = math.floor(math.log10(p_hi - p_lo))
+    best = None
+    for k in range(top - 2, top + 2):
+        for m in (1.0, 2.0, 2.5, 5.0):
+            step = m * 10 ** k
+            if integral and not float(step).is_integer():
+                continue
+            lo_n = math.floor(p_lo / step) * step
+            hi_n = math.ceil(p_hi / step) * step
+            n = round((hi_n - lo_n) / step)
+            if (2 if integral else 3) <= n <= 10:
+                key = ((hi_n - lo_n) - (p_hi - p_lo), n)
+                if best is None or key < best[0]:
+                    best = (key, lo_n, hi_n, step)
+    if best is None:
+        step = _nice_step(p_hi - p_lo, ticks=6)
+        best = (None, math.floor(p_lo / step) * step, math.ceil(p_hi / step) * step, step)
+    _key, lo_n, hi_n, step = best
+    return round(lo_n, 10), round(hi_n, 10), step
+
+
+def _padded_range(lo: float, hi: float) -> tuple[float, float]:
+    """``(lo, hi)`` of :func:`_axis_fit`."""
+    fit = _axis_fit(lo, hi)
+    return fit[0], fit[1]
 
 
 def _with_ids(values: list, ids: list | None) -> list:
@@ -320,6 +348,9 @@ class EChartsEngine(ChartEngine):
                     names.append(nm)
                 col = palette[names.index(nm) % len(palette)]
                 s["xAxisIndex"] = s["yAxisIndex"] = gi
+                if s.get("stack"):
+                    # ECharts stacks by id across ALL grids: keep panels apart
+                    s["stack"] = f"{s['stack']}_{gi}"
                 s["itemStyle"] = dict(s.get("itemStyle") or {}, color=col)
                 series.append(s)
 
@@ -346,14 +377,14 @@ class EChartsEngine(ChartEngine):
         if kind in ("scatter", "bubble"):
             for key, rng in (("xAxis", bounds.get("x")), ("yAxis", bounds.get("y"))):
                 if rng and isinstance(option.get(key), dict):
-                    lo, hi = _padded_range(rng[0], rng[1])
-                    option[key].update(min=lo, max=hi, scale=False)
+                    lo, hi, step = _axis_fit(rng[0], rng[1])
+                    option[key].update(min=lo, max=hi, interval=step, scale=False)
         elif bounds.get("y") and isinstance(option.get("yAxis"), dict):
             lo, hi = bounds["y"]
-            zero = kind in ("bar", "area")
-            _, hi_p = _padded_range(min(lo, 0.0) if zero else lo, hi)
-            option["yAxis"].update(max=hi_p, scale=False,
-                                   min=0 if zero else _padded_range(lo, hi)[0])
+            if kind in ("bar", "area", "histogram"):
+                lo = min(lo, 0.0)
+            lo_p, hi_p, step = _axis_fit(lo, hi)
+            option["yAxis"].update(min=lo_p, max=hi_p, interval=step, scale=False)
 
     # ───────────────────── option builder ─────────────────────
 

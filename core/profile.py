@@ -27,12 +27,24 @@ def _fmt(v: float) -> str:
 
 
 def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
-                  sections: list[str] | set[str] | None = None) -> dict:
-    """→ {"title", "meta", "kpis", "insights", "tiles": [{"spec", "span"}]}"""
+                  sections: list[str] | set[str] | None = None,
+                  animate_by: str = "", interval: int = 1400) -> dict:
+    """→ {"title", "meta", "kpis", "insights", "tiles": [{"spec", "span"}],
+    "frames"}; "frames" is None unless ``animate_by`` names a field with at
+    least two values.
+
+    With ``animate_by`` every count-bar, histogram and scatter tile gets a
+    per-frame ``tile["frames"]`` on the whole-layer axis (same categories,
+    same bin edges, same scatter bounds), and the Rows / Complete KPIs get
+    a value per frame; the correlation matrix and box plot stay static."""
     wanted = set(SECTION_NAMES if sections is None else sections)
     field_names = [f.name() for f in layer.fields()][:MAX_FIELDS]
+    all_names = {f.name() for f in layer.fields()}
+    animate_by = animate_by if animate_by in all_names else ""
+    extract = field_names + (
+        [animate_by] if animate_by and animate_by not in field_names else [])
     cols, fids, extraction = datasource.columns_with_ids_info(
-        layer, field_names, selected_only)
+        layer, extract, selected_only)
     n_rows = len(fids)
 
     # provider primary-key columns are identifiers by definition (GPKG fid,
@@ -50,6 +62,8 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
         return fields.classify(cols[name])
 
     kinds = {name: _kind(name) for name in field_names}
+    if animate_by in kinds:
+        kinds[animate_by] = "skip"  # the play axis is not also profiled as data
     cat_fields = [n for n in field_names if kinds[n] == "categorical"]
     num_fields = [n for n in field_names if kinds[n] == "numeric"]
 
@@ -112,8 +126,9 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
     for name in cat_fields[:MAX_CAT_CHARTS]:
         cats, vals, ids = transform.group_rows(cols[name], [], fids, "count")
         cats, vals, ids = transform.sort_cats(cats, vals, ids, "value_desc")
+        collapsed = len(cats) > MAX_CATS_SHOWN
         cats, vals, ids = transform.topn_collapse(cats, vals, ids, MAX_CATS_SHOWN)
-        tiles.append({"span": 1, "spec": spec(
+        tiles.append({"span": 1, "source": ("count", name, cats, collapsed), "spec": spec(
             "bar", f"{name} — counts", x=name, y="count",
             data={"categories": cats,
                   "series": [{"name": "count", "values": vals, "ids": ids}]})})
@@ -129,7 +144,8 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
         if not labels:
             continue
         mean = num_stats[name]["mean"] if name in num_stats else 0.0
-        tiles.append({"span": 1, "spec": spec(
+        tiles.append({"span": 1, "source": ("hist", name, stats.histogram_range(cols[name]),
+                                            len(counts)), "spec": spec(
             "histogram", f"{name} — distribution (mean {_fmt(mean)})",
             x=name, y="count", data={"categories": labels, "values": counts})})
 
@@ -176,7 +192,7 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
             if xf is not None and yf is not None:
                 points.append([xf, yf, None, fids[i]])
         if points:
-            tiles.append({"span": 1, "spec": spec(
+            tiles.append({"span": 1, "source": ("scatter", a, b), "spec": spec(
                 "scatter", f"{a} vs {b} (r = {best_r:.2f})", x=a, y=b,
                 data={"series": [{"name": f"{a}/{b}", "points": points}],
                       "trend": transform.linreg_endpoints(points)})})
@@ -228,6 +244,16 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
             ("Categorical", str(len(cat_fields))),
             ("Complete", f"{completeness:.0f}%")]
 
+    frames = None
+    if animate_by and n_rows:
+        frames = _animate(tiles, cols, fids, cols[animate_by], animate_by, interval)
+        if frames is None:
+            insights.append(f"Animate by {animate_by} needs at least two values: "
+                            f"showing all rows")
+        else:
+            frames["kpis"] = _kpi_frames(cols, field_names, frames.pop("_idx"),
+                                         len(num_fields), len(cat_fields))
+
     section_of = {"bar": "count_bars", "histogram": "histograms", "heatmap": "corr_matrix", "scatter": "scatter_trend", "box": "normalised_box"}
     tiles = [dict(tile, section=section_of.get(tile["spec"].get("type"), "count_bars"))
              for tile in tiles if section_of.get(tile["spec"].get("type"), "count_bars") in wanted]
@@ -238,4 +264,82 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
                     + (f" · limited: {extraction.status_note}"
                        if extraction.truncated else ""),
             "kpis": kpis if "kpis" in wanted else [], "insights": insights[:7] if "insights" in wanted else [], "tiles": tiles,
-            "fields": field_rows if "fields" in wanted else []}
+            "fields": field_rows if "fields" in wanted else [],
+            "frames": frames}
+
+def _animate(tiles, cols, fids, frame_col, field, interval):
+    """Attach per-frame data to every animatable tile, on the whole-layer axis.
+    → the profile's "frames" header, or None with fewer than two frames."""
+    labels, idx_per = transform.frame_groups(frame_col)
+    if len(labels) < 2:
+        return None
+    for tile in tiles:
+        src = tile.get("source")
+        if not src:
+            continue
+        datas, bounds = [], None
+        if src[0] == "count":
+            _kind, name, cats, collapsed = src
+            named = cats[:-1] if collapsed else cats
+            pos = {c: i for i, c in enumerate(named)}
+            for idxs in idx_per:
+                vals = [0.0] * len(cats)
+                ids = [[] for _ in cats]
+                for i in idxs:
+                    j = pos.get(transform._key(cols[name][i]))
+                    if j is None:
+                        if not collapsed:
+                            continue
+                        j = len(cats) - 1
+                    vals[j] += 1.0
+                    ids[j].append(fids[i])
+                datas.append({"categories": cats,
+                              "series": [{"name": "count", "values": vals, "ids": ids}]})
+            bounds = {"y": [0.0, max(max(d["series"][0]["values"]) for d in datas)]}
+        elif src[0] == "hist":
+            _kind, name, rng, bins = src
+            if rng is None:
+                continue
+            cats = tile["spec"]["data"]["categories"]
+            for idxs in idx_per:
+                counts = stats.bin_counts([cols[name][i] for i in idxs], rng[0], rng[1], bins)
+                datas.append({"categories": cats, "values": counts})
+            bounds = {"y": [0.0, max(max(d["values"]) for d in datas)]}
+        elif src[0] == "scatter":
+            _kind, a, b = src
+            series_name = tile["spec"]["data"]["series"][0]["name"]
+            xs, ys = [], []
+            for idxs in idx_per:
+                pts = []
+                for i in idxs[:MAX_SCATTER_POINTS]:
+                    xf, yf = stats.to_float(cols[a][i]), stats.to_float(cols[b][i])
+                    if xf is not None and yf is not None:
+                        pts.append([xf, yf, None, fids[i]])
+                        xs.append(xf)
+                        ys.append(yf)
+                datas.append({"series": [{"name": series_name, "points": pts}], "trend": None})
+            if xs:
+                bounds = {"x": [min(xs), max(xs)], "y": [min(ys), max(ys)]}
+        if datas:
+            tile["frames"] = {"datas": datas, "bounds": bounds}
+    return {"field": field, "labels": labels, "interval": int(interval), "_idx": idx_per}
+
+
+def _kpi_frames(cols, field_names, idx_per, n_numeric, n_categorical):
+    """KPI values per frame, in the same order as the static KPI cards.
+    A frame with no rows shows "–" for its row-derived KPIs, never a stale
+    number carried over from the previous frame."""
+    out = []
+    for idxs in idx_per:
+        n = len(idxs)
+        if n and field_names:
+            filled = sum(1 for name in field_names for i in idxs if cols[name][i] is not None)
+            complete = f"{100.0 * filled / (n * len(field_names)):.0f}%"
+            rows = f"{n:,}"
+        elif n:
+            complete, rows = "100%", f"{n:,}"
+        else:
+            complete = rows = "–"
+        out.append([rows, str(len(field_names)), str(n_numeric), str(n_categorical), complete])
+    return out
+

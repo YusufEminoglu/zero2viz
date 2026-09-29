@@ -106,6 +106,31 @@ def histogram(values: list, bins: int = 20) -> tuple[list[str], list[int]]:
     return labels, counts
 
 
+def histogram_range(values: list) -> tuple[float, float] | None:
+    """``(lo, hi)`` that :func:`histogram` bins over, or None if nothing numeric."""
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if not nums:
+        return None
+    return min(nums), max(nums)
+
+
+def bin_counts(values: list, lo: float, hi: float, bins: int) -> list[int]:
+    """Counts in :func:`histogram`'s equal-width bins over a *fixed* ``[lo, hi]``,
+    so a subset (an animation frame) is binned exactly like the whole layer.
+    ``lo == hi`` is the single-bin case; values outside the range clamp to the
+    edge bins."""
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if lo == hi:
+        return [len(nums)]
+    bins = max(1, int(bins))
+    width = (hi - lo) / bins
+    counts = [0] * bins
+    for v in nums:
+        i = int((v - lo) / width)
+        counts[min(max(i, 0), bins - 1)] += 1
+    return counts
+
+
 def pearson(xs: list, ys: list) -> float | None:
     """Pearson correlation of the numeric pairs in xs/ys; None if degenerate."""
     pairs = [(a, b) for a, b in ((to_float(x), to_float(y)) for x, y in zip(xs, ys))

@@ -62,6 +62,13 @@ _PAGE = """<!DOCTYPE html>
   .tile {{ background: {card}; border: 1px solid {grid}; border-radius: 12px;
            padding: 6px; min-height: 340px; }}
   .chart {{ width: 100%; height: 336px; }}
+  .play {{ position: sticky; top: 0; z-index: 5; display: flex; align-items: center;
+           gap: 12px; background: {card}; border: 1px solid {grid}; border-radius: 12px;
+           padding: 8px 14px; margin: 0 0 14px; }}
+  .play button {{ border: 0; border-radius: 999px; width: 34px; height: 34px;
+                  background: {accent}; color: #ffffff; font-size: 14px; cursor: pointer; }}
+  .play input[type=range] {{ flex: 1; accent-color: {accent}; }}
+  .play .flabel {{ min-width: 140px; font-weight: 600; font-size: 14px; }}
   footer {{ margin-top: 18px; color: {muted}; font-size: 12px; text-align: center; }}
 </style>
 <script>{lib}</script>
@@ -74,6 +81,7 @@ _PAGE = """<!DOCTYPE html>
     <ul class="insights">{insights}</ul>
   </header>
   <div class="kpis">{kpis}</div>
+  {play_bar}
   {fields_table}
   <div class="grid">{tiles}</div>
   <footer>built with 02viz — Geospatial Visualization Studio · charts are interactive, clicks select features in QGIS</footer>
@@ -126,6 +134,42 @@ window.__o2vizHighlight = function (ids) {{
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
   }} catch (e) {{ /* highlight is guarded */ }}
 }};
+// Explore animation: one shared play axis steps every animated tile and the
+// KPI cards together. FRAMES is null for a static dashboard.
+var FRAMES = {frames};
+window.__o2vizFrameCount = FRAMES ? FRAMES.labels.length : 0;
+if (FRAMES) {{
+  var slider = document.getElementById("o2vizSlider");
+  var btn = document.getElementById("o2vizPlayBtn");
+  var flabel = document.getElementById("o2vizFrameLabel");
+  var kpiEls = document.querySelectorAll(".kpi .v");
+  var timer = null;
+  window.__o2vizSetFrame = function (k) {{
+    k = ((k % FRAMES.labels.length) + FRAMES.labels.length) % FRAMES.labels.length;
+    slider.value = k;
+    flabel.textContent = FRAMES.field + ": " + FRAMES.labels[k];
+    for (var ci = 0; ci < CHARTS.length; ci++) {{
+      var fs = FRAMES.tiles[ci];
+      if (!fs) continue;
+      OPTIONS[ci].series = JSON.parse(JSON.stringify(fs[k]));
+      CHARTS[ci].setOption({{ series: OPTIONS[ci].series }});
+    }}
+    var kv = FRAMES.kpis[k] || [];
+    for (var j = 0; j < kpiEls.length && j < kv.length; j++) kpiEls[j].textContent = kv[j];
+    window.__o2vizFrame = k;
+  }};
+  function stop() {{ if (timer) {{ clearInterval(timer); timer = null; }} btn.textContent = "\u25B6"; }}
+  function play() {{
+    stop();
+    btn.textContent = "\u275A\u275A";
+    timer = setInterval(function () {{ window.__o2vizSetFrame(window.__o2vizFrame + 1); }},
+                        FRAMES.interval);
+  }}
+  btn.addEventListener("click", function () {{ if (timer) stop(); else play(); }});
+  slider.addEventListener("input", function () {{ stop(); window.__o2vizSetFrame(+slider.value); }});
+  window.__o2vizSetFrame(0);
+  play();
+}}
 window.__chartCount = OPTIONS.length;
 window.__chartReady = true;
 </script>
@@ -168,14 +212,40 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
     esc = html_escape.escape
 
     engine = EChartsEngine()
+    frames = profile.get("frames")
     options = []
+    tile_frames = []
     for tile in profile["tiles"]:
         spec = dict(tile["spec"])
         spec["theme"] = theme
+        tf = tile.get("frames") if frames else None
+        if tf:
+            spec["data"] = tf["datas"][0]
         option = engine.option(spec)
         option["toolbox"] = {"show": False}  # tiles stay clean; export is page-level
         option.setdefault("title", {}).setdefault("textStyle", {})["fontSize"] = 14
+        if tf:
+            # fixed axes: bars and points move, the frame of reference does not
+            engine._stabilise_axes(option, spec["type"], tf.get("bounds"))
+            tile_frames.append([engine.option(dict(spec, data=d))["series"]
+                                for d in tf["datas"]])
+        else:
+            tile_frames.append(None)
         options.append(option)
+
+    play_bar = ""
+    frames_json = "null"
+    if frames:
+        n = len(frames["labels"])
+        play_bar = (
+            '<div class="play"><button id="o2vizPlayBtn" title="Play / pause">&#9654;</button>'
+            f'<input type="range" id="o2vizSlider" min="0" max="{n - 1}" value="0" step="1">'
+            '<span class="flabel" id="o2vizFrameLabel"></span></div>')
+        frames_json = json.dumps({
+            "field": frames["field"], "labels": [str(v) for v in frames["labels"]],
+            "interval": int(frames.get("interval", 1400)),
+            "kpis": frames.get("kpis") if profile.get("kpis") else [],
+            "tiles": tile_frames}, ensure_ascii=False)
 
     kpi_html = "".join(
         f'<div class="kpi"><div class="v">{esc(str(v))}</div>'
@@ -192,6 +262,8 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
         kpis=kpi_html,
         fields_table=_fields_table(profile.get("fields", []), esc),
         tiles=tiles_html,
+        play_bar=play_bar,
+        frames=frames_json,
         options=json.dumps(options, ensure_ascii=False),
         lib=read_web("echarts.min.js"),
         bridge=BRIDGE_JS,

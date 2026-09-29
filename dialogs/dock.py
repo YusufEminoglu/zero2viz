@@ -701,6 +701,16 @@ class StudioDockWidget(QDockWidget):
             _item.setCheckState(Qt.CheckState.Checked)
             self.tile_picker.addItem(_item)
         outer.addWidget(self.tile_picker)
+        explore_anim_row = QHBoxLayout()
+        explore_anim_row.addWidget(QLabel("Explore: animate by ▶"))
+        self.explore_animate_combo = self._field_combo()
+        self.explore_animate_combo.setToolTip(
+            "Play the whole Explore dashboard through this field's values (years, "
+            "phases, survey waves): count bars, histograms, the scatter and the Rows / "
+            "Complete cards step together on one shared play bar. The correlation "
+            "matrix and box plot keep showing all rows.")
+        explore_anim_row.addWidget(self.explore_animate_combo, 1)
+        outer.addLayout(explore_anim_row)
         self.export_btn = QPushButton("Export HTML…")
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_html)
@@ -956,6 +966,7 @@ class StudioDockWidget(QDockWidget):
     def _on_layer_changed(self, layer) -> None:
         for combo in (self.x_combo, self.y_combo, self.group_combo,
                       self.value_combo, self.animate_combo, self.facet_combo,
+                      self.explore_animate_combo,
                       self.label_field_combo, self.label_field2_combo,
                       self.diag_size_field_combo):
             combo.setLayer(layer)
@@ -1840,7 +1851,8 @@ class StudioDockWidget(QDockWidget):
 
         built = transform.build_frames(
             kind, cols, fids, cols.get(frame_field, []),
-            x=x, y=y, group=group, value=value, how=how, single_name=single)
+            x=x, y=y, group=group, value=value, how=how, single_name=single,
+            stacked=bool(spec.get("stacked")))
         if built is None:
             self.set_status("Animate-by needs ≥ 2 frames with chartable data")
             return None
@@ -1877,7 +1889,7 @@ class StudioDockWidget(QDockWidget):
         built = transform.build_facets(
             kind, cols, fids, cols.get(facet_field, []),
             x=x, y=y, group=group, value=value, how=how, single_name=single,
-            cap=_FACET_CAP)
+            cap=_FACET_CAP, stacked=bool(spec.get("stacked")))
         if built is None:
             self.set_status("Facet by needs ≥ 2 groups with chartable data")
             return None
@@ -2158,8 +2170,10 @@ class StudioDockWidget(QDockWidget):
             sections = {self.tile_picker.item(i).data(Qt.ItemDataRole.UserRole)
                          for i in range(self.tile_picker.count())
                          if self.tile_picker.item(i).checkState() == Qt.CheckState.Checked}
-            prof = profiler.build_profile(layer, self.selected_only.isChecked(),
-                                          self._current_theme(), sections=sections)
+            prof = profiler.build_profile(
+                layer, self.selected_only.isChecked(), self._current_theme(),
+                sections=sections,
+                animate_by=self.explore_animate_combo.currentField())
             if not prof["tiles"]:
                 self.set_status("Nothing chartable found in this layer's fields")
                 return
@@ -2167,8 +2181,11 @@ class StudioDockWidget(QDockWidget):
         except Exception as exc:
             self.set_status(f"Explore failed: {exc}")
             return
+        frames = prof.get("frames")
+        played = (f", playing {len(frames['labels'])} frames of {frames['field']}"
+                  if frames else "")
         self._show_html(html, f"Explored {layer.name()}: {len(prof['tiles'])} charts, "
-                              f"{len(prof['insights'])} insights")
+                              f"{len(prof['insights'])} insights{played}")
 
     # ───────────────────────── smart assistant ─────────────────────────
 

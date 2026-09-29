@@ -317,6 +317,63 @@ def test_facet_by_builds_small_multiples(iface):
         app.processEvents()
 
 
+def test_explore_animation_profiles_every_frame(iface):
+    """Explore → Animate by: per-frame tiles on the whole-layer axis and
+    per-frame KPIs, with the static tiles left unanimated."""
+    from qgis.core import QgsFeature, QgsVectorLayer
+    profile_mod = __import__(f"{PACKAGE}.core.profile", fromlist=["build_profile"])
+    dash_mod = __import__(f"{PACKAGE}.engines.dashboard", fromlist=["build_dashboard"])
+    layer = QgsVectorLayer(
+        "None?field=year:integer&field=use:string&field=floors:integer"
+        "&field=area:double&field=price:double", "explore_rows", "memory")
+    feats = []
+    sizes = {2019: 20, 2020: 35, 2021: 50}
+    k = 0
+    for year, n in sizes.items():
+        for i in range(n):
+            f = QgsFeature(layer.fields())
+            f.setAttributes([year, ("housing", "retail", "park", "office")[k % 4],
+                             1 + k % 7, 40.0 + (k * 37) % 400,
+                             900.0 + (k * 53) % 2000 + (k % 400) * 2.0])
+            feats.append(f)
+            k += 1
+    layer.dataProvider().addFeatures(feats)
+    prof = profile_mod.build_profile(layer, animate_by="year")
+    fr = prof.get("frames") or {}
+    labels_ok = fr.get("labels") == ["2019", "2020", "2021"]
+    animated = {t["spec"]["type"] for t in prof["tiles"] if t.get("frames")}
+    static = {t["spec"]["type"] for t in prof["tiles"] if not t.get("frames")}
+    bars_ok = hist_ok = True
+    for t in prof["tiles"]:
+        tf = t.get("frames")
+        if not tf:
+            continue
+        for d, n in zip(tf["datas"], sizes.values()):
+            if t["spec"]["type"] == "bar":
+                bars_ok &= abs(sum(d["series"][0]["values"]) - n) < 1e-9
+            if t["spec"]["type"] == "histogram":
+                hist_ok &= sum(d["values"]) == n
+                hist_ok &= d["categories"] == t["spec"]["data"]["categories"]
+    kpi_ok = [row[0] for row in fr.get("kpis", [])] == ["20", "35", "50"]
+    year_not_profiled = all("year" not in t["spec"].get("title", "") for t in prof["tiles"])
+    html = dash_mod.build_dashboard(prof)
+    html_ok = 'id="o2vizSlider"' in html and '"labels": ["2019", "2020", "2021"]' in html
+    static_html = dash_mod.build_dashboard(profile_mod.build_profile(layer))
+    static_ok = "var FRAMES = null;" in static_html and 'id="o2vizSlider"' not in static_html
+    out_dir = Path(r"C:\Users\YE\PyCharmMiscProject\qgis_plugins\scratch\02viz_explore_samples")
+    if out_dir.parent.is_dir():
+        out_dir.mkdir(exist_ok=True)
+        (out_dir / "explore_animated.html").write_text(html, encoding="utf-8")
+    return _ok(
+        "Explore animate-by: frames per tile on one axis, KPIs per frame, static tiles stay static",
+        labels_ok and animated == {"bar", "histogram", "scatter"} and "heatmap" in static
+        and bars_ok and hist_ok and kpi_ok and year_not_profiled and html_ok and static_ok,
+        f"labels={fr.get('labels')} animated={sorted(animated)} static={sorted(static)} "
+        f"bars={bars_ok} hist={hist_ok} kpis={[r[0] for r in fr.get('kpis', [])]} "
+        f"year_skipped={year_not_profiled} html={html_ok} static_page={static_ok}",
+    )
+
+
 def run_all(iface):
     print("=" * 60)
     print(" zero2viz - lifecycle smoke")
@@ -331,6 +388,7 @@ def run_all(iface):
         test_only_the_toggle_icon(iface),
         test_toggle_shows_on_first_click(iface),
         test_facet_by_builds_small_multiples(iface),
+        test_explore_animation_profiles_every_frame(iface),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)

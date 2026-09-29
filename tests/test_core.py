@@ -268,6 +268,35 @@ class TestSmallMultiples(unittest.TestCase):
         ranges = {tuple(layout[k]["range"]) for k in layout if k.startswith("yaxis")}
         self.assertEqual(len(ranges), 1)
 
+    def test_stacked_panels_bound_the_stack_and_stack_per_panel(self):
+        from zero2viz.core.transform import build_facets
+        from zero2viz.engines.echarts import EChartsEngine
+        cols, fids = _facet_fixture()
+        kw = dict(x="use", y="area", group="tenure", value="", how="sum", cap=4)
+        flat = build_facets("area", cols, fids, cols["region"], **kw)
+        stack = build_facets("area", cols, fids, cols["region"], stacked=True, **kw)
+        tallest = max(sum(s["values"][j] for s in d["series"])
+                      for d in stack[1] for j in range(len(stack[2])))
+        self.assertEqual(stack[3]["y"][1], tallest)
+        self.assertLess(flat[3]["y"][1], tallest)  # unstacked range would clip
+        spec = self._spec("bar", cap=4)
+        spec["stacked"] = True
+        opt = EChartsEngine()._facet_option(spec)
+        stacks = {s["stack"] for s in opt["series"]}
+        self.assertEqual(len(stacks), 4)  # one stack per panel, never shared
+
+    def test_fixed_axis_ends_on_a_tick(self):
+        from zero2viz.engines.echarts import _axis_fit
+        for lo, hi in ((0, 13), (0, 5855), (12.3, 97.1), (-40, 260), (0.01, 0.93), (0, 1)):
+            a, b, step = _axis_fit(lo, hi)
+            self.assertLessEqual(a, lo)
+            self.assertGreaterEqual(b, hi)
+            self.assertAlmostEqual((b - a) / step, round((b - a) / step))
+            if float(lo).is_integer() and float(hi).is_integer():
+                self.assertTrue(float(step).is_integer(), (lo, hi, step))
+        self.assertEqual(_axis_fit(0, 5855)[1], 7000.0)
+        self.assertEqual(_axis_fit(0.01, 0.93)[0], 0.0)  # no padding below zero
+
     def test_engines_without_facets_ignore_the_facets_block(self):
         from zero2viz.engines import engines
         spec = self._spec("bar")

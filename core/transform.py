@@ -402,11 +402,13 @@ def facet_groups(facet_col: list, cap: int = 12):
 
 def _build_slices(kind: str, cols: dict, fids: list, idx_per: list, *,
                   x: str, y: str, group: str, value: str, how: str,
-                  single_name: str):
+                  single_name: str, stacked: bool = False):
     """Rebuild ``kind`` once per row slice with one stable category/series
     order (union) and a global value range — shared by animation frames and
-    small-multiple facets. → ``(datas, union_or_None, bounds_or_None)`` or
-    ``None`` when there is no chartable data."""
+    small-multiple facets. With ``stacked`` (bar / area) the value range
+    covers the stacked totals per category, not the single series, so a fixed
+    axis never clips the top of a stack. → ``(datas, union_or_None,
+    bounds_or_None)`` or ``None`` when there is no chartable data."""
 
     def sub(name, idxs):
         col = cols.get(name, [])
@@ -446,7 +448,13 @@ def _build_slices(kind: str, cols: dict, fids: list, idx_per: list, *,
                 else:
                     vv, ii = align_values(union, cats, s["values"], s.get("ids"))
                     aligned.append({"name": nm, "values": vv, "ids": ii})
-            all_vals.extend(v for s in aligned for v in s["values"])
+            if stacked and kind in ("bar", "area") and aligned:
+                for j in range(len(union)):
+                    col_vals = [s["values"][j] for s in aligned]
+                    all_vals.append(sum(v for v in col_vals if v > 0))
+                    all_vals.append(sum(v for v in col_vals if v < 0))
+            else:
+                all_vals.extend(v for s in aligned for v in s["values"])
             if kind == "pie":
                 datas.append({"categories": union, "values": aligned[0]["values"],
                               "ids": aligned[0]["ids"]})
@@ -494,7 +502,7 @@ def _build_slices(kind: str, cols: dict, fids: list, idx_per: list, *,
 
 def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
                  x: str, y: str, group: str, value: str, how: str,
-                 single_name: str = "points"):
+                 single_name: str = "points", stacked: bool = False):
     """Pure animation builder: slice the row-aligned ``cols`` by ``frame_col``
     and rebuild ``kind`` for every frame, with a stable category/series order
     (union) and a global value range.
@@ -506,7 +514,8 @@ def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
     if len(labels) < 2:
         return None
     built = _build_slices(kind, cols, fids, idx_per, x=x, y=y, group=group,
-                          value=value, how=how, single_name=single_name)
+                          value=value, how=how, single_name=single_name,
+                          stacked=stacked)
     if built is None:
         return None
     datas, union, bounds = built
@@ -515,7 +524,7 @@ def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
 
 def build_facets(kind: str, cols: dict, fids: list, facet_col: list, *,
                  x: str, y: str, group: str, value: str, how: str,
-                 single_name: str = "points", cap: int = 12):
+                 single_name: str = "points", cap: int = 12, stacked: bool = False):
     """Pure small-multiples builder: one panel per value of ``facet_col``
     (the ``cap`` most populous), every panel sharing one category/series order
     and one value range so panels compare directly.
@@ -526,7 +535,8 @@ def build_facets(kind: str, cols: dict, fids: list, facet_col: list, *,
     if len(labels) < 2:
         return None
     built = _build_slices(kind, cols, fids, idx_per, x=x, y=y, group=group,
-                          value=value, how=how, single_name=single_name)
+                          value=value, how=how, single_name=single_name,
+                          stacked=stacked)
     if built is None:
         return None
     datas, union, bounds = built
