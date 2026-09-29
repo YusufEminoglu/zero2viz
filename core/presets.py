@@ -22,7 +22,7 @@ _BOOL_KEYS = {
     "selected_only", "stacked", "trend", "link", "mean", "median",
     "sigma", "iqr", "custom_spec_enabled",
 }
-_FIELD_KEYS = {"x", "y", "group", "value", "animate"}
+_FIELD_KEYS = {"x", "y", "group", "value", "animate", "facet"}
 
 
 def sanitize_preset(value: object) -> dict | None:

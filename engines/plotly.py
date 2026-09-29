@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from .base import ANIMATABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
 _OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
@@ -13,6 +13,8 @@ _BODY = """
 var gd = document.getElementById("chart");
 Plotly.newPlot(gd, %(traces)s, %(layout)s, {responsive: true, displaylogo: false})
   .then(function () {
+    // number of small-multiple panels (0 = single chart)
+    window.__o2vizFacetCount = (gd.layout.meta && gd.layout.meta.o2viz_facets) || 0;
     window.__chartReady = true;
     // re-fit once the embedded view settles (see base.py note on 0-height init)
     function __o2vizFit() { try { Plotly.Plots.resize(gd); } catch (e) {} }
@@ -95,6 +97,7 @@ class PlotlyEngine(ChartEngine):
     id = "plotly"
     label = "Plotly"
     animates = ANIMATABLE
+    facets = FACETABLE
     webkit_ok = False  # plotly.js is ES6+; the legacy QtWebKit fork can't parse it
 
     def build_html(self, spec: dict) -> str:
@@ -104,7 +107,10 @@ class PlotlyEngine(ChartEngine):
                                  "layout": json.dumps(layout, ensure_ascii=False),
                                  "frames": json.dumps(frames, ensure_ascii=False)}
         else:
-            traces, layout = self._figure(spec)
+            if spec.get("facets") and spec["type"] in self.facets:
+                traces, layout = self._facet_figure(spec)
+            else:
+                traces, layout = self._figure(spec)
             body = _BODY % {"traces": json.dumps(traces, ensure_ascii=False),
                             "layout": json.dumps(layout, ensure_ascii=False)}
         return wrap_html(spec.get("title", ""), read_web("plotly.min.js"),
@@ -154,6 +160,91 @@ class PlotlyEngine(ChartEngine):
             ]}]
         layout["margin"]["b"] = max(layout["margin"].get("b", 72), 110)
         return traces, layout, pframes
+
+    # ───────────────────────── small multiples ─────────────────────────
+
+    def _facet_figure(self, spec: dict):
+        """Subplots on one figure: each panel is the ordinary single-chart
+        figure for its data, moved onto its own ``xaxisN``/``yaxisN`` domain.
+        Colours are pinned by series name (pie: by category) and each series
+        has one legend entry that toggles it in every panel."""
+        fac = spec["facets"]
+        kind = spec["type"]
+        theme = theme_of(spec)
+        palette = theme["palette"] or ["#2a8f85"]
+        static = {k: v for k, v in spec.items() if k != "facets"}
+        datas = fac["datas"]
+        labels = [str(v) for v in fac.get("labels", [])]
+        n = len(datas)
+        cols = max(1, min(n, int(fac.get("columns") or 1)))
+        rows = -(-n // cols)
+        cats = fac.get("categories") or []
+        field = fac.get("field", "")
+        dropped = fac.get("dropped") or []
+
+        _, layout = self._figure(dict(static, data=datas[0]))
+        for key in ("xaxis", "yaxis"):
+            layout.pop(key, None)
+        if dropped:
+            layout["title"]["text"] = (
+                f"{layout['title'].get('text', '')}<br><sup>{len(dropped)} more {field} "
+                f"value{'s' if len(dropped) != 1 else ''} not shown (smallest groups)</sup>")
+        layout["margin"] = {"l": 56, "r": 20, "t": 96 if dropped else 80, "b": 48}
+        layout["meta"] = {"o2viz_facets": n}
+        gap_x, gap_y = 0.06, 0.12
+        cw = (1.0 - gap_x * (cols - 1)) / cols
+        ch = (1.0 - gap_y * (rows - 1)) / rows
+        annotations = []
+        traces: list[dict] = []
+        names: list[str] = []
+
+        for i, fdata in enumerate(datas):
+            r, c = divmod(i, cols)
+            x0 = c * (cw + gap_x)
+            y1 = 1.0 - r * (ch + gap_y)
+            dom_x, dom_y = [x0, x0 + cw], [y1 - ch, y1]
+            annotations.append({"text": f"<b>{labels[i] if i < len(labels) else ''}</b>",
+                                "x": x0 + cw / 2, "y": y1, "xref": "paper", "yref": "paper",
+                                "xanchor": "center", "yanchor": "bottom", "showarrow": False,
+                                "font": {"size": 12, "color": theme["text"]}})
+            ftr, flay = self._figure(dict(static, data=fdata))
+            if kind == "pie":
+                for tr in ftr:
+                    tr["domain"] = {"x": dom_x, "y": dom_y}
+                    tr["textinfo"] = "none"
+                    tr["marker"] = dict(tr.get("marker") or {}, colors=[
+                        palette[(cats.index(c) if c in cats else 0) % len(palette)]
+                        for c in tr.get("labels", [])])
+                    tr["showlegend"] = i == 0
+                    traces.append(tr)
+                continue
+            self._fix_ranges(flay, kind, fac.get("bounds"))
+            suffix = "" if i == 0 else str(i + 1)
+            xa, ya = dict(flay["xaxis"]), dict(flay["yaxis"])
+            xa["domain"], ya["domain"] = dom_x, dom_y
+            xa["anchor"], ya["anchor"] = f"y{suffix}", f"x{suffix}"
+            if i + cols < n:
+                xa["title"] = {"text": ""}
+            if c != 0:
+                ya["title"] = {"text": ""}
+            layout[f"xaxis{suffix}"] = xa
+            layout[f"yaxis{suffix}"] = ya
+            for tr in ftr:
+                nm = tr.get("name", "")
+                if nm not in names:
+                    names.append(nm)
+                col = palette[names.index(nm) % len(palette)]
+                tr["xaxis"], tr["yaxis"] = f"x{suffix}", f"y{suffix}"
+                tr["legendgroup"] = nm
+                tr["showlegend"] = i == 0 and len(ftr) > 1
+                tr["marker"] = dict(tr.get("marker") or {}, color=col)
+                if tr.get("type") != "bar":
+                    tr["line"] = dict(tr.get("line") or {}, color=col)
+                traces.append(tr)
+        layout["annotations"] = annotations
+        if kind != "pie" and len(names) <= 1:
+            layout["showlegend"] = False
+        return traces, layout
 
     def _fix_ranges(self, layout: dict, kind: str, bounds) -> None:
         """Lock axis ranges to the global extent so frames don't rescale."""

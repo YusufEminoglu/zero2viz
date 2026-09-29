@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 
-from .base import ANIMATABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
 _OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
@@ -95,6 +95,8 @@ window.__o2vizHighlight = function (ids) {
 };
 // number of animation frames (0 = static chart) — read by the render harness
 window.__o2vizFrameCount = (OPT.options && OPT.options.length) || 0;
+// number of small-multiple panels (0 = single chart)
+window.__o2vizFacetCount = OPT.__facets || 0;
 window.__chartReady = true;
 """
 
@@ -139,13 +141,27 @@ def _axis(theme: dict, name: str, kind: str = "value", data=None, rotate: int = 
     return ax
 
 
+def _nice_step(span: float, ticks: int = 5) -> float:
+    """A 1 / 2 / 2.5 / 5 x 10^k tick step giving about ``ticks`` intervals."""
+    raw = span / max(1, ticks)
+    mag = 10 ** math.floor(math.log10(raw))
+    for m in (1.0, 2.0, 2.5, 5.0, 10.0):
+        if raw <= m * mag:
+            return m * mag
+    return 10.0 * mag
+
+
 def _padded_range(lo: float, hi: float) -> tuple[float, float]:
-    """Pad a value range by 5 percent, round to friendly axis bounds."""
+    """Pad a value range by 5 percent and snap both ends to a round tick step,
+    so a fixed axis ends on a readable label (6,000 — not 5,855). A range that
+    starts at or above zero is never padded below it."""
     span = (hi - lo) or abs(hi) or 1.0
-    lo, hi = lo - span * 0.05, hi + span * 0.05
-    if span > 5:
-        return math.floor(lo), math.ceil(hi)
-    return round(lo, 3), round(hi, 3)
+    p_lo, p_hi = lo - span * 0.05, hi + span * 0.05
+    if lo >= 0 > p_lo:
+        p_lo = 0.0
+    step = _nice_step(p_hi - p_lo, ticks=10)
+    return (round(math.floor(p_lo / step) * step, 10),
+            round(math.ceil(p_hi / step) * step, 10))
 
 
 def _with_ids(values: list, ids: list | None) -> list:
@@ -159,10 +175,13 @@ class EChartsEngine(ChartEngine):
     id = "echarts"
     label = "ECharts"
     animates = ANIMATABLE
+    facets = FACETABLE
 
     def build_html(self, spec: dict) -> str:
         if spec.get("frames") and spec["type"] in self.animates:
             option = self._timeline_option(spec)
+        elif spec.get("facets") and spec["type"] in self.facets:
+            option = self._facet_option(spec)
         else:
             option = self.option(spec)
         return wrap_html(spec.get("title", ""), read_web("echarts.min.js"),
@@ -220,6 +239,104 @@ class EChartsEngine(ChartEngine):
         if field:
             base.setdefault("title", {})["subtext"] = f"{field}: {labels[0]}"
         return {"baseOption": base, "options": options}
+
+    # ───────────────────────── small multiples ─────────────────────────
+
+    def _facet_option(self, spec: dict) -> dict:
+        """One chart, one grid per panel (ECharts multi-grid).
+
+        Every panel is the ordinary single-chart option for that panel's data,
+        re-homed onto its own grid/axes. Series colours are pinned by series
+        name and pie slices by category, so a colour means the same thing in
+        every panel; value axes share the global range. All series live in
+        one ``series`` array, so click-to-select and the map highlight keep
+        working unchanged."""
+        fac = spec["facets"]
+        kind = spec["type"]
+        theme = theme_of(spec)
+        palette = theme["palette"] or ["#2a8f85"]
+        static = {k: v for k, v in spec.items() if k != "facets"}
+        datas = fac["datas"]
+        labels = [str(v) for v in fac.get("labels", [])]
+        n = len(datas)
+        cols = max(1, min(n, int(fac.get("columns") or 1)))
+        rows = -(-n // cols)
+
+        base = self._option(dict(static, data=datas[0]))
+        field = fac.get("field", "")
+        dropped = fac.get("dropped") or []
+        if dropped:
+            base["title"]["subtext"] = (
+                f"{len(dropped)} more {field} value{'s' if len(dropped) != 1 else ''} "
+                f"not shown (smallest groups)")
+            base["title"]["subtextStyle"] = {"color": theme["text"], "fontSize": 11}
+
+        top, bottom, left, right = (15.0 if dropped else 12.0), 3.0, 2.0, 2.0
+        cw = (100.0 - left - right) / cols
+        ch = (100.0 - top - bottom) / rows
+        head = min(4.0, ch * 0.18)   # panel title band
+        pct = "{:.2f}%".format
+        titles = [base["title"]]
+        grids, xaxes, yaxes, series = [], [], [], []
+        names: list[str] = []
+        cats = fac.get("categories") or []
+
+        for i, fdata in enumerate(datas):
+            r, c = divmod(i, cols)
+            x0, y0 = left + c * cw, top + r * ch
+            titles.append({"text": labels[i] if i < len(labels) else "",
+                           "left": pct(x0 + cw / 2), "top": pct(y0),
+                           "textAlign": "center",
+                           "textStyle": {"color": theme["text"], "fontSize": 12,
+                                         "fontWeight": 600, "fontFamily": FONT_FAMILY}})
+            opt = self._option(dict(static, data=fdata))
+            if kind == "pie":
+                for s in opt["series"]:
+                    s.update(left=pct(x0), top=pct(y0 + head), width=pct(cw),
+                             height=pct(ch - head), radius=["28%", "70%"],
+                             label={"show": False})
+                    for item in s.get("data", []):
+                        j = cats.index(item["name"]) if item["name"] in cats else 0
+                        item["itemStyle"] = {"color": palette[j % len(palette)]}
+                    series.append(s)
+                continue
+            self._stabilise_axes(opt, kind, fac.get("bounds"))
+            grids.append({"left": pct(x0 + 0.6), "top": pct(y0 + head),
+                          "width": pct(cw - 1.2), "height": pct(ch - head - 1.0),
+                          "containLabel": True})
+            gi = len(grids) - 1
+            xa, ya = dict(opt["xAxis"]), dict(opt["yAxis"])
+            xa["gridIndex"] = ya["gridIndex"] = gi
+            # axis titles on the outer panels only: less ink, same information
+            if i + cols < n:
+                xa["name"] = ""
+            if c != 0:
+                ya["name"] = ""
+            xaxes.append(xa)
+            yaxes.append(ya)
+            for s in opt["series"]:
+                nm = s.get("name", "")
+                if nm not in names:
+                    names.append(nm)
+                col = palette[names.index(nm) % len(palette)]
+                s["xAxisIndex"] = s["yAxisIndex"] = gi
+                s["itemStyle"] = dict(s.get("itemStyle") or {}, color=col)
+                series.append(s)
+
+        base["title"] = titles
+        base["series"] = series
+        base["__facets"] = n
+        if kind == "pie":
+            base["legend"] = {"top": 30 if not dropped else 44, "type": "scroll",
+                              "data": cats, "textStyle": {"color": theme["text"]}}
+            for key in ("grid", "xAxis", "yAxis"):
+                base.pop(key, None)
+        else:
+            base["grid"], base["xAxis"], base["yAxis"] = grids, xaxes, yaxes
+            if len(names) > 1:
+                base["legend"] = {"top": 30 if not dropped else 44, "type": "scroll",
+                                  "data": names, "textStyle": {"color": theme["text"]}}
+        return base
 
     def _stabilise_axes(self, option: dict, kind: str, bounds) -> None:
         """Fix the value axis (and, for scatter/bubble, both axes) to the

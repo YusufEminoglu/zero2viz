@@ -133,5 +133,150 @@ class TestOfflineEngines(unittest.TestCase):
         self.assertEqual(built, 3)
 
 
+def _facet_fixture():
+    """Deterministic rows: 5 regions of different sizes, 3 uses, 2 tenures."""
+    regions, uses, tenure, area, price, pop = [], [], [], [], [], []
+    sizes = {"North": 30, "South": 24, "East": 18, "West": 12, "Isle": 3}
+    k = 0
+    for region, n in sizes.items():
+        for i in range(n):
+            regions.append(region)
+            uses.append(("housing", "retail", "park")[i % 3])
+            tenure.append(("owner", "renter")[i % 2])
+            area.append(10.0 + (k % 17) * 3.0)
+            price.append(100.0 + (k % 11) * 20.0)
+            pop.append(1 + k % 9)
+            k += 1
+    cols = {"region": regions, "use": uses, "tenure": tenure,
+            "area": area, "price": price, "pop": pop}
+    return cols, list(range(1, k + 1))
+
+
+class TestSmallMultiples(unittest.TestCase):
+
+    def test_facet_groups_keeps_largest_in_natural_order(self):
+        from zero2viz.core.transform import facet_groups
+        labels, idx, dropped = facet_groups(
+            ["b", "a", "a", "c", "c", "c", "d"], cap=2)
+        self.assertEqual(labels, ["a", "c"])
+        self.assertEqual(idx, [[1, 2], [3, 4, 5]])
+        self.assertEqual(dropped, ["b", "d"])
+        years, _, none = facet_groups([2010, 2002, 2002, 2001], cap=12)
+        self.assertEqual(years, ["2001", "2002", "2010"])
+        self.assertEqual(none, [])
+
+    def test_facet_columns_are_near_square_and_capped(self):
+        from zero2viz.core.transform import facet_columns
+        self.assertEqual([facet_columns(n) for n in (1, 2, 3, 4, 6, 9, 12, 16)],
+                         [1, 2, 3, 2, 3, 3, 4, 4])
+
+    def test_panels_share_categories_series_and_value_range(self):
+        from zero2viz.core.transform import build_facets
+        cols, fids = _facet_fixture()
+        labels, datas, union, bounds, dropped = build_facets(
+            "bar", cols, fids, cols["region"], x="use", y="area",
+            group="tenure", value="", how="sum", cap=4)
+        self.assertEqual(labels, ["East", "North", "South", "West"])
+        self.assertEqual(dropped, ["Isle"])
+        self.assertEqual(union, ["housing", "park", "retail"])
+        for data in datas:
+            self.assertEqual(data["categories"], union)
+            self.assertEqual([s["name"] for s in data["series"]], ["owner", "renter"])
+        # every panel's bars fall inside the shared range, and the range is tight
+        values = [v for d in datas for s in d["series"] for v in s["values"]]
+        self.assertEqual(bounds["y"][1], max(values))
+        # the North panel's total equals the North rows' total
+        north = datas[labels.index("North")]
+        expected = sum(a for a, r in zip(cols["area"], cols["region"]) if r == "North")
+        self.assertAlmostEqual(sum(sum(s["values"]) for s in north["series"]), expected)
+        # ids follow their panel: no feature appears in two panels
+        seen = set()
+        for d in datas:
+            for s in d["series"]:
+                for ids in s["ids"]:
+                    self.assertFalse(seen & set(ids))
+                    seen |= set(ids)
+
+    def test_single_group_or_unchartable_input_is_refused(self):
+        from zero2viz.core.transform import build_facets
+        cols, fids = _facet_fixture()
+        self.assertIsNone(build_facets(
+            "bar", cols, fids, ["one"] * len(fids), x="use", y="area",
+            group="", value="", how="sum"))
+        self.assertIsNone(build_facets(
+            "box", cols, fids, cols["region"], x="use", y="area",
+            group="", value="", how="sum"))
+
+    def _spec(self, kind, cap=12):
+        from zero2viz.core.transform import build_facets, facet_columns
+        from zero2viz.engines.base import THEMES
+        cols, fids = _facet_fixture()
+        roles = {"scatter": dict(x="area", y="price", group="tenure", value=""),
+                 "pie": dict(x="use", y="area", group="", value="")}
+        kw = roles.get(kind, dict(x="use", y="area", group="tenure", value=""))
+        labels, datas, union, bounds, dropped = build_facets(
+            kind, cols, fids, cols["region"], how="sum", cap=cap,
+            single_name="value", **kw)
+        return {"type": kind, "title": "Facets", "x_label": kw["x"],
+                "y_label": kw["y"], "stacked": False, "theme": THEMES["Studio Light"],
+                "data": datas[0],
+                "facets": {"field": "region", "labels": labels, "datas": datas,
+                           "categories": union, "bounds": bounds,
+                           "columns": facet_columns(len(labels)),
+                           "dropped": dropped}}
+
+    def test_echarts_builds_one_grid_per_panel_with_pinned_colours(self):
+        from zero2viz.engines.echarts import EChartsEngine
+        spec = self._spec("bar", cap=4)
+        opt = EChartsEngine()._facet_option(spec)
+        self.assertEqual(opt["__facets"], 4)
+        self.assertEqual(len(opt["grid"]), 4)
+        self.assertEqual([a["gridIndex"] for a in opt["xAxis"]], [0, 1, 2, 3])
+        self.assertEqual(len(opt["series"]), 8)  # 4 panels x 2 tenures
+        colours = {}
+        for s in opt["series"]:
+            colours.setdefault(s["name"], set()).add(s["itemStyle"]["color"])
+        self.assertEqual({k: len(v) for k, v in colours.items()}, {"owner": 1, "renter": 1})
+        self.assertNotEqual(colours["owner"], colours["renter"])
+        # one shared value axis maximum across panels
+        self.assertEqual(len({a["max"] for a in opt["yAxis"]}), 1)
+        self.assertIn("1 more region value not shown", opt["title"][0]["subtext"])
+        self.assertIn('"__facets": 4', EChartsEngine().build_html(spec))
+
+    def test_echarts_pie_panels_colour_slices_by_category(self):
+        from zero2viz.engines.echarts import EChartsEngine
+        opt = EChartsEngine()._facet_option(self._spec("pie"))
+        self.assertNotIn("grid", opt)
+        slice_colours = {}
+        for s in opt["series"]:
+            for item in s["data"]:
+                slice_colours.setdefault(item["name"], set()).add(item["itemStyle"]["color"])
+        self.assertTrue(all(len(v) == 1 for v in slice_colours.values()))
+
+    def test_plotly_builds_subplots_with_one_legend_entry_per_series(self):
+        from zero2viz.engines.plotly import PlotlyEngine
+        traces, layout = PlotlyEngine()._facet_figure(self._spec("scatter"))
+        self.assertEqual(layout["meta"]["o2viz_facets"], 5)
+        self.assertIn("xaxis5", layout)
+        self.assertNotIn("xaxis6", layout)
+        shown = [t["name"] for t in traces if t.get("showlegend")]
+        self.assertEqual(sorted(shown), ["owner", "renter"])
+        per_name = {}
+        for t in traces:
+            per_name.setdefault(t["name"], set()).add(t["marker"]["color"])
+        self.assertTrue(all(len(v) == 1 for v in per_name.values()))
+        ranges = {tuple(layout[k]["range"]) for k in layout if k.startswith("yaxis")}
+        self.assertEqual(len(ranges), 1)
+
+    def test_engines_without_facets_ignore_the_facets_block(self):
+        from zero2viz.engines import engines
+        spec = self._spec("bar")
+        vl = [e for e in engines() if e.id == "vegalite"][0]
+        self.assertNotIn("bar", vl.facets)
+        html = vl.build_html(spec)
+        self.assertIn("housing", html)
+        self.assertNotIn("__facets", html)
+
+
 if __name__ == "__main__":
     unittest.main()

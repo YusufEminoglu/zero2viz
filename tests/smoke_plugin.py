@@ -254,6 +254,69 @@ def test_toggle_shows_on_first_click(iface):
         app.processEvents()
 
 
+def test_facet_by_builds_small_multiples(iface):
+    """Drive the real Charts-tab widgets: Facet by must produce one panel per
+    group with shared bounds, and Facet/Animate must exclude each other."""
+    from qgis.core import QgsFeature, QgsProject, QgsVectorLayer
+    module = __import__(PACKAGE)
+    engines_mod = __import__(f"{PACKAGE}.engines", fromlist=["engines"])
+    layer = QgsVectorLayer(
+        "None?field=region:string&field=use:string&field=year:integer&field=area:double",
+        "facet_rows", "memory")
+    feats = []
+    for i in range(48):
+        f = QgsFeature(layer.fields())
+        f.setAttributes([("North", "South", "East", "West")[i % 4],
+                         ("housing", "retail", "park")[i % 3],
+                         2020 + i % 3, 10.0 + i])
+        feats.append(f)
+    layer.dataProvider().addFeatures(feats)
+    QgsProject.instance().addMapLayer(layer)
+    plugin = module.classFactory(iface)
+    plugin.initGui()
+    app = QgsApplication.instance()
+    try:
+        plugin.panel_action.trigger()
+        app.processEvents()
+        dock = plugin._dock
+        ids = [e.id for e in engines_mod.engines()]
+        dock.engine_combo.setCurrentIndex(ids.index("echarts"))
+        dock.type_combo.setCurrentIndex(dock.type_combo.findData("bar"))
+        dock.layer_combo.setLayer(layer)
+        dock.x_combo.setField("use")
+        dock.y_combo.setField("area")
+        dock.agg_combo.setCurrentIndex(dock.agg_combo.findText("sum"))
+        dock.facet_combo.setField("region")
+        app.processEvents()
+        spec = dock._build_spec()
+        fac = (spec or {}).get("facets") or {}
+        panels_ok = fac.get("labels") == ["East", "North", "South", "West"]
+        whole = spec is not None and abs(
+            sum(spec["data"]["series"][0]["values"]) - sum(10.0 + i for i in range(48))) < 1e-6
+        html_ok = spec is not None and '"__facets": 4' in (
+            engines_mod.engines()[ids.index("echarts")].build_html(spec))
+        animate_blocked = not dock.animate_combo.isEnabled()
+        dock.facet_combo.setField("")
+        dock.animate_combo.setField("year")
+        app.processEvents()
+        facet_blocked = not dock.facet_combo.isEnabled()
+        dock.animate_combo.setField("")
+        dock.engine_combo.setCurrentIndex(ids.index("vegalite"))
+        app.processEvents()
+        vl_off = not dock.facet_combo.isEnabled()
+        return _ok(
+            "Facet by builds panels, keeps all rows in data, excludes Animate by",
+            panels_ok and whole and html_ok and animate_blocked and facet_blocked and vl_off,
+            f"panels={fac.get('labels')} whole={whole} html={html_ok} "
+            f"animate_blocked={animate_blocked} facet_blocked={facet_blocked} vl_off={vl_off}",
+        )
+    finally:
+        plugin.unload()
+        QgsProject.instance().removeMapLayer(layer.id())
+        app.sendPostedEvents()
+        app.processEvents()
+
+
 def run_all(iface):
     print("=" * 60)
     print(" zero2viz - lifecycle smoke")
@@ -267,6 +330,7 @@ def run_all(iface):
         test_lifecycle(iface),
         test_only_the_toggle_icon(iface),
         test_toggle_shows_on_first_click(iface),
+        test_facet_by_builds_small_multiples(iface),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)

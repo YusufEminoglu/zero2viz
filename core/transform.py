@@ -382,19 +382,31 @@ def align_values(target: list, cats: list, values: list, ids: list | None = None
     return out_v, out_i
 
 
-def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
-                 x: str, y: str, group: str, value: str, how: str,
-                 single_name: str = "points"):
-    """Pure animation builder: slice the row-aligned ``cols`` by ``frame_col``
-    and rebuild ``kind`` for every frame, with a stable category/series order
-    (union) and a global value range.
+def facet_groups(facet_col: list, cap: int = 12):
+    """Partition row indices by ``facet_col`` for small multiples.
 
-    → ``(labels, datas, union_categories_or_None, bounds_or_None)`` where each
-    ``datas[i]`` is a per-frame ``spec["data"]`` dict, or ``None`` when there
-    are fewer than two frames / no chartable data to animate."""
-    labels, idx_per = frame_groups(frame_col)
-    if len(labels) < 2:
-        return None
+    Keeps the ``cap`` most populous values (ties broken by the natural order)
+    and orders the kept panels like :func:`frame_groups` — numerically when
+    every value is a number, otherwise lexicographically — so panel order is
+    stable and predictable. → ``(labels, [row_indices_per_panel], dropped)``
+    where ``dropped`` lists the omitted values, most populous first."""
+    labels, idx_per = frame_groups(facet_col)
+    cap = max(1, int(cap))
+    if len(labels) <= cap:
+        return labels, idx_per, []
+    rank = sorted(range(len(labels)), key=lambda i: (-len(idx_per[i]), i))
+    keep = sorted(rank[:cap])
+    dropped = [labels[i] for i in rank[cap:]]
+    return [labels[i] for i in keep], [idx_per[i] for i in keep], dropped
+
+
+def _build_slices(kind: str, cols: dict, fids: list, idx_per: list, *,
+                  x: str, y: str, group: str, value: str, how: str,
+                  single_name: str):
+    """Rebuild ``kind`` once per row slice with one stable category/series
+    order (union) and a global value range — shared by animation frames and
+    small-multiple facets. → ``(datas, union_or_None, bounds_or_None)`` or
+    ``None`` when there is no chartable data."""
 
     def sub(name, idxs):
         col = cols.get(name, [])
@@ -440,12 +452,14 @@ def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
                               "ids": aligned[0]["ids"]})
             else:
                 datas.append({"categories": union, "series": aligned})
+        if not union:
+            return None
         if all_vals:
             bounds = {"y": [min(all_vals + [0.0]), max(all_vals + [0.0])]}
 
     elif kind in ("scatter", "bubble"):
         # bubble radii are scaled once, globally, so a value maps to the same
-        # size in every frame
+        # size in every slice
         sizes = (bubble_sizes(cols[value])
                  if (kind == "bubble" and value) else [None] * len(fids))
         names = []
@@ -475,4 +489,54 @@ def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
     else:
         return None
 
+    return datas, union, bounds
+
+
+def build_frames(kind: str, cols: dict, fids: list, frame_col: list, *,
+                 x: str, y: str, group: str, value: str, how: str,
+                 single_name: str = "points"):
+    """Pure animation builder: slice the row-aligned ``cols`` by ``frame_col``
+    and rebuild ``kind`` for every frame, with a stable category/series order
+    (union) and a global value range.
+
+    → ``(labels, datas, union_categories_or_None, bounds_or_None)`` where each
+    ``datas[i]`` is a per-frame ``spec["data"]`` dict, or ``None`` when there
+    are fewer than two frames / no chartable data to animate."""
+    labels, idx_per = frame_groups(frame_col)
+    if len(labels) < 2:
+        return None
+    built = _build_slices(kind, cols, fids, idx_per, x=x, y=y, group=group,
+                          value=value, how=how, single_name=single_name)
+    if built is None:
+        return None
+    datas, union, bounds = built
     return labels, datas, union, bounds
+
+
+def build_facets(kind: str, cols: dict, fids: list, facet_col: list, *,
+                 x: str, y: str, group: str, value: str, how: str,
+                 single_name: str = "points", cap: int = 12):
+    """Pure small-multiples builder: one panel per value of ``facet_col``
+    (the ``cap`` most populous), every panel sharing one category/series order
+    and one value range so panels compare directly.
+
+    → ``(labels, datas, union_or_None, bounds_or_None, dropped)`` or ``None``
+    when there are fewer than two panels or no chartable data."""
+    labels, idx_per, dropped = facet_groups(facet_col, cap)
+    if len(labels) < 2:
+        return None
+    built = _build_slices(kind, cols, fids, idx_per, x=x, y=y, group=group,
+                          value=value, how=how, single_name=single_name)
+    if built is None:
+        return None
+    datas, union, bounds = built
+    return labels, datas, union, bounds, dropped
+
+
+def facet_columns(n: int) -> int:
+    """Grid columns for ``n`` panels: near-square, never more than 4 wide."""
+    if n <= 1:
+        return 1
+    if n <= 3:
+        return n
+    return min(4, int(n ** 0.5 + 0.999))

@@ -82,6 +82,7 @@ PRESET_SETTINGS_KEY = "zero2viz/chart_presets"
 # strain memory before any analysis even starts.
 _SUGGEST_FIELD_CAP = 60
 _SUGGEST_FULL_FIELD_CAP = 300  # after the user explicitly asks for a full scan
+_FACET_CAP = 12  # small-multiple panels; larger groups kept, the rest reported
 
 # The studio has its own light visual identity (light root, white cards). On
 # QGIS 3 (Qt5) the host palette is light too, so unstyled child widgets looked
@@ -578,6 +579,15 @@ class StudioDockWidget(QDockWidget):
         self.speed_combo.setCurrentIndex(1)
         self.speed_combo.setToolTip("Animation speed (time spent on each frame)")
         form.addRow("Play speed", self.speed_combo)
+        self.facet_combo = self._field_combo()
+        self.facet_combo.setToolTip(
+            "Small multiples: one panel per value of this field, all sharing one "
+            f"value axis and one colour key. Up to {_FACET_CAP} panels (the largest "
+            "groups). ECharts / Plotly; bar · line · area · scatter · bubble · pie. "
+            "Clear Animate by to use it.")
+        form.addRow("Facet by ▦", self.facet_combo)
+        self.animate_combo.fieldChanged.connect(self._sync_animate)
+        self.facet_combo.fieldChanged.connect(self._sync_animate)
 
         self.agg_combo = QComboBox()
         self.agg_combo.addItems(list(stats.AGGREGATIONS))
@@ -945,7 +955,7 @@ class StudioDockWidget(QDockWidget):
 
     def _on_layer_changed(self, layer) -> None:
         for combo in (self.x_combo, self.y_combo, self.group_combo,
-                      self.value_combo, self.animate_combo,
+                      self.value_combo, self.animate_combo, self.facet_combo,
                       self.label_field_combo, self.label_field2_combo,
                       self.diag_size_field_combo):
             combo.setLayer(layer)
@@ -1026,6 +1036,7 @@ class StudioDockWidget(QDockWidget):
                 "group": self.group_combo.currentField(),
                 "value": self.value_combo.currentField(),
                 "animate": self.animate_combo.currentField(),
+                "facet": self.facet_combo.currentField(),
             },
             "speed": int(self.speed_combo.currentData()),
             "aggregation": self.agg_combo.currentText(),
@@ -1153,7 +1164,7 @@ class StudioDockWidget(QDockWidget):
         for key, combo in (
                 ("x", self.x_combo), ("y", self.y_combo),
                 ("group", self.group_combo), ("value", self.value_combo),
-                ("animate", self.animate_combo)):
+                ("animate", self.animate_combo), ("facet", self.facet_combo)):
             field = fields.get(key, "")
             if field and field not in available:
                 missing.append(field)
@@ -1225,14 +1236,21 @@ class StudioDockWidget(QDockWidget):
         self._sync_animate()
 
     def _sync_animate(self, *_args) -> None:
-        """The play axis only lights up when the chosen engine can animate the
-        chosen chart type (ECharts / Plotly · bar·line·area·scatter·bubble·pie)."""
-        if not hasattr(self, "animate_combo"):
+        """The play axis and the facet picker only light up when the chosen
+        engine can animate / facet the chosen chart type (ECharts / Plotly ·
+        bar·line·area·scatter·bubble·pie). They are mutually exclusive: a field
+        in one disables the other until it is cleared."""
+        if not hasattr(self, "facet_combo"):
             return
         eng = engines()[max(0, self.engine_combo.currentIndex())]
-        on = self.type_combo.currentData() in eng.animates
-        self.animate_combo.setEnabled(on)
-        self.speed_combo.setEnabled(on)
+        kind = self.type_combo.currentData()
+        can_anim = kind in eng.animates
+        can_facet = kind in eng.facets
+        facet_on = can_facet and bool(self.facet_combo.currentField())
+        anim_on = can_anim and bool(self.animate_combo.currentField())
+        self.animate_combo.setEnabled(can_anim and not facet_on)
+        self.speed_combo.setEnabled(can_anim and not facet_on)
+        self.facet_combo.setEnabled(can_facet and not anim_on)
 
     # ── Map diagrams tab handlers ──
 
@@ -1473,10 +1491,12 @@ class StudioDockWidget(QDockWidget):
         value = self.value_combo.currentField() if self.value_combo.isEnabled() else ""
         animate = (self.animate_combo.currentField()
                    if self.animate_combo.isEnabled() else "")
+        facet = (self.facet_combo.currentField()
+                 if self.facet_combo.isEnabled() else "")
         agg = self.agg_combo.currentText()
         sel = self.selected_only.isChecked()
 
-        fields = [f for f in {x, y, group, value, animate} if f]
+        fields = [f for f in {x, y, group, value, animate, facet} if f]
         if not fields:
             self.set_status("Pick at least an X field")
             return None
@@ -1514,6 +1534,13 @@ class StudioDockWidget(QDockWidget):
             if frames is None:
                 return None  # _build_frames sets the status
             spec["frames"] = frames
+        elif facet and kind in eng.facets:
+            facets = self._build_facets(
+                spec, cols, fids, kind=kind, x=x, y=y, group=group,
+                value=value, agg=agg, facet_field=facet)
+            if facets is None:
+                return None  # _build_facets sets the status
+            spec["facets"] = facets
         else:
             # reference lines/bands apply to the static chart (a play axis tells
             # its own story, so overlays are skipped while animating)
@@ -1823,6 +1850,43 @@ class StudioDockWidget(QDockWidget):
                 "categories": union, "bounds": bounds,
                 "interval": self.speed_combo.currentData() or 900}
 
+    def _build_facets(self, spec, cols, fids, *, kind, x, y, group, value, agg,
+                      facet_field):
+        """Assemble the ``facets`` block for small multiples. Same field-role
+        validation as animation; slicing and alignment live in the pure
+        :func:`transform.build_facets`. ``spec["data"]`` keeps the whole
+        dataset, so an engine without faceting still shows every row."""
+        if kind in ("bar", "line", "area", "pie"):
+            how = self._agg_or(agg, "count")
+            if how != "count" and not y:
+                self.set_status(f"Aggregation '{how}' needs a Y field")
+                return None
+            spec["y_label"] = f"{how}({y})" if how != "count" else "count"
+            single = spec["y_label"]
+        elif kind in ("scatter", "bubble"):
+            if not x or not y:
+                self.set_status("This chart needs numeric X and Y fields")
+                return None
+            if kind == "bubble" and not value:
+                self.set_status("Bubble chart needs a Value / Size field")
+                return None
+            how, single = "count", (spec.get("y_label") or "points")
+        else:
+            return None
+
+        built = transform.build_facets(
+            kind, cols, fids, cols.get(facet_field, []),
+            x=x, y=y, group=group, value=value, how=how, single_name=single,
+            cap=_FACET_CAP)
+        if built is None:
+            self.set_status("Facet by needs ≥ 2 groups with chartable data")
+            return None
+        labels, datas, union, bounds, dropped = built
+        return {"field": facet_field, "labels": labels, "datas": datas,
+                "categories": union, "bounds": bounds,
+                "columns": transform.facet_columns(len(labels)),
+                "dropped": dropped}
+
     # ───────────────────────── render / explore / export ─────────────────────────
 
     # ───────────────────────── colours (embedded swatch editor) ─────────────────────────
@@ -2025,7 +2089,25 @@ class StudioDockWidget(QDockWidget):
             scope = (f" · {self._last_extraction_info.status_note}"
                      if self._last_extraction_info is not None else "")
             self._show_html(
-                html, f"Rendered {spec['type']} · {engine.label}{scope}")
+                html, f"Rendered {spec['type']} · {engine.label}"
+                      f"{self._facet_note(spec, engine)}{scope}")
+
+    @staticmethod
+    def _facet_note(spec: dict, engine) -> str:
+        """Status fragment for small multiples: panel count, and which groups
+        the panel cap left out — or why an engine drew one chart instead."""
+        fac = spec.get("facets")
+        if not fac:
+            return ""
+        if spec["type"] not in engine.facets:
+            return f" · {engine.label} has no small multiples: one chart of all rows"
+        note = f" · {len(fac['labels'])} panels by {fac['field']}"
+        dropped = fac.get("dropped") or []
+        if dropped:
+            shown = ", ".join(str(v) for v in dropped[:5])
+            more = "…" if len(dropped) > 5 else ""
+            note += f" ({len(dropped)} smaller groups left out: {shown}{more})"
+        return note
 
     # ───────────────────────── advanced engine availability ─────────────────────────
 

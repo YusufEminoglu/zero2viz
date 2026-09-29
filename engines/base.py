@@ -45,6 +45,20 @@ Spec contract (produced by the dock, consumed by every engine):
         },
         # "data" is set to the first frame so engines that cannot animate
         # still render a sensible static chart.
+
+        # optional — small multiples: one panel per value of a field, every
+        # panel sharing one category/series order and one value range:
+        "facets": {
+            "field": str,            # the field splitting the panels (a label)
+            "labels": [...],         # ordered panel labels
+            "datas": [ <data dict>, ... ],  # one per panel, same schema as "data"
+            "categories": [...] | None,     # union axis (categorical types)
+            "bounds": {"x": [lo, hi] | None, "y": [lo, hi] | None} | None,
+            "columns": int,          # grid columns
+            "dropped": [...],        # values left out by the panel cap
+        },
+        # "data" stays the ordinary unfaceted chart, so engines that cannot
+        # facet render the whole dataset. "facets" and "frames" never coexist.
     }
 
 Feature ids ("ids" / point fid) make charts clickable: the embedded
@@ -63,6 +77,10 @@ CHART_TYPES = ("bar", "line", "area", "scatter", "bubble", "histogram",
 # just the same chart rebuilt for that frame's rows — stable axis, animated
 # data. Box/heatmap/treemap/violin/… have no such clean per-frame mapping.
 ANIMATABLE = frozenset(("bar", "line", "area", "scatter", "bubble", "pie"))
+
+# chart types that can be split into small multiples — the same per-slice
+# rebuild as animation frames, shown side by side instead of in sequence.
+FACETABLE = ANIMATABLE
 
 # One typographic voice across all three engines — a clean system UI stack so
 # charts read like publication / Tableau-grade figures, not default-library
@@ -230,6 +248,7 @@ class ChartEngine:
     label = "Base"
     supports = frozenset(CHART_TYPES)  # engines may declare a reduced set
     animates = frozenset()             # chart types this engine can animate
+    facets = frozenset()               # chart types this engine can facet
     # Does this engine's output run in the legacy QtWebKit embedded view?
     # ECharts (ES5) and the matplotlib PNG engine do. Plotly and Vega-Lite ship
     # modern ES6+ bundles the old WebKit fork can't parse — they render fine on
