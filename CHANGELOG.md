@@ -1,10 +1,36 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.18.0] - 2026-09-29
+
+### Added
+
+- **Small multiples.** A "Facet by" field splits bar, line, area, scatter,
+  bubble and pie charts into one panel per group (up to 12, the largest
+  groups; the rest are named in the status line and noted in the chart
+  subtitle). Panels share one value axis and one colour key. ECharts and
+  Plotly; Vega-Lite and matplotlib draw the whole dataset as one chart.
+  Facet by and Animate by are either/or.
+- **Animated Explore dashboards.** "Explore: animate by" plays the dashboard
+  through a field: count bars, histograms, the strongest-pair scatter and
+  the Rows / Complete cards step together on one play bar, on the whole
+  layer's categories and bin edges. The correlation matrix and box plot
+  keep showing all rows.
+
+### Fixed
+
+- Stacked charts with a fixed axis (animation frames, and now facets) took
+  their range from single series, so the top of a stack could be clipped;
+  the range now covers stacked totals.
+- Fixed axes ended on raw values ("5,855", "654,300") with an extra label
+  above the last gridline; bounds and tick interval now come from one fit,
+  so the axis ends on a round tick. This also cleans the errorbar and
+  violin axes.
+
 ## [0.17.1] - 2026-09-16
 
 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
-
-## [Unreleased]
 
 ## [0.17.0] - 2026-09-10
 

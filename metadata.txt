@@ -3,7 +3,7 @@ name=02viz - Geospatial Visualization Studio
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Geospatial data visualization studio: multi-engine, interactive, publication-quality charts from QGIS layers and external data.
-version=0.17.1
+version=0.18.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -14,7 +14,7 @@ repository=https://gitlab.com/geophilo1/zero2viz
 homepage=https://geophilo.com/zero2viz/
 
 category=Vector
-tags=planx,charts,plots,graphs,dataviz,visualization,plotly,vega,echarts,matplotlib,seaborn,statistics,dashboard,diagrams,labels,attribute table
+tags=planx,charts,plots,graphs,dataviz,visualization,plotly,vega,echarts,matplotlib,seaborn,statistics,dashboard,diagrams,labels,attribute table,small multiples,facet,animation
 
 icon=icons/icon.png
 
@@ -24,6 +24,7 @@ hasProcessingProvider=no
 license=GPL-3
 
 changelog=
+    0.18.0 - Small multiples: Facet by splits bar, line, area, scatter, bubble and pie charts into panels on one shared axis and colour key. Animated Explore: one play bar steps the dashboard's count bars, histograms, scatter and row/completeness cards through a field. Fixed clipped stacked axes and axes ending on raw values.
     0.17.1 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
     0.16.0 - Completed reliable self-contained HTML, PNG, SVG and PDF publishing with atomic writes and real QGIS runtime tests. Added clear bounded-data provenance to chart status and Explore dashboards. Fixed inactive render-export actions, PDF viewport fitting, Windows SVG/PDF file locking, and package discovery outside a live QGIS session.
     0.15.13 - Reverted 0.15.11's two-column pairing of the Charts tab's X/Category+Y and Group/Color+Value/Size field pickers, back to one field per row as before.

@@ -121,4 +121,43 @@ captures and reapplies widget state; ``core/presets.py`` owns validation and
 keeps corrupt or future settings from breaking dock construction. Field
 bindings are resolved against the active layer when a preset is loaded.
 
-Planned next: small-multiples dashboards and animation on Explore tiles.
+## Small multiples (facets) — v0.18.0
+
+A chart becomes a grid of panels when the spec carries an optional
+``facets`` block (contract in ``engines/base.py``). The dock slices rows by
+a "Facet by" field with ``transform.facet_groups`` (the 12 most populous
+values, ordered like frames; the rest are returned as ``dropped``) and
+rebuilds the chart per panel through ``transform._build_slices`` — the same
+union-categories / align-values / global-range code animation frames use,
+so every panel shares one category order, one series order and one value
+range. With ``stacked`` the range covers per-category stacked totals.
+
+``spec["data"]`` stays the whole unfaceted dataset, so engines without a
+``facets`` set for the type (Vega-Lite, matplotlib) draw one ordinary chart.
+ECharts builds one option with a grid/axis pair per panel (series re-homed
+by ``xAxisIndex``/``yAxisIndex``, stack ids made per panel because ECharts
+stacks by id across grids, colours pinned by series name and pie slices by
+category); Plotly builds one figure with ``xaxisN``/``yaxisN`` domains and a
+``legendgroup`` per series. Both keep a single series list, so chart→map
+selection and map→chart highlight work unchanged. Facet and Animate are
+mutually exclusive in the dock.
+
+Fixed axes (frames and facets) come from ``echarts._axis_fit``: the bounds
+and the tick ``interval`` are one fit, so the axis ends on a tick, and
+integer data never gets fractional ticks.
+
+## Animated Explore — v0.18.0
+
+``profile.build_profile(..., animate_by=field)`` slices rows with
+``frame_groups`` and attaches ``tile["frames"]`` to every count-bar,
+histogram and scatter tile, each frame on the whole-layer axis: the tile's
+own top-N categories (with "Other" only if the tile collapsed), the whole
+layer's histogram edges (``stats.bin_counts`` over ``histogram_range``) and
+fixed scatter bounds. ``profile["frames"]`` carries the labels, interval and
+per-frame KPI values (Rows and Complete change; a frame with no rows shows
+"–"). The correlation matrix and box plot stay static by design.
+``dashboard.build_dashboard`` adds one sticky play bar; ``__o2vizSetFrame(k)``
+swaps every animated tile's series and the KPI text together, and keeps
+``OPTIONS`` current so the map→chart highlight dims the frame on screen.
+
+Planned next: a combined facet + animate grid, and Vega-Lite facets.

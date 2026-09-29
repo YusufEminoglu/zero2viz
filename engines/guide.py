@@ -208,6 +208,11 @@ types grey out) — then the <b>Type</b>.</p>
   <li><b>Animate by ▶</b> — turn a year/sequence field into a play axis: a bar-chart
       race or Gapminder-style bubbles (ECharts &amp; Plotly; bar·line·area·scatter·bubble·pie).
       Axes and colours stay fixed across frames; set the pace with <b>Play speed</b>.</li>
+  <li><b>Facet by ▦</b> — small multiples: one panel per value of a field (up to 12,
+      the largest groups), every panel on the same value axis with the same colour for
+      each series, so panels compare at a glance (ECharts &amp; Plotly;
+      bar·line·area·scatter·bubble·pie). Groups left out are named in the status line.
+      Facet by and Animate by are either/or: clear one to use the other.</li>
 </ul>
 
 <h3>Reference &amp; statistics overlays</h3>
@@ -266,6 +271,11 @@ so you can choose a replacement without a failed render.</p>
       and notable correlations.</li>
 </ul>
 <p>Identifier columns (<code>fid</code>, <code>id</code>, <code>uuid</code>, primary keys…) are skipped — they carry no analytical meaning.</p>
+<p><b>Explore: animate by ▶</b> plays the whole dashboard through a field's values
+   (years, phases, survey waves). One play bar steps the count bars, histograms, the
+   scatter and the Rows / Complete cards together; categories, bin edges and axes come
+   from the whole layer, so bars move in place. The correlation matrix and box plot keep
+   showing all rows.</p>
 </section>
 
 <section id="diagrams"><h2><span class="n">5</span>Map diagrams (on the canvas)</h2>
