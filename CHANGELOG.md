@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-25
+
+### Added
+
+- **Three new analytical chart types (20 total) across all four engines:**
+  - **Lollipop chart** (`lollipop`) — Cleveland dot-and-stem ranking chart with full support for grouping, Top-N, sorting, reference overlays, play-axis animation, small-multiple faceting, and chart-to-map feature selection.
+  - **ECDF (cumulative)** (`ecdf`) — Empirical Cumulative Distribution Function step curve (0–100 %), optionally split into one coloured step curve per group, showing exact quantiles without binning or bandwidth assumptions.
+  - **Lorenz & Gini** (`lorenz`) — Lorenz inequality curve plotted against the 45° equality diagonal with shaded concentration gap and the exact **Gini coefficient** ($G \in [0, 1]$) computed per group.
+- **Universal small multiples (`Facet by ▦`) across all four engines.** Vega-Lite (`concat` multi-panel spec with shared scales and cross-filter support) and matplotlib/seaborn (`subplots` grid with shared axis limits) now render small multiples alongside ECharts and Plotly, and matplotlib also gains Pareto, Lollipop, ECDF, and Lorenz chart rendering (15 static types total).
+- **Dispersion aggregations (`std` and `iqr`).** Standard deviation and interquartile range joins `count`, `sum`, `mean`, `median`, `min`, and `max` across all categorical, matrix, hierarchical, and radar charts.
+- **Inequality insights in Explore & Smart Assistant.** The Explore profiler and offline assistant automatically detect concentrated non-negative numeric distributions ($G \ge 0.40$) and report their Gini coefficient with a Lorenz curve recommendation.
+
+### Fixed
+
+- **Non-negative KDE & Violin support clamping.** Gaussian KDE (`stats.kde_points`) and Violin polygons (`transform.violin_rows`) now clamp their lower support bound at `0.0` when all observations are non-negative (and at `0.0` above when all observations are non-positive), preventing density and violin tails for population, area, or count fields from extending into negative values.
+
 ## [0.18.0] - 2026-09-29
 
 ### Added

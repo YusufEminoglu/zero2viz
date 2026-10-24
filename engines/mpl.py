@@ -16,17 +16,17 @@ import base64
 import io
 
 from ..core import requirements
-from .base import FONT_FAMILY, ChartEngine, theme_of
+from .base import FACETABLE, FONT_FAMILY, ChartEngine, theme_of
 
 # the subset matplotlib/seaborn draws cleanly from the existing spec; the dock
-# greys out the rest for this engine (treemap/sunburst/radar/pareto/error*)
+# greys out the rest for this engine (treemap/sunburst/radar/error*)
 _SUPPORTED = frozenset({
-    "bar", "line", "area", "scatter", "bubble", "histogram",
-    "pie", "box", "heatmap", "density", "violin",
+    "bar", "lollipop", "line", "area", "scatter", "bubble", "histogram",
+    "pie", "box", "heatmap", "density", "violin", "pareto", "ecdf", "lorenz",
 })
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
-_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+_OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
 
 _IMG_HTML = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{title}</title>
@@ -41,6 +41,7 @@ _IMG_HTML = """<!DOCTYPE html>
   // static image — keep the dock's bridge calls inert and mark ready
   window.__o2vizSelect = function () {{}};
   window.__o2vizHighlight = function () {{}};
+  window.__o2vizFacetCount = {facets};
   window.__chartReady = true;
 </script>
 </body></html>
@@ -51,6 +52,7 @@ class MatplotlibEngine(ChartEngine):
     id = "matplotlib"
     label = "Matplotlib / seaborn"
     supports = _SUPPORTED
+    facets = FACETABLE
 
     @classmethod
     def available(cls) -> bool:
@@ -62,8 +64,11 @@ class MatplotlibEngine(ChartEngine):
                 "matplotlib is not installed in this QGIS Python")
         b64 = self._render_png(spec)
         theme = theme_of(spec)
+        fac = spec.get("facets") if spec.get("type") in self.facets else None
+        n_facets = len(fac.get("datas", [])) if isinstance(fac, dict) else 0
         return _IMG_HTML.format(title=spec.get("title", "02viz chart") or "chart",
-                                bg=theme.get("bg", "#ffffff"), b64=b64)
+                                bg=theme.get("bg", "#ffffff"), b64=b64,
+                                facets=n_facets)
 
     # ───────────────────── figure builder ─────────────────────
 
@@ -86,12 +91,16 @@ class MatplotlibEngine(ChartEngine):
         bg, text, grid = theme["bg"], theme["text"], theme["grid"]
 
         plt.rcParams["font.family"] = ["Segoe UI", "DejaVu Sans", "sans-serif"]
-        fig, ax = plt.subplots(figsize=(8.2, 5.0), dpi=150)
-        fig.patch.set_facecolor(bg)
-        ax.set_facecolor(bg)
 
         def col(i):
             return palette[i % len(palette)]
+
+        if spec.get("facets") and kind in self.facets:
+            return self._render_facets_png(spec, plt, np, col, palette, theme)
+
+        fig, ax = plt.subplots(figsize=(8.2, 5.0), dpi=150)
+        fig.patch.set_facecolor(bg)
+        ax.set_facecolor(bg)
 
         try:
             self._draw(kind, ax, data, spec, np, col, palette, theme)
@@ -101,6 +110,62 @@ class MatplotlibEngine(ChartEngine):
             if spec.get("title"):
                 ax.set_title(spec["title"], color=text, fontsize=15,
                              fontweight="bold")
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                        facecolor=fig.get_facecolor())
+            return base64.b64encode(buf.getvalue()).decode("ascii")
+        finally:
+            plt.close(fig)
+
+    def _render_facets_png(self, spec: dict, plt, np, col, palette, theme: dict) -> str:
+        """Render small multiples onto a shared-scale matplotlib subplot grid."""
+        fac = spec["facets"]
+        kind = spec["type"]
+        datas = fac.get("datas", [])
+        labels = [str(v) for v in fac.get("labels", [])]
+        n = len(datas)
+        cols = max(1, min(n, int(fac.get("columns") or 2)))
+        rows = -(-n // cols)
+        bg, text = theme["bg"], theme["text"]
+        bounds = fac.get("bounds") or {}
+        static = {k: v for k, v in spec.items() if k != "facets"}
+
+        fig, axes = plt.subplots(
+            rows, cols,
+            figsize=(max(8.2, cols * 3.1), max(4.6, rows * 2.5)),
+            dpi=150, squeeze=False)
+        fig.patch.set_facecolor(bg)
+        try:
+            for i in range(rows * cols):
+                r, c = divmod(i, cols)
+                ax = axes[r][c]
+                ax.set_facecolor(bg)
+                if i >= n:
+                    ax.set_visible(False)
+                    continue
+                panel_spec = dict(static, data=datas[i])
+                self._draw(kind, ax, datas[i], panel_spec, np, col, palette, theme)
+                self._style_axes(ax, theme, kind)
+                if kind != "pie" and bounds.get("y"):
+                    lo, hi = bounds["y"]
+                    if kind in ("bar", "lollipop", "area"):
+                        lo = min(0.0, lo)
+                    span = (hi - lo) or 1.0
+                    ax.set_ylim(lo, hi + span * 0.06)
+                if kind in ("scatter", "bubble") and bounds.get("x"):
+                    xlo, xhi = bounds["x"]
+                    xspan = (xhi - xlo) or 1.0
+                    ax.set_xlim(xlo - xspan * 0.05, xhi + xspan * 0.05)
+                if i + cols < n:
+                    ax.set_xlabel("")
+                if c != 0:
+                    ax.set_ylabel("")
+                ax.set_title(labels[i] if i < len(labels) else "",
+                             color=text, fontsize=10.5, fontweight="bold")
+            if spec.get("title"):
+                fig.suptitle(spec["title"], color=text, fontsize=14,
+                             fontweight="bold")
+            fig.tight_layout()
             buf = io.BytesIO()
             fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
                         facecolor=fig.get_facecolor())
@@ -150,6 +215,25 @@ class MatplotlibEngine(ChartEngine):
             ax.set_xticklabels(cats, rotation=30, ha="right")
             ax.set_xlabel(xlab)
             ax.set_ylabel("count" if kind == "histogram" else ylab)
+            if len(series) > 1:
+                self._legend(ax, theme)
+
+        elif kind == "lollipop":
+            cats, series = cat_series()
+            xi = np.arange(len(cats))
+            w = 0.65 / max(1, len(series))
+            for si, s in enumerate(series):
+                offset = 0.0 if len(series) == 1 else (-0.325 + w * (si + 0.5))
+                xpos = xi + offset
+                vals = np.array(s["values"], dtype=float)
+                ax.vlines(xpos, 0.0, vals, color=col(si), linewidth=2.2, alpha=0.82)
+                ax.scatter(xpos, vals, color=col(si), s=58, zorder=3,
+                           edgecolors=theme["bg"], linewidths=1.2, label=s["name"])
+            ax.axhline(0.0, color=theme["grid"], linewidth=1.0)
+            ax.set_xticks(xi)
+            ax.set_xticklabels(cats, rotation=30, ha="right")
+            ax.set_xlabel(xlab)
+            ax.set_ylabel(ylab)
             if len(series) > 1:
                 self._legend(ax, theme)
 
@@ -246,6 +330,55 @@ class MatplotlibEngine(ChartEngine):
             ax.set_xticks(range(len(groups)))
             ax.set_xticklabels(groups, rotation=30, ha="right")
             ax.set_ylabel(ylab)
+
+        elif kind == "pareto":
+            cats = data.get("categories", [])
+            vals = data.get("values", [])
+            cum = data.get("cum", [])
+            xi = np.arange(len(cats))
+            ax.bar(xi, vals, color=col(0), width=0.82)
+            ax.set_xticks(xi)
+            ax.set_xticklabels(cats, rotation=30, ha="right")
+            ax.set_xlabel(xlab)
+            ax.set_ylabel(ylab)
+            ax2 = ax.twinx()
+            ax2.plot(xi, cum, color=col(2), marker="o", linewidth=2.2)
+            ax2.set_ylim(0, 105)
+            ax2.set_ylabel("cumulative %", color=text)
+            ax2.tick_params(colors=text, labelsize=9)
+            ax2.spines["top"].set_visible(False)
+
+        elif kind == "ecdf":
+            for si, s in enumerate(data.get("series", [])):
+                pts = s.get("points", [])
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                ax.step(xs, ys, where="post", color=col(si),
+                        label=s.get("name", ""), linewidth=2.2)
+            ax.set_ylim(0, 102)
+            ax.set_xlabel(xlab)
+            ax.set_ylabel("cumulative %")
+            if len(data.get("series", [])) > 1:
+                self._legend(ax, theme)
+
+        elif kind == "lorenz":
+            ax.plot([0, 100], [0, 100], "--", color=text, alpha=0.45,
+                    linewidth=1.5, label="equality (G = 0)")
+            series_in = data.get("series", [])
+            for si, s in enumerate(series_in):
+                pts = s.get("points", [])
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                g = s.get("gini", 0.0)
+                lbl = f"{s.get('name', '')} (Gini = {g:.3f})"
+                ax.plot(xs, ys, color=col(si), linewidth=2.4, label=lbl)
+                ax.fill_between(xs, ys, xs, color=col(si),
+                                alpha=0.15 if len(series_in) == 1 else 0.07)
+            ax.set_xlim(0, 100)
+            ax.set_ylim(0, 100)
+            ax.set_xlabel("cumulative share of features (%)")
+            ax.set_ylabel(f"cumulative share of {xlab or 'value'} (%)")
+            self._legend(ax, theme)
 
         else:
             raise ValueError(f"Matplotlib engine does not support: {kind}")

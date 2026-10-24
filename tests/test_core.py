@@ -297,14 +297,105 @@ class TestSmallMultiples(unittest.TestCase):
         self.assertEqual(_axis_fit(0, 5855)[1], 7000.0)
         self.assertEqual(_axis_fit(0.01, 0.93)[0], 0.0)  # no padding below zero
 
-    def test_engines_without_facets_ignore_the_facets_block(self):
+    def test_vegalite_and_matplotlib_build_facets(self):
         from zero2viz.engines import engines
-        spec = self._spec("bar")
+        spec = self._spec("bar", cap=4)
         vl = [e for e in engines() if e.id == "vegalite"][0]
-        self.assertNotIn("bar", vl.facets)
+        self.assertIn("bar", vl.facets)
+        vl_dict = vl.vl_spec(spec)
+        self.assertEqual(vl_dict["usermeta"]["__facets"], 4)
+        self.assertEqual(len(vl_dict["concat"]), 4)
+        self.assertEqual(vl_dict["columns"], 2)
         html = vl.build_html(spec)
         self.assertIn("housing", html)
-        self.assertNotIn("__facets", html)
+        self.assertIn('"__facets": 4', html)
+
+        mpl = [e for e in engines() if e.id == "matplotlib"][0]
+        self.assertIn("bar", mpl.facets)
+        if mpl.available():
+            mpl_html = mpl.build_html(spec)
+            self.assertIn("window.__o2vizFacetCount = 4;", mpl_html)
+            self.assertIn("data:image/png;base64,", mpl_html)
+
+
+class TestStatisticalEnhancements(unittest.TestCase):
+
+    def test_kde_and_violin_clamp_non_negative_data_at_zero(self):
+        from zero2viz.core.stats import kde_points
+        from zero2viz.core.transform import violin_rows
+        vals = [0.0, 2.0, 5.0, 10.0, 50.0, 120.0]
+        pts = kde_points(vals)
+        self.assertTrue(pts)
+        self.assertGreaterEqual(pts[0][0], 0.0)
+        groups, polys, meds = violin_rows(["A"], {"A": vals})
+        self.assertEqual(groups, ["A"])
+        self.assertTrue(all(p[1] >= 0.0 for p in polys[0]))
+        self.assertEqual(meds, [7.5])
+
+    def test_std_and_iqr_aggregations(self):
+        from zero2viz.core.stats import aggregate
+        from zero2viz.core.transform import group_rows
+        xs = ["A", "A", "A", "A", "B", "B"]
+        ys = [10.0, 20.0, 30.0, 40.0, 5.0, 5.0]
+        cats, stds = aggregate(xs, ys, "std")
+        self.assertEqual(cats, ["A", "B"])
+        self.assertGreater(stds[0], 10.0)
+        self.assertEqual(stds[1], 0.0)
+        cats_i, iqrs, _ = group_rows(xs, ys, list(range(6)), "iqr")
+        self.assertEqual(cats_i, ["A", "B"])
+        self.assertAlmostEqual(iqrs[0], 15.0)
+        self.assertEqual(iqrs[1], 0.0)
+
+    def test_ecdf_and_lorenz_gini(self):
+        from zero2viz.core.stats import ecdf_points, gini, lorenz_points
+        ecdf = ecdf_points([10, 20, 20, 40])
+        self.assertEqual(ecdf[0], [10.0, 25.0])
+        self.assertEqual(ecdf[1], [20.0, 75.0])
+        self.assertEqual(ecdf[-1], [40.0, 100.0])
+
+        self.assertAlmostEqual(gini([10, 10, 10, 10]), 0.0, places=6)
+        pts, g = lorenz_points([0, 0, 0, 100])
+        self.assertEqual(pts[0], [0.0, 0.0])
+        self.assertEqual(pts[-1], [100.0, 100.0])
+        self.assertAlmostEqual(g, 0.75, places=3)
+        self.assertIsNone(gini([-5, 10, 20]))
+
+    def test_new_chart_types_render_across_all_engines(self):
+        from zero2viz.engines import engines
+        from zero2viz.engines.base import THEMES
+        theme = THEMES["Studio Light"]
+        specs = [
+            {
+                "type": "lollipop", "title": "Ranked districts",
+                "x_label": "district", "y_label": "score", "stacked": False,
+                "theme": theme,
+                "data": {"categories": ["Konak", "Bornova", "Buca"],
+                         "series": [{"name": "score", "values": [84.0, 91.0, 76.0],
+                                     "ids": [[1], [2], [3]]}]},
+            },
+            {
+                "type": "ecdf", "title": "Area ECDF",
+                "x_label": "area", "y_label": "cumulative %", "stacked": False,
+                "theme": theme,
+                "data": {"series": [{"name": "area",
+                                     "points": [[10.0, 25.0], [20.0, 60.0], [45.0, 100.0]]}]},
+            },
+            {
+                "type": "lorenz", "title": "Population Lorenz",
+                "x_label": "pop", "y_label": "cumulative share (%)", "stacked": False,
+                "theme": theme,
+                "data": {"series": [{"name": "pop", "gini": 0.425,
+                                     "points": [[0.0, 0.0], [50.0, 18.0], [100.0, 100.0]]}]},
+            },
+        ]
+        for spec in specs:
+            for eng in engines():
+                if not eng.available():
+                    continue
+                self.assertIn(spec["type"], eng.supports, (eng.id, spec["type"]))
+                html = eng.build_html(spec)
+                self.assertTrue(html.startswith("<!DOCTYPE html>"), (eng.id, spec["type"]))
+                self.assertGreater(len(html), 1000, (eng.id, spec["type"]))
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-AGGREGATIONS = ("none", "count", "sum", "mean", "median", "min", "max")
+AGGREGATIONS = ("none", "count", "sum", "mean", "median", "min", "max", "std", "iqr")
 
 
 def to_float(value):
@@ -68,6 +68,12 @@ def aggregate(xs: list, ys: list, how: str) -> tuple[list[str], list[float]]:
             values.append(min(vals))
         elif how == "max":
             values.append(max(vals))
+        elif how == "std":
+            ms = mean_std(vals)
+            values.append(ms[1] if ms is not None else 0.0)
+        elif how == "iqr":
+            s = sorted(vals)
+            values.append(_quantile(s, 0.75) - _quantile(s, 0.25))
     return order, values
 
 
@@ -180,6 +186,10 @@ def kde_points(values: list, points: int = 80) -> list[list[float]]:
     if bw <= 0:
         return []
     lo, hi = nums[0] - bw, nums[-1] + bw
+    if nums[0] >= 0.0 and lo < 0.0:
+        lo = 0.0
+    if nums[-1] <= 0.0 and hi > 0.0:
+        hi = 0.0
     step = (hi - lo) / max(1, points - 1)
     norm = 1.0 / (n * bw * math.sqrt(2 * math.pi))
     out = []
@@ -268,3 +278,81 @@ def outlier_count(values: list) -> int:
         return 0
     lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
     return sum(1 for v in nums if v < lo or v > hi)
+
+
+def ecdf_points(values: list, max_points: int = 200) -> list[list[float]]:
+    """Empirical CDF points ``[[x, cumulative_pct], ...]`` sorted by ``x``.
+
+    ``cumulative_pct`` runs from ``100 / n`` to ``100.0``. Tied values collapse
+    to their upper cumulative percentage so step charts render cleanly.
+    """
+    nums = sorted(v for v in (to_float(x) for x in values) if v is not None)
+    n = len(nums)
+    if n < 2 or nums[0] == nums[-1]:
+        return []
+    raw: list[list[float]] = []
+    i = 0
+    while i < n:
+        j = i + 1
+        while j < n and nums[j] == nums[i]:
+            j += 1
+        raw.append([round(nums[i], 6), round(100.0 * j / n, 3)])
+        i = j
+    if len(raw) <= max_points or max_points < 4:
+        return raw
+    step = (len(raw) - 1) / (max_points - 1)
+    picked = sorted({round(k * step) for k in range(max_points)} | {0, len(raw) - 1})
+    return [raw[idx] for idx in picked]
+
+
+def gini(values: list) -> float | None:
+    """Gini inequality coefficient in ``[0, 1]`` for non-negative numeric values.
+
+    Returns ``None`` if there are fewer than 2 numeric values, any observation
+    is negative, or the total sum is zero.
+    """
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if len(nums) < 2 or any(v < 0.0 for v in nums):
+        return None
+    nums.sort()
+    total = sum(nums)
+    if total <= 0.0:
+        return None
+    n = len(nums)
+    weighted = sum((i + 1) * v for i, v in enumerate(nums))
+    g = (2.0 * weighted) / (n * total) - (n + 1.0) / n
+    return max(0.0, min(1.0, float(g)))
+
+
+def lorenz_points(
+    values: list, max_points: int = 100
+) -> tuple[list[list[float]], float] | None:
+    """Lorenz curve ``([[pop_pct, value_pct], ...], gini_coeff)`` from ``(0, 0)``
+    to ``(100, 100)`` for non-negative observations."""
+    nums = [v for v in (to_float(x) for x in values) if v is not None]
+    if len(nums) < 2 or any(v < 0.0 for v in nums):
+        return None
+    nums.sort()
+    total = sum(nums)
+    if total <= 0.0:
+        return None
+    g = gini(nums)
+    if g is None:
+        return None
+    n = len(nums)
+    if n <= max_points:
+        indices = list(range(1, n + 1))
+    else:
+        step = n / max_points
+        indices = sorted(
+            {max(1, min(n, round(k * step))) for k in range(1, max_points + 1)} | {n}
+        )
+    pts: list[list[float]] = [[0.0, 0.0]]
+    running = 0.0
+    pos = 0
+    for target in indices:
+        while pos < target:
+            running += nums[pos]
+            pos += 1
+        pts.append([round(100.0 * target / n, 3), round(100.0 * running / total, 3)])
+    return pts, round(g, 3)

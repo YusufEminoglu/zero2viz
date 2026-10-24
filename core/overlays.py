@@ -19,7 +19,7 @@ from . import stats
 # chart types whose value (Y) axis a horizontal reference line/band fits. Types
 # with a categorical or non-value Y (pie, box, heatmap, treemap, radar, …) are
 # excluded; the dock greys the controls out for them.
-OVERLAY_TYPES = frozenset(("bar", "line", "area", "scatter", "bubble"))
+OVERLAY_TYPES = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
 
 # human labels for each overlay the UI offers
 OVERLAY_LABELS = {
@@ -35,7 +35,7 @@ def chart_values(spec: dict) -> list[float]:
     kind = spec.get("type")
     data = spec.get("data", {})
     raw: list = []
-    if kind in ("bar", "line", "area"):
+    if kind in ("bar", "lollipop", "line", "area"):
         for series in data.get("series", []):
             raw.extend(series.get("values", []))
     elif kind in ("scatter", "bubble"):

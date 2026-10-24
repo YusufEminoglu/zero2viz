@@ -7,7 +7,7 @@ import json
 from .base import ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
-_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+_OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
 
 _BODY = """
 var gd = document.getElementById("chart");
@@ -264,8 +264,8 @@ class PlotlyEngine(ChartEngine):
                 layout["xaxis"]["range"] = pad(bounds["x"])
             if bounds.get("y"):
                 layout["yaxis"]["range"] = pad(bounds["y"])
-        elif kind in ("bar", "line", "area") and bounds.get("y"):
-            layout["yaxis"]["range"] = pad(bounds["y"], zero=kind in ("bar", "area"))
+        elif kind in ("bar", "lollipop", "line", "area") and bounds.get("y"):
+            layout["yaxis"]["range"] = pad(bounds["y"], zero=kind in ("bar", "lollipop", "area"))
 
     # ───────────────────── figure builder ─────────────────────
 
@@ -327,6 +327,36 @@ class PlotlyEngine(ChartEngine):
                 layout["barmode"] = "stack" if spec.get("stacked") else "group"
             if kind == "histogram":
                 layout["bargap"] = 0.03
+
+        elif kind == "lollipop":
+            xy_layout(cat_x=True)
+            cats = data.get("categories", [])
+            series_in = data.get("series") or [{"name": spec.get("y_label", "value"),
+                                                "values": data.get("values", []),
+                                                "ids": data.get("ids")}]
+            for si, s in enumerate(series_in):
+                color = theme["palette"][si % len(theme["palette"])]
+                vals = s.get("values", [])
+                xs_stem, ys_stem = [], []
+                for c, v in zip(cats, vals):
+                    xs_stem.extend([c, c, None])
+                    ys_stem.extend([0, v, None])
+                traces.append({
+                    "type": "scatter", "mode": "lines",
+                    "name": f"{s.get('name', '')}·stem",
+                    "x": xs_stem, "y": ys_stem,
+                    "line": {"color": color, "width": 2.6},
+                    "hoverinfo": "skip", "showlegend": False,
+                })
+                tr = {
+                    "type": "scatter", "mode": "markers",
+                    "name": s.get("name", ""), "x": cats, "y": vals,
+                    "marker": {"color": color, "size": 12,
+                               "line": {"color": theme["bg"], "width": 1.5}},
+                }
+                if s.get("ids"):
+                    tr["customdata"] = s["ids"]
+                traces.append(tr)
 
         elif kind in ("scatter", "bubble"):
             xy_layout()
@@ -513,6 +543,53 @@ class PlotlyEngine(ChartEngine):
                                     showgrid=False)
             layout["margin"]["r"] = 70
             layout["showlegend"] = False
+
+        elif kind == "ecdf":
+            xy_layout()
+            layout["yaxis"]["title"] = {"text": "cumulative %"}
+            layout["yaxis"]["range"] = [0, 102]
+            layout["yaxis"]["ticksuffix"] = " %"
+            for si, s in enumerate(data.get("series", [])):
+                color = theme["palette"][si % len(theme["palette"])]
+                pts = s.get("points", [])
+                traces.append({
+                    "type": "scatter",
+                    "mode": "lines+markers" if len(pts) <= 30 else "lines",
+                    "name": s.get("name", ""),
+                    "x": [p[0] for p in pts], "y": [p[1] for p in pts],
+                    "line": {"color": color, "width": 2.5, "shape": "hv"},
+                    "marker": {"color": color, "size": 5},
+                })
+
+        elif kind == "lorenz":
+            xy_layout()
+            layout["xaxis"]["title"] = {"text": "cumulative share of features (%)"}
+            layout["xaxis"]["range"] = [0, 100]
+            layout["yaxis"]["title"] = {
+                "text": f"cumulative share of {spec.get('x_label') or 'value'} (%)"
+            }
+            layout["yaxis"]["range"] = [0, 100]
+            layout["showlegend"] = True
+            traces.append({
+                "type": "scatter", "mode": "lines",
+                "name": "equality (G = 0)",
+                "x": [0.0, 100.0], "y": [0.0, 100.0],
+                "line": {"color": theme["text"], "width": 1.6, "dash": "dash"},
+                "hoverinfo": "skip",
+            })
+            series_in = data.get("series", [])
+            for si, s in enumerate(series_in):
+                color = theme["palette"][si % len(theme["palette"])]
+                pts = s.get("points", [])
+                g = s.get("gini", 0.0)
+                traces.append({
+                    "type": "scatter", "mode": "lines",
+                    "name": f"{s.get('name', '')} (Gini = {g:.3f})",
+                    "x": [p[0] for p in pts], "y": [p[1] for p in pts],
+                    "line": {"color": color, "width": 2.6, "shape": "spline"},
+                    "fill": "tozeroy",
+                    "fillcolor": _rgba(color, 0.14 if len(series_in) == 1 else 0.07),
+                })
 
         else:
             raise ValueError(f"Unsupported chart type: {kind}")

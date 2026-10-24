@@ -214,6 +214,22 @@ def suggestions(cols: dict, *, has_geometry: bool = True,
                     "how": "Charts tab → 💡 Suggest applies this in one click, "
                            "or set Type / X / Y / Aggregate to match."})
 
+    # inequality / concentration check on non-negative numeric fields
+    ginis = []
+    for name in num[:15]:
+        g = stats.gini(_sample(cols[name], _CLASSIFY_SAMPLE_CAP))
+        if g is not None and g >= 0.40:
+            ginis.append((g, name))
+    if ginis:
+        g, gname = max(ginis)
+        out.append({
+            "surface": "chart",
+            "title": f"Lorenz & Gini inequality curve for {gname} (G = {g:.2f})",
+            "why": f"{gname} shows notable concentration across features "
+                   f"(Gini = {g:.2f}) — a Lorenz curve reveals how much of "
+                   f"the total sits in the top share of features.",
+            "how": f"Charts tab → Type = Lorenz & Gini, X = {gname} → Render chart."})
+
     # map diagrams: normalise when numeric fields differ wildly in scale
     if has_geometry and len(num) >= 2:
         ratio, small, big = _scale_disparity(cols, num)

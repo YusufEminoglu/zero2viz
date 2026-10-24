@@ -227,6 +227,15 @@ def build_profile(layer, selected_only: bool = False, theme: dict | None = None,
             c, name = max(outs)
             insights.append(f"{name} has {c} outlier{'s' if c != 1 else ''} "
                             f"(beyond 1.5×IQR)")
+        ginis = []
+        for name in num_stats:
+            g = stats.gini(cols[name])
+            if g is not None and g >= 0.40:
+                ginis.append((g, name))
+        if ginis:
+            g, name = max(ginis)
+            insights.append(f"{name} is concentrated (Gini = {g:.2f}) — "
+                            f"inspect with a Lorenz & Gini curve")
         flat = [name for name, s in num_stats.items() if s["std"] == 0]
         if flat:
             insights.append(f"{len(flat)} numeric field"

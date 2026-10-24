@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from .stats import _median, kde_points, mean_std, to_float
+from .stats import _median, _quantile, kde_points, mean_std, to_float
 
 SORT_MODES = ("natural", "value_desc", "value_asc")
 
@@ -33,6 +33,12 @@ def _reduce(vals: list[float], count: int, how: str) -> float:
         return min(vals)
     if how == "max":
         return max(vals)
+    if how == "std":
+        ms = mean_std(vals)
+        return ms[1] if ms is not None else 0.0
+    if how == "iqr":
+        s = sorted(vals)
+        return _quantile(s, 0.75) - _quantile(s, 0.25)
     raise ValueError(f"Unsupported aggregation: {how}")
 
 
@@ -418,7 +424,7 @@ def _build_slices(kind: str, cols: dict, fids: list, idx_per: list, *,
     union = None
     bounds = None
 
-    if kind in ("bar", "line", "area", "pie"):
+    if kind in ("bar", "lollipop", "line", "area", "pie"):
         use_group = bool(group) and kind != "pie"
         raw = []
         for idxs in idx_per:

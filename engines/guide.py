@@ -177,14 +177,14 @@ is published atomically. Clicking a bar/point selects those features on the map.
 <p>Pick the <b>Engine</b> first — it decides which types are drawable (unsupported
 types grey out) — then the <b>Type</b>.</p>
 <table><tr><th>Engine</th><th>Suitable for</th><th>Notes</th></tr>
-<tr><td>ECharts</td><td>Everyday interactive charts</td><td>All 17 types; runs in the dock on every QGIS build; can animate.</td></tr>
-<tr><td>Plotly.js</td><td>Rich hover &amp; zoom</td><td>All 17 types; can animate. Needs a modern web view (see Troubleshooting).</td></tr>
-<tr><td>Vega-Lite</td><td>Clean grammar-of-graphics</td><td>14 types. Needs a modern web view.</td></tr>
-<tr><td>matplotlib / seaborn</td><td>Publication-grade static figures</td><td>Installs on demand; image output (no click-to-select).</td></tr></table>
+<tr><td>ECharts</td><td>Everyday interactive charts</td><td>All 20 types; runs in the dock on every QGIS build; can animate &amp; facet.</td></tr>
+<tr><td>Plotly.js</td><td>Rich hover &amp; zoom</td><td>All 20 types; can animate &amp; facet. Needs a modern web view (see Troubleshooting).</td></tr>
+<tr><td>Vega-Lite</td><td>Clean grammar-of-graphics</td><td>17 types + small-multiple facets. Needs a modern web view.</td></tr>
+<tr><td>matplotlib / seaborn</td><td>Publication-grade static figures</td><td>15 types + small-multiple facets; image output (no click-to-select).</td></tr></table>
 
-<h3>The 17 chart types</h3>
+<h3>The 20 chart types</h3>
 <table><tr><th>Type</th><th>Reach for it when…</th></tr>
-<tr><td>Bar</td><td>Compare a measure across categories (counts or an aggregate).</td></tr>
+<tr><td>Bar / Lollipop</td><td>Compare a measure across categories (bars for volume, lollipop dot-and-stem for clean ranking).</td></tr>
 <tr><td>Line / Area</td><td>A measure along an ordered axis; area to stress volume / stacking.</td></tr>
 <tr><td>Scatter</td><td>Relationship between two numbers (add a <b>Trend line</b>).</td></tr>
 <tr><td>Bubble</td><td>Scatter with a third number as the dot size.</td></tr>
@@ -194,24 +194,26 @@ types grey out) — then the <b>Type</b>.</p>
 <tr><td>Heatmap</td><td>A value across two categorical axes (a matrix).</td></tr>
 <tr><td>Treemap / Sunburst</td><td>Hierarchical parts of a whole (group → sub-group).</td></tr>
 <tr><td>Mean ± σ band / bars</td><td>Average with a one-standard-deviation envelope or whiskers.</td></tr>
-<tr><td>Density (KDE)</td><td>Smooth distribution, one curve per group.</td></tr>
-<tr><td>Violin</td><td>Distribution shape with the median marked.</td></tr>
+<tr><td>Density (KDE)</td><td>Smooth distribution, one curve per group (clamped at 0 for non-negative data).</td></tr>
+<tr><td>Violin</td><td>Distribution shape with the median marked (clamped at 0 for non-negative data).</td></tr>
 <tr><td>Radar</td><td>Compare several measures on one figure (≥ 3 axes).</td></tr>
-<tr><td>Pareto</td><td>Sorted bars + cumulative-share line (the 80/20 view).</td></tr></table>
+<tr><td>Pareto</td><td>Sorted bars + cumulative-share line (the 80/20 view).</td></tr>
+<tr><td>ECDF (cumulative)</td><td>Empirical cumulative distribution step curve (0–100 %) with exact quantiles, optionally per group.</td></tr>
+<tr><td>Lorenz &amp; Gini</td><td>Inequality / concentration curve against the 45° equality line, with the exact Gini coefficient (0–1) per group.</td></tr></table>
 
 <h3>Shaping controls</h3>
 <ul>
-  <li><b>Aggregate</b> — none / count / sum / mean / median / min / max for the Y measure.</li>
+  <li><b>Aggregate</b> — none / count / sum / mean / median / min / max / std / iqr for the Y measure.</li>
   <li><b>Group / Color</b> — split into one coloured series per value.</li>
   <li><b>Top N</b> + <b>Sort</b> — keep the N biggest categories (rest → “Other”), order by value.</li>
   <li><b>Trend line</b> — least-squares fit on scatter/bubble.</li>
   <li><b>Animate by ▶</b> — turn a year/sequence field into a play axis: a bar-chart
-      race or Gapminder-style bubbles (ECharts &amp; Plotly; bar·line·area·scatter·bubble·pie).
+      race or Gapminder-style bubbles (ECharts &amp; Plotly; bar·lollipop·line·area·scatter·bubble·pie).
       Axes and colours stay fixed across frames; set the pace with <b>Play speed</b>.</li>
   <li><b>Facet by ▦</b> — small multiples: one panel per value of a field (up to 12,
       the largest groups), every panel on the same value axis with the same colour for
-      each series, so panels compare at a glance (ECharts &amp; Plotly;
-      bar·line·area·scatter·bubble·pie). Groups left out are named in the status line.
+      each series, so panels compare at a glance (all 4 engines;
+      bar·lollipop·line·area·scatter·bubble·pie). Groups left out are named in the status line.
       Facet by and Animate by are either/or: clear one to use the other.</li>
 </ul>
 

@@ -8,15 +8,15 @@ as a single file).
 Spec contract (produced by the dock, consumed by every engine):
 
     {
-        "type": "bar" | "line" | "area" | "scatter" | "bubble" |
+        "type": "bar" | "lollipop" | "line" | "area" | "scatter" | "bubble" |
                 "histogram" | "pie" | "box" | "heatmap" |
                 "treemap" | "sunburst" | "errorband" | "errorbar" |
-                "density" | "violin" | "radar" | "pareto",
+                "density" | "violin" | "radar" | "pareto" | "ecdf" | "lorenz",
         "title": str, "x_label": str, "y_label": str,
         "stacked": bool,                  # bar / area
         "theme": {"palette": [...], "bg": str, "text": str, "grid": str},
         "data": {
-            # bar / line / area:
+            # bar / lollipop / line / area:
             "categories": [...], "series": [{"name", "values", "ids"}],
             # scatter / bubble:
             "series": [{"name", "points": [[x, y, size|None, fid|None]]}],
@@ -32,6 +32,8 @@ Spec contract (produced by the dock, consumed by every engine):
             # violin:     "groups", "polygons" [[[x, y]...]], "medians"
             # radar:      "axes", "maxes", "series" [{"name", "values"}]
             # pareto:     "categories", "values", "cum" (0–100 %), "ids"
+            # ecdf:       "series" [{"name", "points": [[x, pct]]}]
+            # lorenz:     "series" [{"name", "gini", "points": [[pop_pct, val_pct]]}]
         },
 
         # optional — turns the chart into an animation (a "play axis"):
@@ -68,15 +70,16 @@ from __future__ import annotations
 
 import os
 
-CHART_TYPES = ("bar", "line", "area", "scatter", "bubble", "histogram",
+CHART_TYPES = ("bar", "lollipop", "line", "area", "scatter", "bubble", "histogram",
                "pie", "box", "heatmap", "treemap", "sunburst",
-               "errorband", "errorbar", "density", "violin", "radar", "pareto")
+               "errorband", "errorbar", "density", "violin", "radar", "pareto",
+               "ecdf", "lorenz")
 
 # chart types that can be animated over a "play axis" (a time / sequence
 # field). These carry one value-or-point per category/feature, so a frame is
 # just the same chart rebuilt for that frame's rows — stable axis, animated
 # data. Box/heatmap/treemap/violin/… have no such clean per-frame mapping.
-ANIMATABLE = frozenset(("bar", "line", "area", "scatter", "bubble", "pie"))
+ANIMATABLE = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble", "pie"))
 
 # chart types that can be split into small multiples — the same per-slice
 # rebuild as animation frames, shown side by side instead of in sequence.

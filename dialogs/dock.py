@@ -210,6 +210,7 @@ _RENDER_CHART_BTN_QSS = (
 
 CHART_TYPES = [
     ("bar", "Bar chart"),
+    ("lollipop", "Lollipop chart"),
     ("line", "Line chart"),
     ("area", "Area chart"),
     ("scatter", "Scatter plot"),
@@ -226,12 +227,15 @@ CHART_TYPES = [
     ("violin", "Violin plot"),
     ("radar", "Radar / spider"),
     ("pareto", "Pareto (80/20)"),
+    ("ecdf", "ECDF (cumulative)"),
+    ("lorenz", "Lorenz & Gini"),
 ]
 
 # which controls matter per chart type:
 #   (y, group, value_size, aggregate, bins, topn_sort, stacked, trend)
 _CONTROLS = {
     "bar":       (True,  True,  False, True,  False, True,  True,  False),
+    "lollipop":  (True,  True,  False, True,  False, True,  False, False),
     "line":      (True,  True,  False, True,  False, True,  False, False),
     "area":      (True,  True,  False, True,  False, True,  True,  False),
     "scatter":   (True,  True,  False, False, False, False, False, True),
@@ -248,6 +252,8 @@ _CONTROLS = {
     "violin":    (True,  True,  False, False, False, False, False, False),
     "radar":     (True,  True,  False, True,  False, False, False, False),
     "pareto":    (True,  False, False, True,  False, True,  False, False),
+    "ecdf":      (False, True,  False, False, False, False, False, False),
+    "lorenz":    (False, True,  False, False, False, False, False, False),
 }
 
 
@@ -583,7 +589,7 @@ class StudioDockWidget(QDockWidget):
         self.facet_combo.setToolTip(
             "Small multiples: one panel per value of this field, all sharing one "
             f"value axis and one colour key. Up to {_FACET_CAP} panels (the largest "
-            "groups). ECharts / Plotly; bar · line · area · scatter · bubble · pie. "
+            "groups). All engines; bar · line · area · scatter · bubble · pie. "
             "Clear Animate by to use it.")
         form.addRow("Facet by ▦", self.facet_combo)
         self.animate_combo.fieldChanged.connect(self._sync_animate)
@@ -1619,6 +1625,7 @@ class StudioDockWidget(QDockWidget):
     def _spec_bar(self, spec, cols, fids, *, x, y, group, value, agg):
         return self._cat_series(spec, cols, fids, x=x, y=y, group=group, agg=agg)
 
+    _spec_lollipop = _spec_bar
     _spec_line = _spec_bar
     _spec_area = _spec_bar
 
@@ -1824,6 +1831,42 @@ class StudioDockWidget(QDockWidget):
         cats, vals, cum, ids = transform.pareto_rows(cats, vals, ids)
         return {"categories": cats, "values": vals, "cum": cum, "ids": ids}
 
+    def _spec_ecdf(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("ECDF needs a numeric X field")
+            return None
+        order, buckets = self._group_buckets(cols[group] if group else None,
+                                             cols[x], x)
+        series = []
+        for key in order:
+            pts = stats.ecdf_points(buckets[key])
+            if pts:
+                series.append({"name": key, "points": pts})
+        if not series:
+            self.set_status(f"Need at least 2 distinct numeric values in '{x}'")
+            return None
+        spec["y_label"] = "cumulative %"
+        return {"series": series}
+
+    def _spec_lorenz(self, spec, cols, fids, *, x, y, group, value, agg):
+        if not x:
+            self.set_status("Lorenz & Gini needs a non-negative numeric X field")
+            return None
+        order, buckets = self._group_buckets(cols[group] if group else None,
+                                             cols[x], x)
+        series = []
+        for key in order:
+            built = stats.lorenz_points(buckets[key])
+            if built is not None:
+                pts, g = built
+                series.append({"name": key, "gini": g, "points": pts})
+        if not series:
+            self.set_status(
+                f"Lorenz & Gini needs ≥ 2 non-negative numeric values in '{x}' with positive sum")
+            return None
+        spec["y_label"] = "cumulative share (%)"
+        return {"series": series}
+
     # ───────────────────────── animation (play axis) ─────────────────────────
 
     def _build_frames(self, spec, cols, fids, *, kind, x, y, group, value, agg,
@@ -1831,7 +1874,7 @@ class StudioDockWidget(QDockWidget):
         """Assemble the ``frames`` block for an animated chart. Validates the
         field roles, then delegates the slicing/alignment to the pure
         :func:`transform.build_frames` (so it stays testable headless)."""
-        if kind in ("bar", "line", "area", "pie"):
+        if kind in ("bar", "lollipop", "line", "area", "pie"):
             how = self._agg_or(agg, "count")
             if how != "count" and not y:
                 self.set_status(f"Aggregation '{how}' needs a Y field")
@@ -1868,7 +1911,7 @@ class StudioDockWidget(QDockWidget):
         validation as animation; slicing and alignment live in the pure
         :func:`transform.build_facets`. ``spec["data"]`` keeps the whole
         dataset, so an engine without faceting still shows every row."""
-        if kind in ("bar", "line", "area", "pie"):
+        if kind in ("bar", "lollipop", "line", "area", "pie"):
             how = self._agg_or(agg, "count")
             if how != "count" and not y:
                 self.set_status(f"Aggregation '{how}' needs a Y field")

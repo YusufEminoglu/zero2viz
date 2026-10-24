@@ -303,12 +303,16 @@ def test_facet_by_builds_small_multiples(iface):
         dock.animate_combo.setField("")
         dock.engine_combo.setCurrentIndex(ids.index("vegalite"))
         app.processEvents()
-        vl_off = not dock.facet_combo.isEnabled()
+        vl_on = dock.facet_combo.isEnabled()
+        dock.type_combo.setCurrentIndex(dock.type_combo.findData("box"))
+        app.processEvents()
+        box_off = not dock.facet_combo.isEnabled()
         return _ok(
-            "Facet by builds panels, keeps all rows in data, excludes Animate by",
-            panels_ok and whole and html_ok and animate_blocked and facet_blocked and vl_off,
+            "Facet by builds panels across engines, keeps all rows in data, excludes Animate by",
+            panels_ok and whole and html_ok and animate_blocked and facet_blocked and vl_on and box_off,
             f"panels={fac.get('labels')} whole={whole} html={html_ok} "
-            f"animate_blocked={animate_blocked} facet_blocked={facet_blocked} vl_off={vl_off}",
+            f"animate_blocked={animate_blocked} facet_blocked={facet_blocked} "
+            f"vl_on={vl_on} box_off={box_off}",
         )
     finally:
         plugin.unload()
@@ -374,6 +378,77 @@ def test_explore_animation_profiles_every_frame(iface):
     )
 
 
+def test_new_chart_types_and_aggregations(iface):
+    """Drive Lollipop (with std/iqr aggregation), ECDF, and Lorenz & Gini in the real dock."""
+    from qgis.core import QgsFeature, QgsProject, QgsVectorLayer
+    module = __import__(PACKAGE)
+    layer = QgsVectorLayer(
+        "None?field=district:string&field=income:double",
+        "stats_rows", "memory")
+    feats = []
+    incomes = [10.0, 12.0, 15.0, 18.0, 22.0, 35.0, 80.0, 240.0]
+    for i, inc in enumerate(incomes):
+        f = QgsFeature(layer.fields())
+        f.setAttributes([("Konak", "Bornova")[i % 2], inc])
+        feats.append(f)
+    layer.dataProvider().addFeatures(feats)
+    QgsProject.instance().addMapLayer(layer)
+    plugin = module.classFactory(iface)
+    plugin.initGui()
+    app = QgsApplication.instance()
+    try:
+        plugin.panel_action.trigger()
+        app.processEvents()
+        dock = plugin._dock
+        dock.layer_combo.setLayer(layer)
+
+        # 1) Lollipop + iqr aggregation
+        dock.type_combo.setCurrentIndex(dock.type_combo.findData("lollipop"))
+        dock.x_combo.setField("district")
+        dock.y_combo.setField("income")
+        dock.agg_combo.setCurrentIndex(dock.agg_combo.findText("iqr"))
+        app.processEvents()
+        lol_spec = dock._build_spec()
+        lol_ok = (lol_spec is not None
+                  and lol_spec["type"] == "lollipop"
+                  and len(lol_spec["data"]["categories"]) == 2
+                  and all(v > 0 for v in lol_spec["data"]["series"][0]["values"]))
+
+        # 2) ECDF grouped by district
+        dock.type_combo.setCurrentIndex(dock.type_combo.findData("ecdf"))
+        dock.x_combo.setField("income")
+        dock.group_combo.setField("district")
+        app.processEvents()
+        ecdf_spec = dock._build_spec()
+        ecdf_ok = (ecdf_spec is not None
+                   and ecdf_spec["type"] == "ecdf"
+                   and len(ecdf_spec["data"]["series"]) == 2
+                   and ecdf_spec["data"]["series"][0]["points"][-1][1] == 100.0)
+
+        # 3) Lorenz & Gini
+        dock.type_combo.setCurrentIndex(dock.type_combo.findData("lorenz"))
+        dock.x_combo.setField("income")
+        dock.group_combo.setField("")
+        app.processEvents()
+        lor_spec = dock._build_spec()
+        lor_ok = (lor_spec is not None
+                  and lor_spec["type"] == "lorenz"
+                  and lor_spec["data"]["series"][0]["gini"] > 0.3
+                  and lor_spec["data"]["series"][0]["points"][0] == [0.0, 0.0]
+                  and lor_spec["data"]["series"][0]["points"][-1] == [100.0, 100.0])
+
+        return _ok(
+            "Lollipop (IQR), ECDF (grouped) and Lorenz & Gini build valid specs in the dock",
+            lol_ok and ecdf_ok and lor_ok,
+            f"lollipop={lol_ok} ecdf={ecdf_ok} lorenz={lor_ok}",
+        )
+    finally:
+        plugin.unload()
+        QgsProject.instance().removeMapLayer(layer.id())
+        app.sendPostedEvents()
+        app.processEvents()
+
+
 def run_all(iface):
     print("=" * 60)
     print(" zero2viz - lifecycle smoke")
@@ -389,6 +464,7 @@ def run_all(iface):
         test_toggle_shows_on_first_click(iface),
         test_facet_by_builds_small_multiples(iface),
         test_explore_animation_profiles_every_frame(iface),
+        test_new_chart_types_and_aggregations(iface),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)

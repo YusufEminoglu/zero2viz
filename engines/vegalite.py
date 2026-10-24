@@ -10,14 +10,22 @@ from __future__ import annotations
 
 import json
 
-from .base import CHART_TYPES, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import CHART_TYPES, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
-_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+_OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
 
 _BODY = """
 var SPEC = %(spec)s;
 var VALUES = (SPEC.datasets && SPEC.datasets.o2viz) || (SPEC.data && SPEC.data.values) || [];
+if (!VALUES.length && SPEC.concat) {
+  SPEC.concat.forEach(function (p) {
+    if (p.data && p.data.values) VALUES = VALUES.concat(p.data.values);
+    (p.layer || []).forEach(function (l) {
+      if (l.data && l.data.values) VALUES = VALUES.concat(l.data.values);
+    });
+  });
+}
 VALUES.forEach(function (d) { if (d.__op === undefined) d.__op = 1; d.__op0 = d.__op; });
 var view = null;
 function render() {
@@ -28,7 +36,10 @@ function render() {
     var ids = item && item.datum && item.datum.__ids;
     if (ids && ids.length) __o2vizSelect(ids);
   });
-  view.runAsync().then(function () { window.__chartReady = true; });
+  view.runAsync().then(function () {
+    window.__o2vizFacetCount = (SPEC.usermeta && SPEC.usermeta.__facets) || 0;
+    window.__chartReady = true;
+  });
 }
 render();
 function __o2vizFit() { try { if (view) { view.resize(); view.runAsync(); } } catch (e) {} }
@@ -72,6 +83,7 @@ class VegaLiteEngine(ChartEngine):
     webkit_ok = False  # vega/vega-lite are ES6+; legacy QtWebKit can't parse them
     # no treemap/sunburst (not in the grammar) and no radar (no polar coords)
     supports = frozenset(set(CHART_TYPES) - {"treemap", "sunburst", "radar"})
+    facets = FACETABLE
 
     @staticmethod
     def validate_custom_spec(value: dict) -> None:
@@ -96,7 +108,7 @@ class VegaLiteEngine(ChartEngine):
                          theme_of(spec))
     def build_html(self, spec: dict) -> str:
         vl = self.vl_spec(spec)
-        if spec.get("overlays") and spec["type"] in _OVERLAY_OK:
+        if spec.get("overlays") and spec["type"] in _OVERLAY_OK and not spec.get("facets"):
             vl = self._wrap_overlays(vl, spec["overlays"])
         lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")
         return wrap_html(spec.get("title", ""), lib,
@@ -151,8 +163,10 @@ class VegaLiteEngine(ChartEngine):
         kind = spec["type"]
         if kind not in self.supports:
             raise ValueError(f"Vega-Lite engine does not support: {kind}")
-        data = spec.get("data", {})
         theme = theme_of(spec)
+        if spec.get("facets") and kind in self.facets:
+            return self._facet_vl_spec(spec, theme)
+        data = spec.get("data", {})
         out: dict = {
             "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
             "title": spec.get("title", "") or None,
@@ -163,6 +177,60 @@ class VegaLiteEngine(ChartEngine):
         builder = getattr(self, f"_vl_{kind}")
         out.update(builder(spec, data, theme))
         return out
+
+    def _facet_vl_spec(self, spec: dict, theme: dict) -> dict:
+        """Build a multi-panel Vega-Lite ``concat`` spec with shared scales."""
+        fac = spec["facets"]
+        kind = spec["type"]
+        datas = fac.get("datas", [])
+        labels = [str(v) for v in fac.get("labels", [])]
+        n = len(datas)
+        cols = max(1, min(n, int(fac.get("columns") or 2)))
+        field = fac.get("field", "")
+        dropped = fac.get("dropped") or []
+        static = {k: v for k, v in spec.items() if k != "facets"}
+        builder = getattr(self, f"_vl_{kind}")
+        bounds = fac.get("bounds") or {}
+        panels = []
+        for i, fdata in enumerate(datas):
+            panel = builder(dict(static, data=fdata), fdata, theme)
+            panel["title"] = {
+                "text": labels[i] if i < len(labels) else "",
+                "color": theme["text"], "fontSize": 12, "fontWeight": 600,
+            }
+            panel["width"] = 185
+            panel["height"] = 140
+            if kind != "pie" and bounds.get("y"):
+                lo, hi = bounds["y"]
+                if kind in ("bar", "lollipop", "area"):
+                    lo = min(0.0, lo)
+                targets = panel.get("layer") or [panel]
+                for sub in targets:
+                    enc = sub.get("encoding", {})
+                    if "y" in enc and isinstance(enc["y"], dict):
+                        enc["y"] = dict(enc["y"], scale={"domain": [lo, hi]})
+                    if kind in ("scatter", "bubble") and bounds.get("x") and "x" in enc:
+                        enc["x"] = dict(enc["x"], scale={"domain": list(bounds["x"])})
+            panels.append(panel)
+        title_block: str | dict | None = spec.get("title", "") or None
+        if dropped:
+            sub = (f"{len(dropped)} more {field} "
+                   f"value{'s' if len(dropped) != 1 else ''} not shown (smallest groups)")
+            title_block = {"text": spec.get("title", "") or f"Facets by {field}",
+                           "subtitle": sub, "subtitleColor": theme["text"],
+                           "subtitleFontSize": 11}
+        scale_resolve = {"color": "shared"}
+        if kind != "pie":
+            scale_resolve["y"] = "shared"
+        return {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "title": title_block,
+            "columns": cols,
+            "concat": panels,
+            "resolve": {"scale": scale_resolve},
+            "usermeta": {"__facets": n},
+            "config": self._config(theme),
+        }
 
     def _config(self, theme: dict) -> dict:
         t, g = theme["text"], theme["grid"]
@@ -217,6 +285,40 @@ class VegaLiteEngine(ChartEngine):
                 enc["xOffset"] = {"field": "s", "sort": None}
         return {"data": {"values": rows},
                 "mark": mark or {"type": "bar"}, "encoding": enc}
+
+    def _vl_lollipop(self, spec, data, theme):
+        rows, series_in = self._cat_rows(spec, data)
+        for r in rows:
+            r["y0"] = 0.0
+        x = _axis_x(spec.get("x_label", ""))
+        y_title = spec.get("y_label", "") or None
+        multi = len(series_in) > 1
+        stem_enc = {
+            "x": x,
+            "y": {"field": "y0", "type": "quantitative", "title": y_title},
+            "y2": {"field": "v"},
+            "opacity": _OPACITY,
+        }
+        dot_enc = {
+            "x": dict(x),
+            "y": {"field": "v", "type": "quantitative", "title": y_title},
+            "opacity": _OPACITY,
+            "tooltip": [{"field": "c", "title": spec.get("x_label") or "category"},
+                        {"field": "s", "title": "series"},
+                        {"field": "v", "title": spec.get("y_label") or "value"}],
+        }
+        stem_mark = {"type": "rule", "strokeWidth": 2.4}
+        dot_mark = {"type": "point", "filled": True, "size": 110}
+        if multi:
+            color = {"field": "s", "type": "nominal", "sort": None, "title": None}
+            stem_enc["color"] = color
+            dot_enc["color"] = dict(color)
+        else:
+            stem_mark["color"] = theme["palette"][0]
+            dot_mark["color"] = theme["palette"][0]
+        return {"data": {"values": rows},
+                "layer": [{"mark": stem_mark, "encoding": stem_enc},
+                          {"mark": dot_mark, "encoding": dot_enc}]}
 
     def _vl_histogram(self, spec, data, theme):
         rows = [{"c": c, "v": v, "__ids": []}
@@ -570,3 +672,66 @@ class VegaLiteEngine(ChartEngine):
              "mark": {"type": "text", "color": theme["text"]},
              "encoding": {"x": x, "y": y, "text": {"field": "t"}}},
         ]}
+
+    def _vl_ecdf(self, spec, data, theme):
+        rows = []
+        for s in data.get("series", []):
+            for p in s.get("points", []):
+                rows.append({"x": p[0], "pct": p[1], "s": s.get("name", ""),
+                             "__ids": []})
+        multi = len(data.get("series", [])) > 1
+        enc = {
+            "x": {"field": "x", "type": "quantitative",
+                  "title": spec.get("x_label", "") or None,
+                  "scale": {"zero": False}},
+            "y": {"field": "pct", "type": "quantitative",
+                  "title": "cumulative %", "scale": {"domain": [0, 100]}},
+            "tooltip": [{"field": "x", "title": spec.get("x_label") or "x"},
+                        {"field": "pct", "title": "cumulative %", "format": ".1f"},
+                        {"field": "s", "title": "group"}],
+        }
+        mark = {"type": "line", "interpolate": "step-after", "strokeWidth": 2.5,
+                "point": len(rows) <= 30}
+        if multi:
+            enc["color"] = {"field": "s", "type": "nominal", "sort": None,
+                            "title": None}
+        else:
+            mark["color"] = theme["palette"][0]
+        return {"data": {"values": rows}, "mark": mark, "encoding": enc}
+
+    def _vl_lorenz(self, spec, data, theme):
+        rows = []
+        series_in = data.get("series", [])
+        for s in series_in:
+            lbl = f"{s.get('name', '')} (Gini = {s.get('gini', 0.0):.3f})"
+            for p in s.get("points", []):
+                rows.append({"p": p[0], "w": p[1], "s": lbl, "__ids": []})
+        x_enc = {"field": "p", "type": "quantitative",
+                 "title": "cumulative share of features (%)",
+                 "scale": {"domain": [0, 100]}}
+        y_enc = {"field": "w", "type": "quantitative",
+                 "title": f"cumulative share of {spec.get('x_label') or 'value'} (%)",
+                 "scale": {"domain": [0, 100]}, "stack": None}
+        eq_layer = {
+            "data": {"values": [{"p": 0.0, "w": 0.0}, {"p": 100.0, "w": 100.0}]},
+            "mark": {"type": "line", "strokeDash": [6, 4], "strokeWidth": 1.6,
+                     "color": theme["text"], "opacity": 0.45},
+            "encoding": {"x": {"field": "p", "type": "quantitative"},
+                         "y": {"field": "w", "type": "quantitative"}},
+        }
+        curve_layer = {
+            "data": {"values": rows},
+            "mark": {"type": "area" if len(series_in) == 1 else "line",
+                     "line": True, "interpolate": "monotone",
+                     "strokeWidth": 2.5,
+                     "opacity": 0.18 if len(series_in) == 1 else 1.0},
+            "encoding": {
+                "x": x_enc, "y": y_enc,
+                "color": {"field": "s", "type": "nominal", "sort": None,
+                          "title": None},
+                "tooltip": [{"field": "s", "title": "series"},
+                            {"field": "p", "title": "features %", "format": ".1f"},
+                            {"field": "w", "title": "value %", "format": ".1f"}],
+            },
+        }
+        return {"layer": [eq_layer, curve_layer]}

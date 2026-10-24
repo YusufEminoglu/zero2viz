@@ -8,7 +8,7 @@ import math
 from .base import ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
-_OVERLAY_OK = frozenset(("bar", "line", "area", "scatter", "bubble"))
+_OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
 
 _BODY = """
 var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
@@ -381,7 +381,7 @@ class EChartsEngine(ChartEngine):
                     option[key].update(min=lo, max=hi, interval=step, scale=False)
         elif bounds.get("y") and isinstance(option.get("yAxis"), dict):
             lo, hi = bounds["y"]
-            if kind in ("bar", "area", "histogram"):
+            if kind in ("bar", "lollipop", "area", "histogram"):
                 lo = min(lo, 0.0)
             lo_p, hi_p, step = _axis_fit(lo, hi)
             option["yAxis"].update(min=lo_p, max=hi_p, interval=step, scale=False)
@@ -436,6 +436,37 @@ class EChartsEngine(ChartEngine):
                 if kind in ("bar", "histogram") and not spec.get("stacked"):
                     item["itemStyle"] = {"borderRadius": [4, 4, 0, 0]}
                 out.append(item)
+            option["series"] = out
+
+        elif kind == "lollipop":
+            series_in = data.get("series") or [{"name": spec.get("y_label", "value"),
+                                                "values": data.get("values", []),
+                                                "ids": data.get("ids")}]
+            option["tooltip"] = _tooltip(theme, "axis")
+            option["grid"] = grid
+            option["xAxis"] = _axis(theme, spec.get("x_label", ""), "category",
+                                    data.get("categories", []), rotate=30)
+            option["yAxis"] = _axis(theme, spec.get("y_label", ""), zero=True)
+            if len(series_in) > 1:
+                option["legend"] = {"top": 28, "textStyle": {"color": theme["text"]},
+                                    "data": [s.get("name", "") for s in series_in]}
+            out = []
+            for si, s in enumerate(series_in):
+                color = theme["palette"][si % len(theme["palette"])]
+                pts = _with_ids(s.get("values", []), s.get("ids"))
+                out.append({
+                    "name": f"{s.get('name', '')}·stem", "type": "bar",
+                    "barWidth": 3, "data": pts,
+                    "itemStyle": {"color": color, "opacity": 0.75,
+                                  "borderRadius": [2, 2, 0, 0]},
+                    "tooltip": {"show": False},
+                })
+                out.append({
+                    "name": s.get("name", ""), "type": "scatter",
+                    "symbolSize": 12, "data": pts, "z": 3,
+                    "itemStyle": {"color": color, "borderColor": theme["bg"],
+                                  "borderWidth": 1.5},
+                })
             option["series"] = out
 
         elif kind in ("scatter", "bubble"):
@@ -663,6 +694,60 @@ class EChartsEngine(ChartEngine):
                  "itemStyle": {"color": theme["palette"][2 % len(theme["palette"])]},
                  "lineStyle": {"color": theme["palette"][2 % len(theme["palette"])]}},
             ]
+
+        elif kind == "ecdf":
+            option["tooltip"] = _tooltip(theme, "axis")
+            option["grid"] = grid
+            option["xAxis"] = _axis(theme, spec.get("x_label", ""))
+            pct_axis = _axis(theme, "cumulative %", zero=True)
+            pct_axis.update(min=0, max=100)
+            pct_axis["axisLabel"]["formatter"] = "{value} %"
+            option["yAxis"] = pct_axis
+            series_in = data.get("series", [])
+            if len(series_in) > 1:
+                option["legend"] = {"top": 28, "textStyle": {"color": theme["text"]}}
+            option["series"] = [
+                {"name": s.get("name", ""), "type": "line", "step": "end",
+                 "data": s.get("points", []),
+                 "showSymbol": len(s.get("points", [])) <= 30, "symbolSize": 5,
+                 "lineStyle": {"width": 2.5}}
+                for s in series_in
+            ]
+
+        elif kind == "lorenz":
+            option["tooltip"] = _tooltip(theme, "axis")
+            option["grid"] = grid
+            x_ax = _axis(theme, "cumulative share of features (%)", zero=True)
+            x_ax.update(min=0, max=100)
+            y_ax = _axis(theme, f"cumulative share of {spec.get('x_label') or 'value'} (%)", zero=True)
+            y_ax.update(min=0, max=100)
+            option["xAxis"] = x_ax
+            option["yAxis"] = y_ax
+            series_in = data.get("series", [])
+            option["legend"] = {"top": 28, "textStyle": {"color": theme["text"]}}
+            out = [{
+                "name": "equality (G = 0)", "type": "line",
+                "data": [[0.0, 0.0], [100.0, 100.0]],
+                "showSymbol": False, "silent": True,
+                "lineStyle": {"type": "dashed", "width": 1.6, "color": theme["text"],
+                              "opacity": 0.45},
+                "itemStyle": {"color": theme["text"]},
+                "tooltip": {"show": False},
+            }]
+            for si, s in enumerate(series_in):
+                color = theme["palette"][si % len(theme["palette"])]
+                g = s.get("gini", 0.0)
+                lbl = f"{s.get('name', '')} (Gini = {g:.3f})"
+                out.append({
+                    "name": lbl, "type": "line",
+                    "data": s.get("points", []), "smooth": True,
+                    "showSymbol": False,
+                    "lineStyle": {"width": 2.6, "color": color},
+                    "itemStyle": {"color": color},
+                    "areaStyle": {"color": color,
+                                  "opacity": 0.16 if len(series_in) == 1 else 0.08},
+                })
+            option["series"] = out
 
         else:
             raise ValueError(f"Unsupported chart type: {kind}")
