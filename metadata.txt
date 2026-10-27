@@ -32,6 +32,7 @@ deprecated=False
 hasProcessingProvider=no
 license=GPL-3.0-or-later
 changelog=
+    0.19.1 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.
     0.19.0 - Added three analytical chart types across all four engines (20 total): Lollipop (Cleveland dot-and-stem ranking), ECDF (empirical cumulative distribution step curve), and Lorenz and Gini inequality curve with exact Gini coefficients per group. Extended Facet by small multiples to Vega-Lite and matplotlib so all four engines support faceted grids. Added std and iqr dispersion aggregations, Gini concentration insights in Explore and Suggest, and clamped KDE and Violin support at zero for non-negative data.
     0.18.0 - Small multiples: Facet by splits bar, line, area, scatter, bubble and pie charts into panels on one shared axis and colour key. Animated Explore: one play bar steps the dashboard's count bars, histograms, scatter and row/completeness cards through a field. Fixed clipped stacked axes and axes ending on raw values.
     0.17.1 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
