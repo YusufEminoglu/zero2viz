@@ -132,7 +132,7 @@ def build_guide_html(suggestions: list | None = None,
 <nav>
   <div class="brand"><b>02</b>viz</div>
   <div class="tag">Geospatial Visualization Studio</div>
-  <a class="docs" href="https://yusufeminoglu.github.io/zero2viz/" target="_blank">🌐 Online docs &amp; manual</a>
+  <a class="docs" href="https://geophilo.com/zero2viz/" target="_blank">🌐 Online docs &amp; manual</a>
   {foryou_link}
   {toc}
 </nav>
