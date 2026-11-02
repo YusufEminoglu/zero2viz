@@ -2,24 +2,31 @@
 """02viz studio dock — charts, map diagrams and labels under one roof.
 
 A shared Data card (layer / selected-only / external table) above three tabs:
-**Charts** (engine/type/theme/fields/shaping → embedded viewer with a
-chart→map selection bridge; spec assembly in ``_build_spec``), **Map
-diagrams** (native on-canvas diagrams with optional normalisation) and
-**Labels** (expression-driven, formatted, multi-line labels). A header
-**Guide** button shows the offline user guide and **Suggest** asks the
-offline assistant for the most suitable chart. Rendering goes through the engine
+**Charts** (type/fields/style first, engine and the rest folded under
+**Advanced** → embedded viewer with a chart→map selection bridge; spec
+assembly in ``_build_spec``), **Map diagrams** (native on-canvas diagrams with
+optional normalisation) and **Labels** (expression-driven, formatted,
+multi-line labels). The primary action of the open tab (Render chart +
+Export menu, or Apply / Clear) and the status line are pinned under the
+scrolling panel, so they stay in reach at any dock height. A header **Guide**
+button shows the offline user guide and **Suggest** asks the offline
+assistant for the most suitable chart. Rendering goes through the engine
 registry, so engines never touch Qt; the pure logic lives in ``core``.
 """
 from __future__ import annotations
 
+import contextlib
+import html as html_lib
 import json
 import os
+import re
+import shutil
 import tempfile
 import time
 from contextlib import suppress
 
-from qgis.PyQt.QtCore import Qt, QTimer, QSettings, QSize
-from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPixmap
+from qgis.PyQt.QtCore import QEvent, QObject, Qt, QPoint, QRect, QTimer, QSettings, QSize
+from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -33,21 +40,26 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QListView,
+    QMenu,
     QMessageBox,
     QInputDialog,
     QPushButton,
     QPlainTextEdit,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
+    QStackedWidget,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import QgsFieldProxyModel
+from qgis.core import QgsApplication, QgsFieldProxyModel, QgsProject, QgsVectorLayer
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 
 from ..core import (
@@ -55,17 +67,20 @@ from ..core import (
     overlays, presets, profile as profiler, requirements, stats, transform,
 )
 from ..core.export_utils import (
-    atomic_output,
     atomic_write_text,
     ensure_extension,
     human_size,
 )
 from ..engines import engines
-from ..engines.base import DEFAULT_THEME, PALETTES, THEMES, webkit_fallback_page
+from ..engines.base import DEFAULT_THEME, HORIZONTAL_TYPES, PALETTES, THEMES
 from ..engines.dashboard import build_dashboard
 from ..engines.guide import build_guide_html
+from . import exports
 from .bridge import SelectionBridge
-from .webview import attach_title_listener, create_chart_view, run_js, show_html_file
+from .webview import (
+    attach_title_listener, create_chart_view, eval_js, run_js, show_html_file,
+    show_html_text,
+)
 
 # above this many selected features, skip the cross-filter highlight (the
 # injected id list would dwarf any visual benefit)
@@ -75,6 +90,22 @@ MAX_HIGHLIGHT_IDS = 20000
 CUSTOM_PALETTE_LABEL = "Custom…"
 
 PRESET_SETTINGS_KEY = "zero2viz/chart_presets"
+# the last chart setup, restored when the panel opens again (also after a
+# QGIS restart): the preset fields plus the layer id and panel state
+LAST_SETUP_KEY = "zero2viz/last_setup"
+PNG_SIZE_KEY = "zero2viz/png_size"
+# one rendered page per dock, rewritten in place and removed on unload
+CHART_FILE_NAME = "chart.html"
+# edits on the charted layer arrive in bursts (one signal per feature/field);
+# redraw once they settle
+STALE_REDRAW_MS = 600
+
+# primary action colour: white text on it is 5.1:1 (WCAG AA needs 4.5:1;
+# the old #2a8f85 was 3.9:1)
+_ACCENT = "#237a72"
+_ACCENT_HOVER = "#1d6a63"
+# placeholder / hint text: 5.3:1 on white (the old #8d99ae was 2.9:1)
+_MUTED_TEXT = "#5f6e76"
 
 # 💡 Suggest: how many numeric fields it will ever pull into Python for one
 # click, independent of core.assistant's O(fields^2) scan cap — a wide
@@ -92,8 +123,18 @@ _FACET_CAP = 12  # small-multiple panels; larger groups kept, the rest reported
 # (the "black dropdown + unreadable label" bug). The remedy is to pin every text
 # and input colour here, so the panel reads identically under any host theme.
 _DOCK_QSS = """
-QWidget#o2vizRoot { background: #fbfbfd; }
+QWidget#o2vizRoot, QWidget#o2vizContent { background: #fbfbfd; }
 QWidget#o2vizTabPage { background: #ffffff; }
+QWidget#o2vizActionBar { background: #fbfbfd; }
+QToolButton#o2vizFold { border: none; background: transparent; color: #16323f;
+                        font-weight: 600; padding: 4px 2px; }
+QToolButton#o2vizFold:hover { color: #237a72; }
+QToolButton#o2vizExportMenu {
+    background: #eef1f4; color: #1f333d; border: 1px solid #cbd3da;
+    border-radius: 6px; padding: 6px 10px; }
+QToolButton#o2vizExportMenu:hover { background: #e4e9ed; }
+QToolButton#o2vizExportMenu:disabled { background: #f2f4f6; color: #9aa6ae;
+                                       border-color: #e2e6ea; }
 QLabel#o2vizTitle { font-size: 18px; font-weight: 700; color: #16323f; }
 QLabel#o2vizTagline { color: #5b6b73; }
 QFrame.o2vizCard {
@@ -146,22 +187,42 @@ QTabBar::tab:hover:!selected { background: #e7ebee; color: #16323f; }
 /* ── text + form labels (pinned dark so they never inherit a light palette
       text colour and vanish on the white cards) ── */
 QLabel { color: #2c3e46; background: transparent; }
-QCheckBox { color: #2c3e46; background: transparent; spacing: 6px; }
+/* colour only on QCheckBox itself: any background/border here makes Qt draw
+   the box through the stylesheet and the indicator vanishes (TRAPS 3.7). The
+   indicator gets its own rules below, so it reads the same under Fusion,
+   windowsvista and the Night Mapping / Blend of Gray themes (which otherwise
+   paint a dark box on the white card). */
+QCheckBox { color: #2c3e46; }
 QCheckBox:disabled { color: #9aa6ae; }
+QCheckBox::indicator, QListWidget::indicator {
+    width: 13px; height: 13px; border: 1px solid #6f7f88; border-radius: 3px;
+    background-color: #ffffff; }
+/* the themes paint the unticked box with an image (Blend of Gray) or a dark
+   fill (Night Mapping) at this specificity; the panel's own rules win */
+QCheckBox::indicator:unchecked, QListWidget::indicator:unchecked {
+    background-color: #ffffff; image: none; }
+QCheckBox::indicator:hover, QListWidget::indicator:hover { border-color: #237a72; }
+QCheckBox::indicator:checked, QListWidget::indicator:checked {
+    background-color: #237a72; border-color: #237a72; @CHECK_IMAGE@ }
+QCheckBox::indicator:disabled, QListWidget::indicator:disabled,
+QCheckBox::indicator:unchecked:disabled, QListWidget::indicator:unchecked:disabled {
+    background-color: #eef1f3; border-color: #c5ced4; image: none; }
+QCheckBox::indicator:checked:disabled, QListWidget::indicator:checked:disabled {
+    background-color: #a9c8c4; border-color: #a9c8c4; }
 
 /* ── inputs: white field, dark text, teal selection — independent of the host
       palette so the dropdown popup is never black again ── */
-QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QListWidget {
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QListWidget, QPlainTextEdit {
     background: #ffffff;
     color: #16323f;
     border: 1px solid #cbd3da;
     border-radius: 6px;
     padding: 3px 6px;
-    selection-background-color: #2a8f85;
+    selection-background-color: #237a72;
     selection-color: #ffffff;
 }
 QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
-    border: 1px solid #2a8f85;
+    border: 1px solid #237a72;
 }
 QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled,
 QDoubleSpinBox:disabled {
@@ -172,13 +233,13 @@ QComboBox QAbstractItemView {
     background: #ffffff;
     color: #16323f;
     border: 1px solid #cbd3da;
-    selection-background-color: #2a8f85;
+    selection-background-color: #237a72;
     selection-color: #ffffff;
     outline: 0;
 }
 QComboBox QAbstractItemView::item { min-height: 22px; padding: 2px 4px; }
 QListWidget::item { color: #16323f; }
-QListWidget::item:selected { background: #2a8f85; color: #ffffff; }
+QListWidget::item:selected { background: #237a72; color: #ffffff; }
 
 /* ── secondary buttons (Load table / Clear / ↗): the primary ones set their
       own teal style in code, which wins over this neutral default ── */
@@ -193,20 +254,254 @@ QToolTip { background: #16323f; color: #ffffff; border: 1px solid #16323f;
            padding: 4px 6px; }
 """
 _RENDER_BTN_QSS = (
-    "QPushButton { background-color: #2a8f85; border: 1px solid #237a72;"
+    f"QPushButton {{ background-color: {_ACCENT}; border: 1px solid {_ACCENT_HOVER};"
     " color: #ffffff; font-weight: 600; padding: 7px 14px; border-radius: 8px; }"
-    "QPushButton:hover { background-color: #319c91; }"
+    f"QPushButton:hover {{ background-color: {_ACCENT_HOVER}; }}"
     "QPushButton:disabled { background-color: #a9c8c4; border-color: #a9c8c4; }"
 )
 # the single most-clicked action in the whole studio gets its own accent — a
 # soft "yavru ağzı" (salmon) stroke around the same teal fill, so it reads as
 # the primary action at a glance without changing its familiar colour
 _RENDER_CHART_BTN_QSS = (
-    "QPushButton { background-color: #2a8f85; border: 2px solid #f2a488;"
+    f"QPushButton {{ background-color: {_ACCENT}; border: 2px solid #f2a488;"
     " color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 8px; }"
-    "QPushButton:hover { background-color: #319c91; border-color: #f6bda8; }"
+    f"QPushButton:hover {{ background-color: {_ACCENT_HOVER}; border-color: #f6bda8; }}"
     "QPushButton:disabled { background-color: #a9c8c4; border-color: #e4c6bb; }"
 )
+
+
+def _check_image_rule() -> str:
+    """``image:`` for a ticked box: the check mark QGIS ships with its own
+    Night Mapping theme, located through ``QgsApplication.uiThemes()`` (never a
+    hard-coded install path). Without it a ticked box is still a filled teal
+    square, so the state stays readable."""
+    with suppress(Exception):  # an odd build without UI themes keeps the fill
+        folder = QgsApplication.uiThemes().get("Night Mapping", "")
+        path = os.path.join(folder, "icons", "qcheckbox-checked.svg") if folder else ""
+        if path and os.path.isfile(path):
+            return 'image: url("%s");' % path.replace("\\", "/")
+    return ""
+
+
+def _dock_qss() -> str:
+    return _DOCK_QSS.replace("@CHECK_IMAGE@", _check_image_rule())
+
+
+def _webkit_card(engine_label: str, chart_type: str = "") -> str:
+    """The panel page for an engine the legacy QtWebKit view cannot run (no
+    QtWebEngine in this QGIS). Plain HTML/CSS so the old fork renders it; the
+    real chart is still exported and opened from the Export menu."""
+    engine = html_lib.escape(engine_label)
+    what = html_lib.escape(f"{chart_type} chart" if chart_type else "chart")
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Open in browser"
+        "</title><style>html,body{margin:0;padding:0;background:#fbfbfd;"
+        "color:#16323f;font-family:'Segoe UI',system-ui,Arial,sans-serif}"
+        ".card{max-width:440px;margin:24px auto;background:#fff;border:1px solid"
+        " #d8dee4;border-radius:12px;padding:18px 20px}h2{margin:0 0 10px;"
+        "font-size:16px;color:#237a72}p{margin:8px 0;font-size:13px;"
+        "line-height:1.5}.muted{color:#5f6e76;font-size:12px}</style></head>"
+        f"<body><div class='card'><h2>Open this {what} in your browser</h2>"
+        f"<p>The <b>{engine}</b> engine needs a modern web view. This QGIS build"
+        " only ships the legacy <b>QtWebKit</b> viewer, which cannot run it, so"
+        " the panel would stay blank.</p><p>Your chart is ready: choose"
+        " <b>Export &#9662; &rarr; Open in browser</b> under the panel, or"
+        " <b>Export &#9662; &rarr; HTML file</b>.</p><p class='muted'>For a chart"
+        " inside the panel now, pick the <b>ECharts</b> engine under Advanced."
+        f" To run {engine} here, install QtWebEngine for QGIS (the"
+        " python3-qt5-webengine package in OSGeo4W).</p></div></body></html>")
+
+
+class _FlowLayout(QLayout):
+    """Lays its items out left to right and wraps onto new lines, so a row of
+    check boxes or colour swatches never forces the panel wider than the
+    dock (the Qt "flow layout" example)."""
+
+    def __init__(self, parent=None, spacing: int = 6):
+        super().__init__(parent)
+        self._items: list = []
+        self._gap = spacing
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item):  # noqa: N802 (Qt override)
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):  # noqa: N802
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index):  # noqa: N802
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):  # noqa: N802
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):  # noqa: N802
+        return True
+
+    def heightForWidth(self, width):  # noqa: N802
+        return self._arrange(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):  # noqa: N802
+        super().setGeometry(rect)
+        self._arrange(rect, False)
+
+    def sizeHint(self):  # noqa: N802
+        return self.minimumSize()
+
+    def minimumSize(self):  # noqa: N802
+        size = QSize()
+        for item in self._items:
+            if not item.isEmpty():
+                size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        return size + QSize(margins.left() + margins.right(),
+                            margins.top() + margins.bottom())
+
+    def _arrange(self, rect, test_only: bool) -> int:
+        margins = self.contentsMargins()
+        area = rect.adjusted(margins.left(), margins.top(),
+                             -margins.right(), -margins.bottom())
+        x, y, line = area.x(), area.y(), 0
+        for item in self._items:
+            if item.isEmpty():
+                continue
+            hint = item.sizeHint()
+            if x > area.x() and x + hint.width() > area.right() + 1:
+                x, y, line = area.x(), y + line + self._gap, 0
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x += hint.width() + self._gap
+            line = max(line, hint.height())
+        return y + line - rect.y() + margins.bottom()
+
+
+class _Fold(QWidget):
+    """A titled section that opens and closes; closed by default so the first
+    screen leads with the layer and the fields."""
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        self.toggle = QToolButton()
+        self.toggle.setObjectName("o2vizFold")
+        self.toggle.setText(title)
+        self.toggle.setCheckable(True)
+        self.toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.toggle.toggled.connect(self.set_open)
+        lay.addWidget(self.toggle)
+        self.body = QWidget()
+        self.content = QVBoxLayout(self.body)
+        self.content.setContentsMargins(4, 0, 0, 4)
+        self.content.setSpacing(6)
+        self.body.setVisible(False)
+        lay.addWidget(self.body)
+
+    def set_open(self, on: bool) -> None:
+        on = bool(on)
+        if self.toggle.isChecked() != on:
+            self.toggle.setChecked(on)  # re-enters once through toggled
+            return
+        self.toggle.setArrowType(
+            Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
+        self.body.setVisible(on)
+
+    def is_open(self) -> bool:
+        return self.toggle.isChecked()
+
+
+def _shrinkable(combo: QComboBox) -> None:
+    """Let a combo shrink below its longest item (a long field or engine name
+    must not force the panel wider than a narrow dock)."""
+    combo.setSizeAdjustPolicy(
+        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(6)
+    policy = combo.sizePolicy()
+    policy.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
+    combo.setSizePolicy(policy)
+
+
+class _PlaceholderTint(QObject):
+    """Keeps placeholder text at 5.3:1 on the white fields.
+
+    The stylesheet engine derives placeholder text from ``color`` at half
+    opacity (about 3:1 here) and re-applies it on every polish, so a palette
+    set once is overwritten. This filter sets the colour again right after
+    each polish (the Polish event follows the style's own polish)."""
+
+    def eventFilter(self, obj, event):  # noqa: N802 (Qt override)
+        if event.type() in (QEvent.Type.Polish, QEvent.Type.StyleChange):
+            palette = obj.palette()
+            color = QColor(_MUTED_TEXT)
+            if palette.color(QPalette.ColorRole.PlaceholderText) != color:
+                palette.setColor(QPalette.ColorRole.PlaceholderText, color)
+                obj.setPalette(palette)
+        return False
+
+
+def _readable_placeholder(widget, tint: QObject) -> None:
+    widget.installEventFilter(tint)
+    palette = widget.palette()
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(_MUTED_TEXT))
+    widget.setPalette(palette)
+
+
+_RULE_VALUE = re.compile(
+    r"""^\s*"?[^"=<>!]+?"?\s*=\s*(?:'((?:[^']|'')*)'|(-?\d+(?:\.\d+)?))\s*$""")
+
+
+def layer_category_colors(layer) -> tuple[dict, str]:
+    """``{category label: "#rrggbb"}`` from a categorized or rule-based style.
+
+    Keys are the category values formatted the way chart categories are
+    (``transform._key``) plus the legend labels, so a chart on the styled field
+    finds its categories whichever form the engine meets. Returns the map and
+    a note for the status line when nothing could be taken."""
+    renderer = layer.renderer() if hasattr(layer, "renderer") else None
+    if renderer is None:
+        return {}, "this layer has no symbol style"
+    kind = renderer.type()
+    colors: dict[str, str] = {}
+    if kind == "categorizedSymbol":
+        categories = renderer.categories()  # keep the list alive while reading
+        for category in categories:
+            symbol = category.symbol()
+            if symbol is None or not category.renderState():
+                continue
+            color = symbol.color().name()
+            values = category.value()
+            values = values if isinstance(values, list) else [values]
+            for value in values:
+                if value is None or value == "" or (
+                        hasattr(value, "isNull") and value.isNull()):
+                    continue  # the "all other values" class
+                colors.setdefault(transform._key(value), color)
+            label = category.label()
+            if label:
+                colors.setdefault(str(label), color)
+    elif kind == "RuleRenderer":
+        for rule in renderer.rootRule().descendants():
+            symbol = rule.symbol()
+            if symbol is None or not rule.active():
+                continue
+            color = symbol.color().name()
+            match = _RULE_VALUE.match(rule.filterExpression() or "")
+            if match:
+                value = match.group(1).replace("''", "'") if match.group(1) is not None \
+                    else match.group(2)
+                colors.setdefault(value, color)
+            if rule.label():
+                colors.setdefault(str(rule.label()), color)
+    else:
+        return {}, "the layer's style has no categories (use a categorized or rule-based style)"
+    if not colors:
+        return {}, "the layer's style has no coloured categories"
+    return colors, ""
 
 CHART_TYPES = [
     ("bar", "Bar chart"),
@@ -286,8 +581,8 @@ class StudioDockWidget(QDockWidget):
         self._view_kind: str | None = None
         self._view = None
         self._view_slot: QVBoxLayout | None = None
-        self._last_html: str | None = None
-        self._last_path: str | None = None
+        self._last_html: str | None = None   # the last real chart/dashboard page
+        self._last_path: str | None = None   # the one page file of this dock
         self._last_extraction_info = None
         self._tmp_dir: str | None = None
         self._watched_layer = None
@@ -296,9 +591,27 @@ class StudioDockWidget(QDockWidget):
         self._custom_spec_enabled = False
         self._prev_palette_index = 0
         self._preset_library: dict[str, dict] = {}
+        # what the panel shows: None | "chart" | "explore" | "guide" | "card"
+        # (card = the legacy-WebKit explainer standing in for a real chart)
+        self._page_kind: str | None = None
+        self._page_version = 0
+        self._embedded = False
+        self._exportable = False      # the shown page answers o2vizExport
+        self._chart_current = False   # False after a failed render
+        self._last_action = "render"  # what a stale redraw repeats
+        self._charted_layer_id: str | None = None
+        self._charted_links: list = []
+        self._stale = False
+        self._detach_downloads = None
+        self._cleaned = False
+        self._stale_timer = QTimer(self)
+        self._stale_timer.setSingleShot(True)
+        self._stale_timer.setInterval(STALE_REDRAW_MS)
+        self._stale_timer.timeout.connect(self._redraw_stale)
         self.bridge = SelectionBridge()
         self.bridge.on_selected = self._on_chart_drove_selection
         self._build_ui()
+        self._restore_last_setup()
 
     # ───────────────────────── UI ─────────────────────────
 
@@ -307,9 +620,11 @@ class StudioDockWidget(QDockWidget):
         card.setProperty("class", "o2vizCard")
         lay = QVBoxLayout(card)
         lay.setContentsMargins(12, 10, 12, 10)
-        head = QLabel(title)
-        head.setProperty("class", "o2vizCardTitle")
-        lay.addWidget(head)
+        if title:
+            head = QLabel(title)
+            head.setProperty("class", "o2vizCardTitle")
+            head.setWordWrap(True)
+            lay.addWidget(head)
         return card, lay
 
     def _field_combo(self) -> QgsFieldComboBox:
@@ -350,9 +665,16 @@ class StudioDockWidget(QDockWidget):
             self.tabs.setTabIcon(i, self._tab_dot_icon if i == current else QIcon())
 
     def _build_ui(self) -> None:
+        # outer = scrolling panel + the pinned action bar and status line
+        outer_widget = QWidget()
+        outer_widget.setObjectName("o2vizRoot")
+        outer_widget.setStyleSheet(_dock_qss())
+        outer = QVBoxLayout(outer_widget)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
         container = QWidget()
-        container.setObjectName("o2vizRoot")
-        container.setStyleSheet(_DOCK_QSS)
+        container.setObjectName("o2vizContent")
         root = QVBoxLayout(container)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
@@ -365,9 +687,9 @@ class StudioDockWidget(QDockWidget):
         head_text.addWidget(title)
         tagline = QLabel("Zero2Visual · from zero to elegant visuals")
         tagline.setObjectName("o2vizTagline")
+        tagline.setWordWrap(True)
         head_text.addWidget(tagline)
-        head_row.addLayout(head_text)
-        head_row.addStretch(1)
+        head_row.addLayout(head_text, 1)
         self.guide_btn = QPushButton("❔ Guide")
         self.guide_btn.setToolTip(
             "Open the full 02viz user guide — what every part does and how to "
@@ -430,39 +752,118 @@ class StudioDockWidget(QDockWidget):
             self.tabs.addTab(page, label)
         # a small teal dot marks the active tab (see _dot_icon/_sync_tab_dot)
         self.tabs.setIconSize(QSize(8, 8))
-        self._tab_dot_icon = self._dot_icon("#2a8f85")
+        self._tab_dot_icon = self._dot_icon(_ACCENT)
         self.tabs.currentChanged.connect(self._sync_tab_dot)
         self._sync_tab_dot()
         root.addWidget(self.tabs, 1)
 
-        self.status = QLabel("Ready")
-        self.status.setObjectName("o2vizStatus")
-        root.addWidget(self.status)
-
         # The dock can be far shorter than the panel's natural content height
         # (many form rows across three tabs) — without this, QGIS simply
         # squashes everything and the bottom rows become unreachable. Wrap
-        # the whole panel in a scroll area: widgetResizable=True still lets
-        # the tab area stretch to fill a tall dock (root's stretch factor
-        # below is honoured whenever there's spare height), but a short dock
-        # scrolls instead of clipping.
+        # the panel in a scroll area: widgetResizable=True still lets the tab
+        # area stretch to fill a tall dock, but a short dock scrolls instead
+        # of clipping. Every row can shrink to a 350 px dock (wrapping rows,
+        # shrinkable combos, exports in one menu), so the horizontal bar
+        # stays AsNeeded only as a last resort for an unusual font.
         scroll = QScrollArea()
         scroll.setObjectName("o2vizScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        # AsNeeded, not AlwaysOff: widgetResizable=True does not shrink a
-        # child below its own minimum-size-hint, so if anything inside ever
-        # needs more width than a narrow dock offers (verified for the tab
-        # bar; possible for other rows too), disabling this would make that
-        # excess silently unreachable rather than a click-and-drag away.
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("QScrollArea#o2vizScroll { background: #fbfbfd; border: none; }")
         scroll.setWidget(container)
-        self.setWidget(scroll)
+        self._scroll = scroll
+        outer.addWidget(scroll, 1)
+
+        # pinned under the scrolling panel: the open tab's primary action and
+        # the status line stay in reach at any dock height
+        bar = QWidget()
+        bar.setObjectName("o2vizActionBar")
+        bar_lay = QVBoxLayout(bar)
+        bar_lay.setContentsMargins(10, 6, 10, 6)
+        bar_lay.setSpacing(4)
+        self.action_stack = QStackedWidget()
+        self.action_stack.addWidget(self._build_chart_actions())
+        self.action_stack.addWidget(self._build_apply_actions(
+            self._apply_diagram, self._clear_diagram, "Remove diagrams from this layer"))
+        self.action_stack.addWidget(self._build_apply_actions(
+            self._apply_labels, self._clear_labels, "Remove labels from this layer"))
+        self.action_stack.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                        QSizePolicy.Policy.Maximum)
+        bar_lay.addWidget(self.action_stack)
+        self.status = QLabel("Ready")
+        self.status.setObjectName("o2vizStatus")
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        bar_lay.addWidget(self.status)
+        outer.addWidget(bar, 0)
+        self.tabs.currentChanged.connect(self.action_stack.setCurrentIndex)
+
+        for combo in outer_widget.findChildren(QComboBox):
+            _shrinkable(combo)
+        self._placeholder_tint = _PlaceholderTint(self)
+        for edit in outer_widget.findChildren(QLineEdit) + outer_widget.findChildren(
+                QPlainTextEdit):
+            _readable_placeholder(edit, self._placeholder_tint)
+        self.setWidget(outer_widget)
         self._on_layer_changed(self.layer_combo.currentLayer())
         self._sync_engine_types()
         self._sync_controls()
         self._sync_swatches()
+        self._sync_export_actions()
+
+    def _build_chart_actions(self) -> QWidget:
+        page = QWidget()
+        row = QHBoxLayout(page)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        self.render_btn = QPushButton("Render chart")
+        self.render_btn.setStyleSheet(_RENDER_CHART_BTN_QSS)
+        self.render_btn.setToolTip("Draw the chart from the settings above")
+        self.render_btn.clicked.connect(self._render)
+        row.addWidget(self.render_btn, 1)
+        # every export in one menu (the old row of eight buttons made the
+        # panel 750-800 px wide — GitHub issue #2)
+        self.export_menu_btn = QToolButton()
+        self.export_menu_btn.setObjectName("o2vizExportMenu")
+        self.export_menu_btn.setText("Export ▾")
+        self.export_menu_btn.setToolTip("Save or open the chart shown in the panel")
+        self.export_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(self.export_menu_btn)
+        self.export_btn = menu.addAction("HTML file (interactive)…")
+        self.export_btn.triggered.connect(self._export_html)
+        self.export_svg_btn = menu.addAction("SVG (vector)…")
+        self.export_svg_btn.triggered.connect(self._export_svg)
+        self.export_png_btn = menu.addAction("PNG image…")
+        self.export_png_btn.triggered.connect(self._export_png)
+        self.export_pdf_btn = menu.addAction("PDF (vector)…")
+        self.export_pdf_btn.triggered.connect(self._export_pdf)
+        menu.addSeparator()
+        self.browser_btn = menu.addAction("Open in browser ↗")
+        self.browser_btn.setToolTip(
+            "Open the current chart in your system web browser "
+            "(use this if the embedded panel stays blank)")
+        self.browser_btn.triggered.connect(self._open_in_browser)
+        menu.setToolTipsVisible(True)
+        self.export_menu = menu
+        self.export_menu_btn.setMenu(menu)
+        row.addWidget(self.export_menu_btn, 0)
+        return page
+
+    def _build_apply_actions(self, apply_slot, clear_slot, clear_tip: str) -> QWidget:
+        page = QWidget()
+        row = QHBoxLayout(page)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        apply_btn = QPushButton("Apply to layer")
+        apply_btn.setStyleSheet(_RENDER_BTN_QSS)
+        apply_btn.clicked.connect(apply_slot)
+        row.addWidget(apply_btn, 1)
+        clear_btn = QPushButton("Clear")
+        clear_btn.setToolTip(clear_tip)
+        clear_btn.clicked.connect(clear_slot)
+        row.addWidget(clear_btn, 0)
+        return page
 
     # ── shared Data card ──
 
@@ -471,8 +872,9 @@ class StudioDockWidget(QDockWidget):
         self.layer_combo = QgsMapLayerComboBox()
         self.layer_combo.setFilters(_vector_filter())
         self.layer_combo.layerChanged.connect(self._on_layer_changed)
+        QgsProject.instance().layersAdded.connect(self._on_project_layers_added)
         data_lay.addWidget(self.layer_combo)
-        row = QHBoxLayout()
+        row = _FlowLayout(spacing=10)
         self.selected_only = QCheckBox("Only selected features")
         row.addWidget(self.selected_only)
         self.auto_refresh = QCheckBox("Live: redraw on selection")
@@ -489,37 +891,85 @@ class StudioDockWidget(QDockWidget):
     # ── Charts tab: the visualization studio ──
 
     def _build_charts_tab(self) -> QWidget:
+        """Charts tab, in the order a first-time user needs it: one-click
+        Suggest / Explore, then type and fields, then style. The engine and
+        every refinement live under "Advanced" (folded), the Explore tiles
+        under "Explore options"; the chart view sits at the bottom and the
+        panel scrolls to it after each render."""
         tab = QWidget()
         outer = QVBoxLayout(tab)
         outer.setContentsMargins(0, 8, 0, 0)
         outer.setSpacing(8)
 
+        quick = QHBoxLayout()
+        quick.setSpacing(6)
+        self.suggest_btn = QPushButton("💡 Suggest")
+        self.suggest_btn.setToolTip(
+            "Let 02viz pick the most insightful chart for this layer's fields, "
+            "configure the controls and render it")
+        self.suggest_btn.clicked.connect(self._suggest_chart)
+        quick.addWidget(self.suggest_btn, 1)
+        self.explore_btn = QPushButton("✨ Explore layer")
+        self.explore_btn.setToolTip(
+            "One click: profile every field and build a full interactive dashboard")
+        self.explore_btn.setStyleSheet(
+            "QPushButton { background-color: #16323f; border: 1px solid #16323f;"
+            " color: #ffffff; font-weight: 600; padding: 6px 10px; border-radius: 8px; }"
+            "QPushButton:hover { background-color: #1f4254; }")
+        self.explore_btn.clicked.connect(self._explore)
+        quick.addWidget(self.explore_btn, 1)
+        outer.addLayout(quick)
+
         chart_card, chart_lay = self._card("Chart")
         form = QFormLayout()
         form.setHorizontalSpacing(8)
         form.setVerticalSpacing(6)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
-        # Engine first: the engine decides which chart types are drawable, so
-        # the user picks the renderer, then chooses from its supported types.
+        # the engine decides which chart types are drawable; it is created
+        # first (its signal wired once type_combo exists) and shown under
+        # Advanced — ECharts draws every type, so most users never need it
         self.engine_combo = QComboBox()
         for eng in engines():
             label = eng.label if eng.available() else f"{eng.label}  (install…)"
             self.engine_combo.addItem(label, eng.id)
         self.engine_combo.setToolTip(
             "Vendored JS engines work offline with no setup; advanced engines "
-            "(matplotlib/seaborn) install on demand for publication-grade static charts")
-        form.addRow("Engine", self.engine_combo)
+            "(matplotlib/seaborn) need the library in the QGIS Python for "
+            "publication-grade static charts")
 
         self.type_combo = QComboBox()
         for key, label in CHART_TYPES:
             self.type_combo.addItem(label, key)
         self.type_combo.currentIndexChanged.connect(self._sync_controls)
         form.addRow("Type", self.type_combo)
-
-        # wire the engine→type filter only now that type_combo exists
-        # (engine_combo was populated above without a connected slot, so no
-        # premature fire while type_combo was still missing)
         self.engine_combo.currentIndexChanged.connect(self._sync_engine_types)
+
+        self.x_combo = self._field_combo()
+        form.addRow("X / Category", self.x_combo)
+        self.y_combo = self._field_combo()
+        form.addRow("Y", self.y_combo)
+        self.group_combo = self._field_combo()
+        self.group_combo.setToolTip("Split into one colored series per value (or sub-group for treemap/sunburst)")
+        form.addRow("Group / Color", self.group_combo)
+        self.value_combo = self._field_combo()
+        self.value_combo.setToolTip("Bubble size, heatmap cell value or treemap weight")
+        form.addRow("Value / Size", self.value_combo)
+
+        self.agg_combo = QComboBox()
+        self.agg_combo.addItems(list(stats.AGGREGATIONS))
+        form.addRow("Aggregate", self.agg_combo)
+
+        self.bins_spin = QSpinBox()
+        self.bins_spin.setRange(2, 200)
+        self.bins_spin.setValue(20)
+        form.addRow("Bins", self.bins_spin)
+
+        self.title_edit = QLineEdit()
+        self.title_edit.setPlaceholderText("(layer name)")
+        self.title_edit.setToolTip("Override the chart title; empty uses the layer name")
+        form.addRow("Title", self.title_edit)
 
         self.theme_combo = QComboBox()
         for name in THEMES:
@@ -538,86 +988,76 @@ class StudioDockWidget(QDockWidget):
         # connect after populating so the addItem loop doesn't fire the handler
         self.palette_combo.currentIndexChanged.connect(self._on_palette_changed)
         form.addRow("Colors", self.palette_combo)
+        chart_lay.addLayout(form)
 
         # inline, embedded swatch editor — click a swatch to recolour, +/− to
         # resize the palette; any edit switches to a custom palette. No modal.
+        # A wrapping row, so 16 swatches never widen the panel.
         self._swatch_host = QWidget()
-        self._swatch_row = QHBoxLayout(self._swatch_host)
-        self._swatch_row.setContentsMargins(0, 0, 0, 0)
-        self._swatch_row.setSpacing(4)
-        form.addRow("", self._swatch_host)
+        self._swatch_row = _FlowLayout(self._swatch_host, spacing=4)
+        chart_lay.addWidget(self._swatch_host)
 
-        self.title_edit = QLineEdit()
-        self.title_edit.setPlaceholderText("(layer name)")
-        self.title_edit.setToolTip("Override the chart title; empty uses the layer name")
-        form.addRow("Title", self.title_edit)
+        self.layer_colors_check = QCheckBox("Use layer colours")
+        self.layer_colors_check.setToolTip(
+            "Colour the chart's categories with the layer's own symbol colours "
+            "(categorized or rule-based style). Categories the style does not "
+            "list keep the palette colours.")
+        chart_lay.addWidget(self.layer_colors_check)
+        outer.addWidget(chart_card)
 
-        self.custom_spec_check = QCheckBox("Custom Vega-Lite spec")
-        self.custom_spec_check.setToolTip("Edit the generated Vega-Lite JSON before rendering")
-        self.custom_spec_check.toggled.connect(self._sync_custom_spec)
-        form.addRow("Vega-Lite", self.custom_spec_check)
-        self.custom_spec_edit = QPlainTextEdit()
-        self.custom_spec_edit.setFixedHeight(150)
-        self.custom_spec_edit.setPlaceholderText("Paste or edit a Vega-Lite JSON object")
-        self.custom_spec_edit.setVisible(False)
-        form.addRow("Spec JSON", self.custom_spec_edit)
-
-        self.x_combo = self._field_combo()
-        form.addRow("X / Category", self.x_combo)
-        self.y_combo = self._field_combo()
-        form.addRow("Y", self.y_combo)
-        self.group_combo = self._field_combo()
-        self.group_combo.setToolTip("Split into one colored series per value (or sub-group for treemap/sunburst)")
-        form.addRow("Group / Color", self.group_combo)
-        self.value_combo = self._field_combo()
-        self.value_combo.setToolTip("Bubble size, heatmap cell value or treemap weight")
-        form.addRow("Value / Size", self.value_combo)
-
-        self.animate_combo = self._field_combo()
-        self.animate_combo.setToolTip(
-            "Play the chart through this field's values — a bar-chart race, "
-            "Gapminder bubbles, composition over the years. ECharts / Plotly; "
-            "bar · line · area · scatter · bubble · pie.")
-        form.addRow("Animate by ▶", self.animate_combo)
-        self.speed_combo = QComboBox()
-        for _lbl, _ms in (("Slow", 1600), ("Medium", 900), ("Fast", 450)):
-            self.speed_combo.addItem(_lbl, _ms)
-        self.speed_combo.setCurrentIndex(1)
-        self.speed_combo.setToolTip("Animation speed (time spent on each frame)")
-        form.addRow("Play speed", self.speed_combo)
-        self.facet_combo = self._field_combo()
-        self.facet_combo.setToolTip(
-            "Small multiples: one panel per value of this field, all sharing one "
-            f"value axis and one colour key. Up to {_FACET_CAP} panels (the largest "
-            "groups). All engines; bar · line · area · scatter · bubble · pie. "
-            "Clear Animate by to use it.")
-        form.addRow("Facet by ▦", self.facet_combo)
-        self.animate_combo.fieldChanged.connect(self._sync_animate)
-        self.facet_combo.fieldChanged.connect(self._sync_animate)
-
-        self.agg_combo = QComboBox()
-        self.agg_combo.addItems(list(stats.AGGREGATIONS))
-        form.addRow("Aggregate", self.agg_combo)
-
-        self.bins_spin = QSpinBox()
-        self.bins_spin.setRange(2, 200)
-        self.bins_spin.setValue(20)
-        form.addRow("Bins", self.bins_spin)
+        # ── Advanced (folded): engine, ordering, overlays, animation, facets,
+        #    custom Vega-Lite spec and presets ──
+        adv_card, adv_lay = self._card("")
+        adv_lay.setContentsMargins(10, 4, 10, 6)
+        self.advanced_fold = _Fold("Advanced")
+        self.advanced_fold.toggle.setToolTip(
+            "Engine, ordering, reference lines, animation, small multiples, "
+            "a custom Vega-Lite spec and saved presets")
+        adv_lay.addWidget(self.advanced_fold)
+        afl = self.advanced_fold.content
+        aform = QFormLayout()
+        aform.setHorizontalSpacing(8)
+        aform.setVerticalSpacing(6)
+        aform.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        aform.addRow("Engine", self.engine_combo)
 
         self.topn_spin = QSpinBox()
         self.topn_spin.setRange(0, 200)
         self.topn_spin.setValue(0)
         self.topn_spin.setSpecialValueText("all")
         self.topn_spin.setToolTip("Keep the N largest categories, collapse the rest into 'Other'")
-        form.addRow("Top N", self.topn_spin)
+        aform.addRow("Top N", self.topn_spin)
 
         self.sort_combo = QComboBox()
         self.sort_combo.addItem("natural order", "natural")
         self.sort_combo.addItem("value ↓", "value_desc")
         self.sort_combo.addItem("value ↑", "value_asc")
-        form.addRow("Sort", self.sort_combo)
+        aform.addRow("Sort", self.sort_combo)
 
-        flags = QHBoxLayout()
+        self.animate_combo = self._field_combo()
+        self.animate_combo.setToolTip(
+            "Play the chart through this field's values — a bar-chart race, "
+            "Gapminder bubbles, composition over the years. ECharts / Plotly; "
+            "bar · line · area · scatter · bubble · pie.")
+        aform.addRow("Animate by ▶", self.animate_combo)
+        self.speed_combo = QComboBox()
+        for _lbl, _ms in (("Slow", 1600), ("Medium", 900), ("Fast", 450)):
+            self.speed_combo.addItem(_lbl, _ms)
+        self.speed_combo.setCurrentIndex(1)
+        self.speed_combo.setToolTip("Animation speed (time spent on each frame)")
+        aform.addRow("Play speed", self.speed_combo)
+        self.facet_combo = self._field_combo()
+        self.facet_combo.setToolTip(
+            "Small multiples: one panel per value of this field, all sharing one "
+            f"value axis and one colour key. Up to {_FACET_CAP} panels (the largest "
+            "groups). All engines; bar · line · area · scatter · bubble · pie. "
+            "Clear Animate by to use it.")
+        aform.addRow("Facet by ▦", self.facet_combo)
+        self.animate_combo.fieldChanged.connect(self._sync_animate)
+        self.facet_combo.fieldChanged.connect(self._sync_animate)
+        afl.addLayout(aform)
+
+        flags = _FlowLayout(spacing=10)
         self.stacked_check = QCheckBox("Stacked")
         flags.addWidget(self.stacked_check)
         self.trend_check = QCheckBox("Trend line")
@@ -625,10 +1065,32 @@ class StudioDockWidget(QDockWidget):
         self.link_check = QCheckBox("Click selects on map")
         self.link_check.setChecked(True)
         flags.addWidget(self.link_check)
+        afl.addLayout(flags)
+
+        # orientation and axis direction (GitHub issue #1), plus the race order
+        axes = _FlowLayout(spacing=10)
+        self.horizontal_check = QCheckBox("Horizontal bars")
+        self.horizontal_check.setToolTip(
+            "Bars run left to right with the categories down the side, first "
+            "category on top (bar, lollipop and histogram)")
+        axes.addWidget(self.horizontal_check)
+        self.reverse_x_check = QCheckBox("Reverse X axis")
+        self.reverse_x_check.setToolTip("Flip the horizontal axis")
+        axes.addWidget(self.reverse_x_check)
+        self.reverse_y_check = QCheckBox("Reverse Y axis")
+        self.reverse_y_check.setToolTip("Flip the vertical axis")
+        axes.addWidget(self.reverse_y_check)
+        self.race_check = QCheckBox("Re-rank bars each frame")
+        self.race_check.setChecked(True)
+        self.race_check.setToolTip(
+            "Animated bar chart: sort the bars again at every frame so the "
+            "leader moves to the top (a bar-chart race). Untick to keep one order.")
+        axes.addWidget(self.race_check)
+        afl.addLayout(axes)
 
         # reference & statistics overlays (bar/line/area/scatter/bubble)
-        refs = QHBoxLayout()
-        refs.addWidget(QLabel("Reference:"))
+        afl.addWidget(QLabel("Reference lines"))
+        refs = _FlowLayout(spacing=10)
         self.ov_mean_check = QCheckBox("Mean")
         self.ov_median_check = QCheckBox("Median")
         self.ov_sigma_check = QCheckBox("±1σ")
@@ -646,12 +1108,18 @@ class StudioDockWidget(QDockWidget):
         self.ov_target_edit.setToolTip(
             "Draw a reference line at this value (leave blank for none)")
         refs.addWidget(self.ov_target_edit)
-        refs.addStretch(1)
+        afl.addLayout(refs)
 
-        chart_lay.addLayout(form)
-        chart_lay.addLayout(flags)
-        chart_lay.addLayout(refs)
-        outer.addWidget(chart_card)
+        self.custom_spec_check = QCheckBox("Custom Vega-Lite spec")
+        self.custom_spec_check.setToolTip(
+            "Edit the generated Vega-Lite JSON before rendering (Vega-Lite engine)")
+        self.custom_spec_check.toggled.connect(self._sync_custom_spec)
+        afl.addWidget(self.custom_spec_check)
+        self.custom_spec_edit = QPlainTextEdit()
+        self.custom_spec_edit.setFixedHeight(150)
+        self.custom_spec_edit.setPlaceholderText("Paste or edit a Vega-Lite JSON object")
+        self.custom_spec_edit.setVisible(False)
+        afl.addWidget(self.custom_spec_edit)
 
         preset_row = QHBoxLayout()
         preset_row.addWidget(QLabel("Preset"))
@@ -659,56 +1127,52 @@ class StudioDockWidget(QDockWidget):
         self.preset_combo.setToolTip(
             "Recall a saved chart setup, including fields, styling and overlays")
         preset_row.addWidget(self.preset_combo, 1)
+        afl.addLayout(preset_row)
+        preset_btns = QHBoxLayout()
         self.preset_load_btn = QPushButton("Load")
         self.preset_load_btn.clicked.connect(self._load_selected_preset)
-        preset_row.addWidget(self.preset_load_btn)
-        self.preset_save_btn = QPushButton("Save preset")
+        preset_btns.addWidget(self.preset_load_btn)
+        self.preset_save_btn = QPushButton("Save…")
+        self.preset_save_btn.setToolTip("Save the current chart setup as a preset")
         self.preset_save_btn.clicked.connect(self._save_preset)
-        preset_row.addWidget(self.preset_save_btn)
+        preset_btns.addWidget(self.preset_save_btn)
         self.preset_delete_btn = QPushButton("Delete")
         self.preset_delete_btn.clicked.connect(self._delete_preset)
-        preset_row.addWidget(self.preset_delete_btn)
-        outer.addLayout(preset_row)
+        preset_btns.addWidget(self.preset_delete_btn)
+        preset_btns.addStretch(1)
+        afl.addLayout(preset_btns)
         self.preset_combo.currentIndexChanged.connect(self._sync_preset_buttons)
         self._read_presets()
+        outer.addWidget(adv_card)
 
-        btn_row = QHBoxLayout()
-        self.render_btn = QPushButton("Render chart")
-        self.render_btn.setStyleSheet(_RENDER_CHART_BTN_QSS)
-        self.render_btn.clicked.connect(self._render)
-        btn_row.addWidget(self.render_btn, 2)
-        self.suggest_btn = QPushButton("💡 Suggest")
-        self.suggest_btn.setToolTip(
-            "Let 02viz pick the most insightful chart for this layer's fields, "
-            "configure the controls and render it")
-        self.suggest_btn.clicked.connect(self._suggest_chart)
-        btn_row.addWidget(self.suggest_btn, 1)
-        self.explore_btn = QPushButton("✨ Explore layer")
-        self.explore_btn.setToolTip(
-            "One click: profile every field and build a full interactive dashboard")
-        self.explore_btn.setStyleSheet(
-            "QPushButton { background-color: #16323f; border: 1px solid #16323f;"
-            " color: #ffffff; font-weight: 600; padding: 7px 12px; border-radius: 8px; }"
-            "QPushButton:hover { background-color: #1f4254; }")
-        self.explore_btn.clicked.connect(self._explore)
-        btn_row.addWidget(self.explore_btn, 2)
+        # ── Explore options (folded): dashboard tiles + play axis ──
+        exp_card, exp_lay = self._card("")
+        exp_lay.setContentsMargins(10, 4, 10, 6)
+        self.explore_fold = _Fold("Explore options")
+        self.explore_fold.toggle.setToolTip(
+            "Which tiles ✨ Explore layer builds, and an optional play axis")
+        exp_lay.addWidget(self.explore_fold)
+        efl = self.explore_fold.content
         self.tile_picker = QListWidget()
         self.tile_picker.setObjectName("o2vizTilePicker")
         self.tile_picker.setFlow(QListView.Flow.LeftToRight)
         self.tile_picker.setWrapping(True)
+        self.tile_picker.setResizeMode(QListView.ResizeMode.Adjust)
         self.tile_picker.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.tile_picker.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # a narrow dock wraps the tiles onto more rows than fit: scroll then
+        self.tile_picker.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.tile_picker.setMinimumHeight(58)
-        self.tile_picker.setMaximumHeight(64)
+        self.tile_picker.setMaximumHeight(110)
+        self.tile_picker.setMinimumWidth(60)
         for _label, _section in (("KPI row", "kpis"), ("Field table", "fields"), ("Count bars", "count_bars"), ("Histograms", "histograms"), ("Correlation matrix", "corr_matrix"), ("Scatter + trend", "scatter_trend"), ("Normalised box plot", "normalised_box"), ("Insights", "insights")):
             _item = QListWidgetItem(_label)
             _item.setData(Qt.ItemDataRole.UserRole, _section)
             _item.setFlags(_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             _item.setCheckState(Qt.CheckState.Checked)
             self.tile_picker.addItem(_item)
-        outer.addWidget(self.tile_picker)
+        efl.addWidget(self.tile_picker)
         explore_anim_row = QHBoxLayout()
-        explore_anim_row.addWidget(QLabel("Explore: animate by ▶"))
+        explore_anim_row.addWidget(QLabel("Animate by ▶"))
         self.explore_animate_combo = self._field_combo()
         self.explore_animate_combo.setToolTip(
             "Play the whole Explore dashboard through this field's values (years, "
@@ -716,40 +1180,16 @@ class StudioDockWidget(QDockWidget):
             "Complete cards step together on one shared play bar. The correlation "
             "matrix and box plot keep showing all rows.")
         explore_anim_row.addWidget(self.explore_animate_combo, 1)
-        outer.addLayout(explore_anim_row)
-        self.export_btn = QPushButton("Export HTML…")
-        self.export_btn.setEnabled(False)
-        self.export_btn.clicked.connect(self._export_html)
-        btn_row.addWidget(self.export_btn, 1)
-        self.export_svg_btn = QPushButton("Export SVG")
-        self.export_svg_btn.setEnabled(False)
-        self.export_svg_btn.clicked.connect(self._export_svg)
-        btn_row.addWidget(self.export_svg_btn, 1)
-        self.export_png_btn = QPushButton("Export PNG")
-        self.export_png_btn.setEnabled(False)
-        self.export_png_btn.clicked.connect(self._export_png)
-        btn_row.addWidget(self.export_png_btn, 1)
-        self.export_pdf_btn = QPushButton("Export PDF")
-        self.export_pdf_btn.setEnabled(False)
-        self.export_pdf_btn.clicked.connect(self._export_pdf)
-        btn_row.addWidget(self.export_pdf_btn, 1)
-        self.browser_btn = QPushButton("↗")
-        self.browser_btn.setToolTip(
-            "Open the current chart in your system web browser "
-            "(use this if the embedded panel stays blank)")
-        self.browser_btn.setEnabled(False)
-        self.browser_btn.setFixedWidth(34)
-        self.browser_btn.clicked.connect(self._open_in_browser)
-        btn_row.addWidget(self.browser_btn)
-        outer.addLayout(btn_row)
+        efl.addLayout(explore_anim_row)
+        outer.addWidget(exp_card)
 
         self._view_slot = QVBoxLayout()
         self._view_placeholder = QLabel(
-            "Pick a layer, choose a chart type and hit Render."
+            "Pick a layer, choose a chart type and press Render chart."
         )
         self._view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._view_placeholder.setWordWrap(True)
-        self._view_placeholder.setStyleSheet("color: #8d99ae; padding: 22px;")
+        self._view_placeholder.setStyleSheet(f"color: {_MUTED_TEXT}; padding: 22px;")
         self._view_slot.addWidget(self._view_placeholder)
         outer.addLayout(self._view_slot, 1)
         return tab
@@ -774,7 +1214,9 @@ class StudioDockWidget(QDockWidget):
             self.diag_type_combo.addItem(diagrams.DIAGRAM_LABELS[key], key)
         trow.addWidget(self.diag_type_combo, 1)
         c.addLayout(trow)
-        c.addWidget(QLabel("Fields (numeric — slices / bars):"))
+        fields_label = QLabel("Fields (numeric — slices / bars):")
+        fields_label.setWordWrap(True)
+        c.addWidget(fields_label)
         self.diag_field_list = QListWidget()
         self.diag_field_list.setSelectionMode(
             QAbstractItemView.SelectionMode.NoSelection)
@@ -808,10 +1250,10 @@ class StudioDockWidget(QDockWidget):
         c.addLayout(szrow)
 
         orow = QHBoxLayout()
-        self.diag_avoid_overlap_check = QCheckBox("Avoid overlaps (hide crowded diagrams)")
+        self.diag_avoid_overlap_check = QCheckBox("Hide crowded diagrams")
         self.diag_avoid_overlap_check.setToolTip(
-            "Let QGIS drop diagrams that would collide instead of always "
-            "drawing every one of them regardless of space.")
+            "Avoid overlaps: let QGIS drop diagrams that would collide instead "
+            "of always drawing every one of them regardless of space.")
         orow.addWidget(self.diag_avoid_overlap_check)
         orow.addStretch(1)
         c.addLayout(orow)
@@ -831,20 +1273,9 @@ class StudioDockWidget(QDockWidget):
         c.addLayout(nrow)
         self.diag_hint = QLabel("")
         self.diag_hint.setWordWrap(True)
-        self.diag_hint.setStyleSheet("color: #6b7a82; font-size: 11px;")
+        self.diag_hint.setStyleSheet(f"color: {_MUTED_TEXT}; font-size: 11px;")
         c.addWidget(self.diag_hint)
-
-        brow = QHBoxLayout()
-        diag_apply = QPushButton("Apply to layer")
-        diag_apply.setStyleSheet(_RENDER_BTN_QSS)
-        diag_apply.clicked.connect(self._apply_diagram)
-        brow.addWidget(diag_apply)
-        diag_clear = QPushButton("Clear")
-        diag_clear.setToolTip("Remove diagrams from this layer")
-        diag_clear.clicked.connect(self._clear_diagram)
-        brow.addWidget(diag_clear)
-        brow.addStretch(1)
-        c.addLayout(brow)
+        # Apply to layer / Clear are pinned under the panel (_build_apply_actions)
         outer.addWidget(card)
         outer.addStretch(1)
         return tab
@@ -950,24 +1381,31 @@ class StudioDockWidget(QDockWidget):
             "color:#207168; background:#f0f4f6; border:1px solid #e0e7ea;"
             " border-radius:6px; padding:5px 8px;"
             " font-family:Consolas,monospace; font-size:11px;")
+        # a long expression has no spaces to wrap at: let the preview clip
+        # (it stays selectable) instead of widening the panel
+        self.label_preview.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                         QSizePolicy.Policy.Preferred)
+        self.label_preview.setMinimumWidth(40)
         c.addWidget(self.label_preview)
-
-        brow = QHBoxLayout()
-        lbl_apply = QPushButton("Apply to layer")
-        lbl_apply.setStyleSheet(_RENDER_BTN_QSS)
-        lbl_apply.clicked.connect(self._apply_labels)
-        brow.addWidget(lbl_apply)
-        lbl_clear = QPushButton("Clear")
-        lbl_clear.setToolTip("Remove labels from this layer")
-        lbl_clear.clicked.connect(self._clear_labels)
-        brow.addWidget(lbl_clear)
-        brow.addStretch(1)
-        c.addLayout(brow)
+        # Apply to layer / Clear are pinned under the panel (_build_apply_actions)
         outer.addWidget(card)
         outer.addStretch(1)
         return tab
 
     # ───────────────────────── wiring ─────────────────────────
+
+    def _on_project_layers_added(self, *_args) -> None:
+        QTimer.singleShot(0, self._resync_layer)
+
+    def _resync_layer(self, *_args) -> None:
+        """Give the field pickers the layer the combo really shows. On QGIS 4
+        the combo selects the first layer added to an empty project but
+        signals ``layerChanged(None)``, which left every field list empty."""
+        if self._cleaned:
+            return
+        layer = self.layer_combo.currentLayer()
+        if self.x_combo.layer() is not layer:
+            self._on_layer_changed(layer)
 
     def _on_layer_changed(self, layer) -> None:
         for combo in (self.x_combo, self.y_combo, self.group_combo,
@@ -983,10 +1421,8 @@ class StudioDockWidget(QDockWidget):
 
     def _watch_layer(self, layer) -> None:
         if self._watched_layer is not None:
-            try:
+            with suppress(RuntimeError, TypeError):  # layer gone / not connected
                 self._watched_layer.selectionChanged.disconnect(self._on_selection_changed)
-            except (RuntimeError, TypeError):
-                pass
         self._watched_layer = layer
         if layer is not None:
             layer.selectionChanged.connect(self._on_selection_changed)
@@ -999,6 +1435,52 @@ class StudioDockWidget(QDockWidget):
         # features are not in the new canvas selection
         QTimer.singleShot(60, self._push_highlight)
 
+    # ── the charted layer: edits make the chart's feature ids stale ──
+
+    _EDIT_SIGNALS = ("dataChanged", "afterCommitChanges", "afterRollBack",
+                     "featureAdded", "featureDeleted", "attributeValueChanged",
+                     "geometryChanged")
+
+    def _watch_charted_layer(self, layer) -> None:
+        """Follow edits on the layer the shown chart was drawn from."""
+        for signal, slot in self._charted_links:
+            with suppress(RuntimeError, TypeError):  # layer gone / not connected
+                signal.disconnect(slot)
+        self._charted_links = []
+        self._charted_layer_id = layer.id() if layer is not None else None
+        if layer is None:
+            return
+        for name in self._EDIT_SIGNALS:
+            signal = getattr(layer, name, None)
+            if signal is None:
+                continue
+            signal.connect(self._on_charted_layer_edited)
+            self._charted_links.append((signal, self._on_charted_layer_edited))
+
+    def _on_charted_layer_edited(self, *_args) -> None:
+        """An edit or commit changed the charted layer: the chart's values and
+        feature ids no longer hold. Mark it stale (a click must not select the
+        wrong features) and redraw once the edits settle."""
+        if self._page_kind not in ("chart", "explore", "card") or not self._chart_current:
+            return
+        self._stale = True
+        self.bridge.bind(None)
+        current = self.layer_combo.currentLayer()
+        if current is None or current.id() != self._charted_layer_id:
+            self.set_status("The charted layer changed — pick it again and "
+                            "render to update the chart")
+            return
+        self.set_status("The layer changed — redrawing the chart…")
+        self._stale_timer.start()
+
+    def _redraw_stale(self) -> None:
+        if not self._stale or self._cleaned:
+            return
+        if self._last_action == "explore":
+            self._explore()
+        else:
+            self._render()
+
     def _on_page_loaded(self, ok: bool) -> None:
         if ok:
             # nudge the chart to re-measure now that the view is laid out —
@@ -1006,6 +1488,23 @@ class StudioDockWidget(QDockWidget):
             run_js(self._view_kind, self._view,
                    "window.dispatchEvent(new Event('resize'));")
             self._push_highlight()
+            self._scroll_to_view()  # again: the layout has settled by now
+        if self._page_kind in ("chart", "explore"):
+            version = self._page_version
+            if not ok or not eval_js(
+                    self._view_kind, self._view, exports.PROBE_JS,
+                    lambda value: self._on_export_probe(version, value)):
+                self._on_export_probe(version, "missing")
+
+    def _on_export_probe(self, version: int, value) -> None:
+        """Enable SVG/PNG/PDF only for a loaded page that answers the export
+        contract (pages from an engine without it keep them off, with a
+        plain reason in the menu)."""
+        if version != self._page_version:
+            return  # an older page answered after a newer one started
+        self._probe_version = version
+        self._exportable = value == "ready"
+        self._sync_export_actions()
 
     def _push_highlight(self) -> None:
         if self._view is None or not self.link_check.isChecked():
@@ -1152,13 +1651,23 @@ class StudioDockWidget(QDockWidget):
         preset = self._preset_library.get(name)
         if preset is None:
             return
-        if not self._set_combo_data(self.engine_combo, preset.get("engine")):
-            self.set_status(f'Preset "{name}" uses an unavailable engine')
+        problem, missing = self._apply_preset(preset)
+        if problem:
+            self.set_status(f'Preset "{name}" uses an unavailable {problem}')
             return
+        suffix = (f" · missing fields cleared: {', '.join(sorted(set(missing)))}"
+                  if missing else "")
+        self.set_status(f'Loaded chart preset "{name}"{suffix}')
+
+    def _apply_preset(self, preset: dict) -> tuple[str, list[str]]:
+        """Put a sanitized preset into the widgets. Returns ``(problem,
+        missing_fields)``; ``problem`` names what could not be applied
+        ("engine" / "chart type"), empty on success."""
+        if not self._set_combo_data(self.engine_combo, preset.get("engine")):
+            return "engine", []
         self._sync_engine_types()
         if not self._set_combo_data(self.type_combo, preset.get("type")):
-            self.set_status(f'Preset "{name}" uses an unavailable chart type')
-            return
+            return "chart type", []
         self._sync_controls()
 
         theme = self.theme_combo.findText(preset.get("theme", ""))
@@ -1209,9 +1718,67 @@ class StudioDockWidget(QDockWidget):
             bool(preset.get("custom_spec_enabled"))
             and self.engine_combo.currentData() == "vegalite")
         self._sync_custom_spec()
-        suffix = (f" Â· missing fields cleared: {', '.join(sorted(set(missing)))}"
-                  if missing else "")
-        self.set_status(f'Loaded chart preset "{name}"{suffix}')
+        return "", missing
+
+    # Last setup: restored when the panel opens again (also after a restart)
+
+    def _save_last_setup(self) -> None:
+        clean = presets.sanitize_preset(self._chart_preset())
+        if clean is None:
+            return
+        layer = self.layer_combo.currentLayer()
+        state = {
+            "preset": clean,
+            "layer": layer.id() if layer is not None else "",
+            "tab": self.tabs.currentIndex(),
+            "advanced": self.advanced_fold.is_open(),
+            "explore": self.explore_fold.is_open(),
+        }
+        for key, box in self._state_checks():
+            state[key] = box.isChecked()
+        QSettings().setValue(LAST_SETUP_KEY, json.dumps(state, ensure_ascii=False))
+
+    def _state_checks(self):
+        """Check boxes the last setup keeps beyond the preset fields."""
+        return (("layer_colors", self.layer_colors_check),
+                ("horizontal", self.horizontal_check),
+                ("reverse_x", self.reverse_x_check),
+                ("reverse_y", self.reverse_y_check),
+                ("race", self.race_check),
+                ("live", self.auto_refresh))
+
+    def _restore_last_setup(self) -> None:
+        raw = QSettings().value(LAST_SETUP_KEY, "")
+        try:
+            state = json.loads(raw) if isinstance(raw, str) and raw else {}
+        except ValueError:
+            state = {}
+        if not isinstance(state, dict):
+            return
+        layer_id = state.get("layer")
+        if isinstance(layer_id, str) and layer_id:
+            layer = QgsProject.instance().mapLayer(layer_id)
+            if isinstance(layer, QgsVectorLayer):
+                self.layer_combo.setLayer(layer)
+        preset = presets.sanitize_preset(state.get("preset"))
+        if preset is not None:
+            self._apply_preset(preset)
+        for key, box in self._state_checks():
+            if isinstance(state.get(key), bool):
+                box.setChecked(state[key])
+        for key, fold in (("advanced", self.advanced_fold),
+                          ("explore", self.explore_fold)):
+            if isinstance(state.get(key), bool):
+                fold.set_open(state[key])
+        tab = state.get("tab")
+        if isinstance(tab, int) and not isinstance(tab, bool) \
+                and 0 <= tab < self.tabs.count():
+            self.tabs.setCurrentIndex(tab)
+
+    def hideEvent(self, event):  # noqa: N802 (Qt override)
+        with suppress(RuntimeError):  # widgets already torn down
+            self._save_last_setup()
+        super().hideEvent(event)
 
     def _sync_engine_types(self, *_args) -> None:
         """Grey out chart types the selected engine cannot draw
@@ -1246,6 +1813,7 @@ class StudioDockWidget(QDockWidget):
         self.sort_combo.setEnabled(topn_sort)
         self.stacked_check.setEnabled(stacked)
         self.trend_check.setEnabled(trend)
+        self.horizontal_check.setEnabled(kind in HORIZONTAL_TYPES)
         ov_ok = kind in overlays.OVERLAY_TYPES
         for w in (self.ov_mean_check, self.ov_median_check, self.ov_sigma_check,
                   self.ov_iqr_check, self.ov_target_edit):
@@ -1268,6 +1836,8 @@ class StudioDockWidget(QDockWidget):
         self.animate_combo.setEnabled(can_anim and not facet_on)
         self.speed_combo.setEnabled(can_anim and not facet_on)
         self.facet_combo.setEnabled(can_facet and not anim_on)
+        if hasattr(self, "race_check"):
+            self.race_check.setEnabled(anim_on and kind == "bar")
 
     # ── Map diagrams tab handlers ──
 
@@ -1532,12 +2102,23 @@ class StudioDockWidget(QDockWidget):
         spec = {"type": kind, "title": title, "x_label": x, "y_label": y,
                 "stacked": self.stacked_check.isChecked(),
                 "theme": self._current_theme()}
+        self._rows_note = ""
 
         builder = getattr(self, f"_spec_{kind}", None)
         data = builder(spec, cols, fids, x=x, y=y, group=group, value=value, agg=agg)
         if data is None:
             return None
         spec["data"] = data
+        self._layer_colors_note = ""
+        if self.layer_colors_check.isChecked():
+            # §3 contract: engines colour the categories found in this map and
+            # keep the palette for the rest
+            colors, why = layer_category_colors(layer)
+            if colors:
+                spec.setdefault("options", {})["category_colors"] = colors
+                self._layer_colors_note = " · layer colours"
+            else:
+                self._layer_colors_note = f" · layer colours not used: {why}"
         if self.custom_spec_check.isChecked() and eng.id == "vegalite":
             try:
                 spec["custom_vl"] = json.loads(self.custom_spec_edit.toPlainText())
@@ -1566,6 +2147,19 @@ class StudioDockWidget(QDockWidget):
                 ovs = overlays.build_overlays(spec, ov_opts, spec["theme"])
                 if ovs:
                     spec["overlays"] = ovs
+        # §3 rendering options: orientation / axis direction (GitHub #1) and
+        # whether an animated bar chart re-ranks every frame
+        opts = {}
+        if self.horizontal_check.isChecked() and kind in HORIZONTAL_TYPES:
+            opts["horizontal"] = True
+        if self.reverse_x_check.isChecked():
+            opts["reverse_x"] = True
+        if self.reverse_y_check.isChecked():
+            opts["reverse_y"] = True
+        if spec.get("frames") and kind == "bar":
+            opts["race"] = self.race_check.isChecked()
+        if opts:
+            spec.setdefault("options", {}).update(opts)
         return spec
 
     def _overlay_options(self, kind: str) -> dict | None:
@@ -1598,9 +2192,15 @@ class StudioDockWidget(QDockWidget):
             if not y:
                 self.set_status("Pick a Y field, or an aggregation like 'count'")
                 return None
-            cats = [transform._key(v) for v in cols[x]]
-            vals = [stats.to_float(v) or 0.0 for v in cols[y]]
-            ids = [[fid] for fid in fids]
+            # one slot per feature; NULL / non-numeric Y is left out, never 0
+            cats, vals, ids = transform.raw_rows(cols[x], cols[y], fids)
+            skipped = len(cols[x]) - len(cats)
+            if not cats:
+                self.set_status(f"No numeric values in '{y}'")
+                return None
+            if skipped:
+                self._rows_note = (f" · {skipped} row{'s' if skipped != 1 else ''} "
+                                   f"without a number in {y} left out")
             series = [{"name": y, "values": vals, "ids": ids}]
         elif group:
             spec["y_label"] = f"{agg}({y})" if agg != "count" else "count"
@@ -1986,6 +2586,7 @@ class StudioDockWidget(QDockWidget):
             item = self._swatch_row.takeAt(0)
             w = item.widget()
             if w is not None:
+                w.hide()
                 w.deleteLater()
         palette = self._resolve_palette()
         for i, color in enumerate(palette):
@@ -2020,7 +2621,7 @@ class StudioDockWidget(QDockWidget):
         rem.setEnabled(len(palette) > 1)
         rem.clicked.connect(self._remove_swatch)
         self._swatch_row.addWidget(rem)
-        self._swatch_row.addStretch(1)
+        self._swatch_host.updateGeometry()
 
     def _edit_swatch(self, i: int) -> None:
         base = self._resolve_palette()
@@ -2062,56 +2663,138 @@ class StudioDockWidget(QDockWidget):
                 # a fresh page should immediately reflect the current canvas
                 # selection (same signal on QWebView and QWebEngineView)
                 self._view.loadFinished.connect(self._on_page_loaded)
+                # the page's own toolbar downloads (ECharts / Plotly buttons)
+                self._detach_downloads = exports.attach_downloads(
+                    self._view_kind, self._view, self._on_page_download)
                 self._view_placeholder.hide()
                 self._view.setMinimumHeight(300)
                 self._view_slot.addWidget(self._view, 1)
 
-    def _show_html(self, html: str, status: str, embed_html: str | None = None) -> None:
-        """Show a chart. ``html`` is the real chart — always what Export and the
-        ↗ browser button use. ``embed_html``, when given, is loaded into the
-        panel instead (e.g. the legacy-WebKit explainer for an engine the
-        embedded view can't run), without losing the real chart."""
-        if self._tmp_dir is None:
+    def _chart_file(self) -> str:
+        """The dock's one page file, rewritten in place for every render and
+        removed with its folder on unload (:meth:`cleanup`)."""
+        if self._tmp_dir is None or not os.path.isdir(self._tmp_dir):
             self._tmp_dir = tempfile.mkdtemp(prefix="o2viz_")
-        stamp = int(time.time() * 1000)
-        path = os.path.join(self._tmp_dir, f"chart_{stamp}.html")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(html)
-        self._last_html = html
+        return os.path.join(self._tmp_dir, CHART_FILE_NAME)
+
+    def _show_html(self, html: str, status: str, embed_html: str | None = None,
+                   page_kind: str = "chart") -> None:
+        """Show a page. ``page_kind`` is "chart", "explore" or "guide".
+        ``html`` is the real page — what Export HTML and Open in browser use.
+        ``embed_html``, when given, is shown in the panel instead (the
+        legacy-WebKit explainer for an engine the embedded view cannot run),
+        without losing the real chart for export."""
+        path = self._chart_file()
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(html)
         self._last_path = path
+        self._page_version += 1
+        self._exportable = False
+        if page_kind in ("chart", "explore"):
+            self._last_html = html
+            self._chart_current = True
+            self._stale = False
+        self._page_kind = "card" if embed_html is not None else page_kind
 
         self._ensure_view()
-        if embed_html is not None:
-            load_path = os.path.join(self._tmp_dir, f"embed_{stamp}.html")
-            with open(load_path, "w", encoding="utf-8") as f:
-                f.write(embed_html)
-        else:
-            load_path = path
         self.bridge.bind(self.layer_combo.currentLayer()
-                         if self.link_check.isChecked() else None)
-        embedded = show_html_file(self._view_kind, self._view, load_path)
-        self.export_btn.setEnabled(True)
-        can_capture = bool(embedded and self._view is not None)
-        self.export_svg_btn.setEnabled(can_capture)
-        self.export_png_btn.setEnabled(can_capture)
-        self.export_pdf_btn.setEnabled(can_capture)
-        self.browser_btn.setEnabled(True)
+                         if self.link_check.isChecked() and page_kind != "guide"
+                         else None)
+        if embed_html is not None and self._view is not None:
+            embedded = show_html_text(self._view, embed_html)
+        else:
+            embedded = show_html_file(self._view_kind, self._view, path,
+                                      version=self._page_version)
+        self._embedded = bool(embedded and self._view is not None)
+        self._sync_export_actions()
         if embedded:
             where = f" · {self._view_kind}"
+            # bring the chart into view (it sits under the controls)
+            QTimer.singleShot(0, self._scroll_to_view)
         else:
             where = " (no embedded web view in this QGIS build — opened in your browser)"
         self.set_status(status + where)
 
+    def _scroll_to_view(self) -> None:
+        """Scroll so the chart's top edge sits at the top of the panel (or as
+        far as the content allows). Not ``ensureWidgetVisible``: a web view
+        reports its page caret as the focus rectangle, which lands anywhere."""
+        if self._view is None or self._cleaned or self.tabs.currentIndex() != 0:
+            return  # never pull the user off the Diagrams / Labels tab
+        content = self._scroll.widget()
+        if content.layout() is not None:
+            content.layout().activate()
+        top = self._view.mapTo(content, QPoint(0, 0)).y()
+        bar = self._scroll.verticalScrollBar()
+        bar.setValue(max(0, min(bar.maximum(), top - 8)))
+
+    def _mark_render_failed(self) -> None:
+        """A render that did not produce a chart leaves the previous page in
+        the panel, which no longer matches the controls: exports go off until
+        a chart renders again (they used to save the old page as a success)."""
+        self._chart_current = False
+        self._sync_export_actions()
+
+    def _export_block_reason(self, vector: bool) -> str:
+        """Why an export is unavailable right now ('' when it is available).
+        ``vector`` asks for SVG/PNG/PDF, which need the chart drawn in the
+        panel by a page that answers ``o2vizExport``."""
+        kind = self._page_kind
+        if kind is None:
+            return "Render a chart first."
+        if kind == "guide":
+            return "The panel shows the guide. Render a chart to export it."
+        if not self._chart_current or not self._last_html:
+            return "The last render failed. Fix the settings and render again."
+        if not vector:
+            return ""
+        if kind == "card":
+            return ("This engine's chart is not drawn in the panel (legacy web "
+                    "view): use Open in browser and its download button, or "
+                    "pick the ECharts engine under Advanced.")
+        if not self._embedded:
+            return ("No embedded web view in this QGIS build: export HTML and "
+                    "save images from your browser.")
+        if kind == "explore":
+            return exports.EXPLORE_EXPORT
+        if not self._exportable:
+            return (exports.MISSING_EXPORT if self._page_ready_answered()
+                    else "The chart is still loading.")
+        return ""
+
+    def _page_ready_answered(self) -> bool:
+        return getattr(self, "_probe_version", -1) == self._page_version
+
+    def _sync_export_actions(self) -> None:
+        if not hasattr(self, "export_menu_btn"):
+            return
+        html_reason = self._export_block_reason(vector=False)
+        vector_reason = self._export_block_reason(vector=True)
+        self.export_btn.setEnabled(not html_reason)
+        self.export_btn.setToolTip(html_reason or "Save the interactive chart page")
+        for action, what in ((self.export_svg_btn, "the engine's own vector drawing"),
+                             (self.export_png_btn, "an image at a size you pick"),
+                             (self.export_pdf_btn, "a vector PDF from the SVG")):
+            action.setEnabled(not vector_reason)
+            action.setToolTip(vector_reason or f"Save {what}")
+        can_open = (self._page_kind is not None and bool(self._last_path)
+                    and os.path.isfile(self._last_path or ""))
+        self.browser_btn.setEnabled(can_open)
+        self.export_menu_btn.setEnabled(any(
+            a.isEnabled() for a in (self.export_btn, self.export_svg_btn,
+                                    self.export_png_btn, self.export_pdf_btn,
+                                    self.browser_btn)))
+
     def _open_in_browser(self) -> None:
-        """Escape hatch: show the last chart in the system browser. Always
+        """Escape hatch: show the current page in the system browser. Always
         works, even when the embedded QWebEngine view paints blank."""
         if not self._last_path or not os.path.exists(self._last_path):
             if not self._last_html:
                 return
-            self._show_html(self._last_html, "Reopened")  # rebuilds the temp file
+            self._show_html(self._last_html, "Reopened")  # rebuilds the page file
         import webbrowser
         webbrowser.open("file:///" + self._last_path.replace("\\", "/"))
-        self.set_status("Opened the current chart in your browser")
+        self.set_status("Opened the current page in your browser")
 
     def _render(self) -> None:
         engine = engines()[max(0, self.engine_combo.currentIndex())]
@@ -2120,32 +2803,46 @@ class StudioDockWidget(QDockWidget):
         try:
             spec = self._build_spec()
             if spec is None:
+                self._mark_render_failed()
                 return
             if spec["type"] not in engine.supports:
                 self.set_status(f"{engine.label} cannot draw {spec['type']} charts")
+                self._mark_render_failed()
                 return
             html = (engine.build_custom_html(spec, spec["custom_vl"])
                     if spec.get("custom_vl") and hasattr(engine, "build_custom_html")
                     else engine.build_html(spec))
         except Exception as exc:
             self.set_status(f"Chart failed: {exc}")
+            self._mark_render_failed()
             return
+        self._last_action = "render"
+        self._last_engine = engine
+        self._last_spec = spec
+        self._watch_charted_layer(self.layer_combo.currentLayer())
+        # what the chart left out, said plainly (rows without a number, the
+        # matplotlib bar cap, a style without categories)
+        engine_note = getattr(engine, "last_note", "") or ""
+        colors_note = (getattr(self, "_rows_note", "") + getattr(self, "_layer_colors_note", "")
+                       + (f" · {engine_note}" if engine_note else ""))
         self._ensure_view()
         if self._view_kind == "webkit" and not engine.webkit_ok:
             # legacy QtWebKit (no QtWebEngine in this QGIS) can't run Plotly's /
             # Vega's modern JS — they parse-fail and the panel stays blank. Show
-            # an explainer there, but keep the real chart for export / ↗ browser.
+            # an explainer there, but keep the real chart for export / browser.
             self._show_html(
                 html,
-                f"{engine.label}: open in your browser ↗ — the embedded WebKit "
-                f"view can't run it (try the ECharts engine for an embedded chart)",
-                embed_html=webkit_fallback_page(engine.label, spec.get("type", "")))
+                f"{engine.label}: use Export ▾ → Open in browser — the embedded "
+                f"WebKit view can't run it (pick ECharts under Advanced for a "
+                f"chart in the panel)",
+                embed_html=_webkit_card(engine.label, spec.get("type", "")))
         else:
             scope = (f" · {self._last_extraction_info.status_note}"
                      if self._last_extraction_info is not None else "")
             self._show_html(
                 html, f"Rendered {spec['type']} · {engine.label}"
-                      f"{self._facet_note(spec, engine)}{scope}")
+                      f"{self._facet_note(spec, engine)}{scope}{colors_note}")
+        self._save_last_setup()
 
     @staticmethod
     def _facet_note(spec: dict, engine) -> str:
@@ -2219,16 +2916,21 @@ class StudioDockWidget(QDockWidget):
                 animate_by=self.explore_animate_combo.currentField())
             if not prof["tiles"]:
                 self.set_status("Nothing chartable found in this layer's fields")
+                self._mark_render_failed()
                 return
             html = build_dashboard(prof, self._current_theme())
         except Exception as exc:
             self.set_status(f"Explore failed: {exc}")
+            self._mark_render_failed()
             return
+        self._last_action = "explore"
+        self._watch_charted_layer(layer)
         frames = prof.get("frames")
         played = (f", playing {len(frames['labels'])} frames of {frames['field']}"
                   if frames else "")
         self._show_html(html, f"Explored {layer.name()}: {len(prof['tiles'])} charts, "
-                              f"{len(prof['insights'])} insights{played}")
+                              f"{len(prof['insights'])} insights{played}",
+                        page_kind="explore")
 
     # ───────────────────────── smart assistant ─────────────────────────
 
@@ -2332,10 +3034,12 @@ class StudioDockWidget(QDockWidget):
                 suggestions = None
         html = build_guide_html(suggestions=suggestions, layer_name=layer_name)
         self.tabs.setCurrentIndex(0)  # the embedded view lives on the Charts tab
-        self._show_html(html, "Opened the 02viz user guide")
+        self._show_html(html, "Opened the 02viz user guide", page_kind="guide")
 
     def _export_html(self) -> None:
-        if not self._last_html:
+        reason = self._export_block_reason(vector=False)
+        if reason:
+            self.set_status(reason)
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Export chart as HTML", os.path.join(self._last_io_dir(), "02viz_chart.html"), "HTML (*.html)")
@@ -2359,11 +3063,36 @@ class StudioDockWidget(QDockWidget):
     def _export_pdf(self) -> None:
         self._export_rendered_dialog("PDF", ".pdf", "PDF (*.pdf)")
 
+    def _png_default_size(self) -> tuple[int, int]:
+        raw = QSettings().value(PNG_SIZE_KEY, "")
+        match = re.fullmatch(r"(\d{3,4})x(\d{3,4})", raw if isinstance(raw, str) else "")
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        width, height = self._view_css_size()
+        return max(1200, width * 2), max(800, height * 2)
+
+    def _ask_png_size(self):
+        """The PNG size dialog (a method so a test can answer it)."""
+        return exports.ask_png_size(self, *self._png_default_size())
+
+    def _view_css_size(self) -> tuple[int, int]:
+        """The chart's size as the panel shows it, in CSS pixels; SVG and PDF
+        are drawn at this size so text keeps the proportions on screen."""
+        if self._view is None:
+            return 960, 600
+        return max(320, self._view.width()), max(240, self._view.height())
+
     def _export_rendered_dialog(self, output_format: str, extension: str,
                                 file_filter: str) -> None:
-        if not self._view:
-            self.set_status(f"{output_format} export needs a rendered view")
+        reason = self._export_block_reason(vector=True)
+        if reason:
+            self.set_status(f"{output_format} export unavailable: {reason}")
             return
+        size = None
+        if output_format == "PNG":
+            size = self._ask_png_size()
+            if size is None:
+                return
         path, _ = QFileDialog.getSaveFileName(
             self,
             f"Export chart as {output_format}",
@@ -2374,77 +3103,132 @@ class StudioDockWidget(QDockWidget):
             return
         path = ensure_extension(path, extension)
         self._remember_io_dir(path)
+        self.set_status(f"Exporting {output_format}…")
+        # the page answers through a nested event loop: no second export from
+        # the menu meanwhile
+        self.export_menu_btn.setEnabled(False)
         try:
-            size = self._export_view_to(path, output_format)
-            self.set_status(
-                f"Exported {output_format}: {os.path.basename(path)} · "
-                f"{human_size(size)}")
+            written = self._export_view_to(path, output_format, *(size or ()))
         except Exception as exc:
             self.set_status(f"{output_format} export failed: {exc}")
+            return
+        finally:
+            with contextlib.suppress(RuntimeError):
+                self._sync_export_actions()
+        dims = f" · {size[0]} × {size[1]} px" if size else ""
+        if size:
+            QSettings().setValue(PNG_SIZE_KEY, f"{size[0]}x{size[1]}")
+        self.set_status(f"Exported {output_format}: {os.path.basename(path)} · "
+                        f"{human_size(written)}{dims}")
 
-    def _export_view_to(self, path: str, output_format: str) -> int:
-        """Render the current embedded chart to an atomic raster/vector file.
+    def _export_view_to(self, path: str, output_format: str,
+                        width: int | None = None, height: int | None = None) -> int:
+        """Write the chart shown in the panel as SVG, PNG or PDF.
 
-        Kept separate from the file dialog so it can be exercised against a
-        real Qt widget on both supported QGIS runtimes.
-        """
-        if self._view is None:
-            raise ValueError("No rendered chart view is available.")
+        The page draws the export itself (``window.o2vizExport``): SVG is the
+        engine's vector output, PNG is drawn again at ``width`` × ``height``
+        CSS pixels, PDF is drawn here from that SVG (vector). Raises
+        ``ValueError`` with a plain reason when the panel shows anything but a
+        rendered chart. Returns the written size in bytes."""
         fmt = output_format.upper()
         if fmt not in {"PNG", "SVG", "PDF"}:
             raise ValueError(f"Unsupported rendered export format: {fmt}")
-        if self._view.width() <= 0 or self._view.height() <= 0:
-            raise ValueError("The rendered chart view has no visible size.")
+        reason = self._export_block_reason(vector=True)
+        if reason:
+            raise ValueError(reason)
+        if not (width and height):
+            width, height = self._view_css_size()
+        engine = getattr(self, "_last_engine", None)
+        if (self._page_kind == "chart" and engine is not None
+                and hasattr(engine, "render") and getattr(self, "_last_spec", None)):
+            # matplotlib: savefig output straight from Python, at the size
+            return self._export_engine_render(engine, path, fmt, width, height)
+        if fmt == "PNG":
+            payload = exports.run_page_export(
+                self._view_kind, self._view, "png", width, height)
+            return exports.write_bytes(path, exports.png_bytes(payload))
+        svg = exports.svg_text(exports.run_page_export(
+            self._view_kind, self._view, "svg", width, height))
+        if fmt == "SVG":
+            return exports.write_svg(path, svg)
+        return exports.svg_to_pdf(svg, path)
 
-        with atomic_output(path) as temporary_path:
-            if fmt == "PNG":
-                pixmap = self._view.grab()
-                if pixmap.isNull() or not pixmap.save(temporary_path, "PNG"):
-                    raise ValueError("Qt could not capture the chart as PNG.")
-            elif fmt == "SVG":
-                from qgis.PyQt.QtSvg import QSvgGenerator
+    def _export_engine_render(self, engine, path: str, fmt: str, width: int,
+                              height: int) -> int:
+        """Engines that draw in Python (matplotlib) export their own
+        ``savefig`` output: PNG / SVG bytes at ``width`` × ``height``, PDF
+        drawn from that SVG like the others."""
+        if fmt == "PNG":
+            data = engine.render(self._last_spec, "png", width, height)
+            if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise ValueError(f"{engine.label} did not return a PNG image.")
+            return exports.write_bytes(path, data)
+        svg = exports.svg_text(engine.render(self._last_spec, "svg", width, height)
+                               .decode("utf-8"))
+        if fmt == "SVG":
+            return exports.write_svg(path, svg)
+        return exports.svg_to_pdf(svg, path)
 
-                generator = QSvgGenerator()
-                generator.setFileName(temporary_path)
-                generator.setSize(self._view.size())
-                generator.setViewBox(self._view.rect())
-                generator.setTitle("02viz chart")
-                painter = QPainter()
-                if not painter.begin(generator):
-                    raise ValueError("Qt could not initialize the SVG writer.")
-                try:
-                    self._view.render(painter)
-                finally:
-                    painter.end()
-                # QSvgGenerator owns the QFile handle until its wrapper is
-                # destroyed. Release it before atomic_output renames the
-                # staging file (required on Windows/QGIS 4).
-                del generator
-            else:
-                from qgis.PyQt.QtPrintSupport import QPrinter
+    def _on_page_download(self, download) -> None:
+        """Save a file the page offers through its own toolbar (the ECharts /
+        Plotly download buttons used to do nothing inside QGIS)."""
+        name = download.suggested_name()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save the chart's download",
+            os.path.join(self._last_io_dir(), name), "All files (*.*)")
+        if not path:
+            download.cancel()
+            self.set_status("Download cancelled")
+            return
+        ext = os.path.splitext(name)[1]
+        if ext:
+            path = ensure_extension(path, ext)
+        self._remember_io_dir(path)
+        label = os.path.basename(path)
+        try:
+            size = download.save_to(path)
+        except Exception as exc:
+            self.set_status(f"Could not save {label}: {exc}")
+            return
+        watch = getattr(download, "when_done", None)
+        if not size and callable(watch) and watch(
+                lambda ok, detail: self._page_download_settled(label, ok, detail)):
+            # QtWebEngine writes the file after accept(): report it when done
+            self.set_status(f"Saving {label}…")
+            return
+        self.set_status(f"Saved {label}" + (f" · {human_size(size)}" if size else ""))
 
-                printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-                printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-                printer.setOutputFileName(temporary_path)
-                printer.setDocName("02viz chart")
-                painter = QPainter()
-                if not painter.begin(printer):
-                    raise ValueError("Qt could not initialize the PDF writer.")
-                try:
-                    viewport = painter.viewport()
-                    fitted = self._view.size()
-                    fitted.scale(
-                        viewport.size(), Qt.AspectRatioMode.KeepAspectRatio)
-                    painter.setViewport(
-                        viewport.x(), viewport.y(), fitted.width(), fitted.height())
-                    painter.setWindow(self._view.rect())
-                    self._view.render(painter)
-                finally:
-                    painter.end()
-                # QPrinter likewise keeps the PDF handle open for its
-                # lifetime; release it before publishing the staging file.
-                del printer
-        return os.path.getsize(os.path.abspath(path))
+    def _page_download_settled(self, label: str, ok: bool, detail: str) -> None:
+        # the dock may be gone by the time the engine finishes writing
+        with contextlib.suppress(RuntimeError):
+            self.set_status(f"Saved {label}" if ok else f"Could not save {label}: {detail}")
+
+    def cleanup(self) -> None:
+        """Called by the plugin's unload: remember the setup, stop following
+        layers, release the page and remove this dock's temporary folder."""
+        if self._cleaned:
+            return
+        with suppress(RuntimeError):  # widgets already torn down
+            self._save_last_setup()
+        self._cleaned = True
+        self._stale_timer.stop()
+        with suppress(RuntimeError, TypeError):  # project already gone
+            QgsProject.instance().layersAdded.disconnect(self._on_project_layers_added)
+        self._watch_charted_layer(None)
+        self._watch_layer(None)
+        if self._detach_downloads is not None:
+            with suppress(RuntimeError, TypeError):  # already disconnected
+                self._detach_downloads()
+            self._detach_downloads = None
+        if self._view is not None:
+            with suppress(RuntimeError):  # view already deleted
+                self._view.stop()
+                self._view.setHtml("")
+        QApplication.processEvents()
+        if self._tmp_dir and os.path.isdir(self._tmp_dir):
+            shutil.rmtree(self._tmp_dir, ignore_errors=True)
+        self._tmp_dir = None
+        self._last_path = None
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)

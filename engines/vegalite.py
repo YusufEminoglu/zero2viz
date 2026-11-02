@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 
-from .base import CHART_TYPES, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import (CHART_TYPES, FACETABLE, FONT_FAMILY, ChartEngine, category_colors, colors_for,
+                   is_horizontal, options_of, read_web, script_json, theme_of, wrap_html)
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
 _OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
@@ -66,7 +67,56 @@ window.__o2vizHighlight = function (ids) {
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
   } catch (e) { /* highlight is guarded */ }
 };
+// window.o2vizExport (engines.base contract): the same spec compiled into a
+// headless view at the requested size — vega's own SVG renderer for "svg",
+// toImageURL for "png" — never a screenshot of the widget.
+window.o2vizExport = function (format, width, height, scale) {
+  if (format !== "svg" && format !== "png") {
+    return Promise.reject(new Error("Unsupported export format: " + format));
+  }
+  var box = document.getElementById("chart");
+  var w = Math.max(16, Math.round(width || (box && box.clientWidth) || 900));
+  var h = Math.max(16, Math.round(height || (box && box.clientHeight) || 560));
+  var spec = JSON.parse(JSON.stringify(SPEC));
+  if (spec.width === "container") spec.width = w;
+  if (spec.height === "container") spec.height = h;
+  var exp = new vega.View(vega.parse(vegaLite.compile(spec).spec), { renderer: "none" });
+  return exp.runAsync().then(function () {
+    return format === "svg" ? exp.toSVG() : exp.toImageURL("png", scale || 1);
+  }).then(function (out) { exp.finalize(); return out; });
+};
 """
+
+_SWAP = {"x": "y", "y": "x", "x2": "y2", "y2": "x2", "xOffset": "yOffset", "yOffset": "xOffset"}
+
+
+def _swap_xy(node) -> None:
+    """Horizontal orientation: swap the x / y channels of a unit or layered
+    spec; the category labels move to the y axis and read horizontally."""
+    if not isinstance(node, dict):
+        return
+    for layer in node.get("layer", []):
+        _swap_xy(layer)
+    enc = node.get("encoding")
+    if isinstance(enc, dict):
+        new = {_SWAP.get(k, k): v for k, v in enc.items()}
+        ch = new.get("y")
+        if isinstance(ch, dict) and ch.get("type") == "nominal":
+            ch["axis"] = dict(ch.get("axis") or {}, labelAngle=0)
+        node["encoding"] = new
+
+
+def _reverse(node, channel: str) -> None:
+    """Flip the scale of ``channel`` in every unit / layer / panel."""
+    if not isinstance(node, dict):
+        return
+    for key in ("layer", "concat"):
+        for sub in node.get(key, []):
+            _reverse(sub, channel)
+    enc = node.get("encoding")
+    if isinstance(enc, dict) and isinstance(enc.get(channel), dict) and "field" in enc[channel]:
+        ch = enc[channel]
+        ch["scale"] = dict(ch.get("scale") or {}, reverse=True)
 
 # per-datum opacity channel; raw values via scale:null (1 = normal, 0.16 = dimmed)
 _OPACITY = {"field": "__op", "type": "quantitative", "scale": None, "legend": None}
@@ -104,18 +154,30 @@ class VegaLiteEngine(ChartEngine):
         out.setdefault("config", self._config(theme_of(spec)))
         lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")
         return wrap_html(spec.get("title", ""), lib,
-                         _BODY % {"spec": json.dumps(out, ensure_ascii=False)},
-                         theme_of(spec))
-    def build_html(self, spec: dict) -> str:
-        vl = self.vl_spec(spec)
-        if spec.get("overlays") and spec["type"] in _OVERLAY_OK and not spec.get("facets"):
-            vl = self._wrap_overlays(vl, spec["overlays"])
-        lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")
-        return wrap_html(spec.get("title", ""), lib,
-                         _BODY % {"spec": json.dumps(vl, ensure_ascii=False)},
+                         _BODY % {"spec": script_json(out)},
                          theme_of(spec))
 
-    def _wrap_overlays(self, out: dict, overlays: list) -> dict:
+    def build_html(self, spec: dict) -> str:
+        vl = self.page_spec(spec)
+        lib = read_web("vega.min.js") + "\n" + read_web("vega-lite.min.js")
+        return wrap_html(spec.get("title", ""), lib,
+                         _BODY % {"spec": script_json(vl)},
+                         theme_of(spec))
+
+    def page_spec(self, spec: dict) -> dict:
+        """Public: the complete Vega-Lite spec the page draws (reference
+        overlays and axis options included)."""
+        vl = self.vl_spec(spec)
+        if spec.get("overlays") and spec["type"] in _OVERLAY_OK and not spec.get("facets"):
+            vl = self._wrap_overlays(vl, spec["overlays"], is_horizontal(spec))
+        opts = options_of(spec)
+        if opts.get("reverse_x"):
+            _reverse(vl, "x")
+        if opts.get("reverse_y"):
+            _reverse(vl, "y")
+        return vl
+
+    def _wrap_overlays(self, out: dict, overlays: list, horizontal: bool = False) -> dict:
         """Fold the generated chart into a layered spec and append reference
         rule/rect layers (+ a small left-anchored text label) from
         core.overlays. Kept out of ``vl_spec`` so the custom-spec editor still
@@ -147,6 +209,9 @@ class VegaLiteEngine(ChartEngine):
                          "dx": 4, "dy": -2, "color": color, "fontSize": 10},
                 "encoding": {"y": {"field": "ry", "type": "quantitative"},
                              "x": {"value": 4}, "text": {"field": "lbl"}}})
+        if horizontal:  # the value axis is x on horizontal bars
+            for layer in layers:
+                _swap_xy(layer)
         if "layer" in out:
             out["layer"] = list(out.pop("layer")) + layers
         else:
@@ -175,8 +240,57 @@ class VegaLiteEngine(ChartEngine):
             "config": self._config(theme),
         }
         builder = getattr(self, f"_vl_{kind}")
-        out.update(builder(spec, data, theme))
+        out.update(self._finish_unit(spec, builder(spec, data, theme), data, theme))
         return out
+
+    def _finish_unit(self, spec: dict, unit: dict, data: dict, theme: dict) -> dict:
+        """Layer colours and horizontal orientation for one chart / panel."""
+        cmap = category_colors(spec)
+        if cmap:
+            self._apply_category_colors(spec["type"], unit, data, theme, cmap)
+        if is_horizontal(spec):
+            _swap_xy(unit)
+        return unit
+
+    @staticmethod
+    def _apply_category_colors(kind: str, unit: dict, data: dict, theme: dict,
+                               cmap: dict) -> None:
+        """``options["category_colors"]``: one series colours each bar / dot /
+        slice by its category; several series colour each series by name."""
+        palette = theme["palette"] or ["#2a8f85"]
+        units = unit.get("layer") or [unit]
+        series = data.get("series") or []
+        if kind == "pie":
+            cats = data.get("categories", [])
+            for u in units:
+                ch = (u.get("encoding") or {}).get("color")
+                if isinstance(ch, dict):
+                    ch["scale"] = {"domain": list(cats),
+                                   "range": colors_for(cats, palette, cmap)}
+            return
+        if kind in ("bar", "lollipop", "pareto") and len(series) <= 1:
+            cats = data.get("categories", [])
+            color = {"field": "c", "type": "nominal", "sort": None, "legend": None,
+                     "scale": {"domain": list(cats),
+                               "range": colors_for(cats, palette, cmap, single=palette[0])}}
+            for u in units:
+                enc = u.get("encoding")
+                if not isinstance(enc, dict) or "c" not in (
+                        (enc.get("x") or {}).get("field"), (enc.get("y") or {}).get("field")):
+                    continue
+                if (enc.get("y") or {}).get("field") == "cum":
+                    continue  # the pareto cumulative line keeps its colour
+                enc["color"] = dict(color)
+                if isinstance(u.get("mark"), dict):
+                    u["mark"].pop("color", None)
+            return
+        names = [s.get("name", "") for s in series]
+        if not names:
+            return
+        for u in units:
+            ch = (u.get("encoding") or {}).get("color")
+            if isinstance(ch, dict) and ch.get("field") == "s":
+                ch["scale"] = {"domain": names, "range": colors_for(names, palette, cmap)}
 
     def _facet_vl_spec(self, spec: dict, theme: dict) -> dict:
         """Build a multi-panel Vega-Lite ``concat`` spec with shared scales."""
@@ -193,7 +307,8 @@ class VegaLiteEngine(ChartEngine):
         bounds = fac.get("bounds") or {}
         panels = []
         for i, fdata in enumerate(datas):
-            panel = builder(dict(static, data=fdata), fdata, theme)
+            panel = self._finish_unit(spec, builder(dict(static, data=fdata), fdata, theme),
+                                      fdata, theme)
             panel["title"] = {
                 "text": labels[i] if i < len(labels) else "",
                 "color": theme["text"], "fontSize": 12, "fontWeight": 600,
@@ -204,11 +319,12 @@ class VegaLiteEngine(ChartEngine):
                 lo, hi = bounds["y"]
                 if kind in ("bar", "lollipop", "area"):
                     lo = min(0.0, lo)
+                value_ch = "x" if is_horizontal(spec) else "y"
                 targets = panel.get("layer") or [panel]
                 for sub in targets:
                     enc = sub.get("encoding", {})
-                    if "y" in enc and isinstance(enc["y"], dict):
-                        enc["y"] = dict(enc["y"], scale={"domain": [lo, hi]})
+                    if value_ch in enc and isinstance(enc[value_ch], dict):
+                        enc[value_ch] = dict(enc[value_ch], scale={"domain": [lo, hi]})
                     if kind in ("scatter", "bubble") and bounds.get("x") and "x" in enc:
                         enc["x"] = dict(enc["x"], scale={"domain": list(bounds["x"])})
             panels.append(panel)

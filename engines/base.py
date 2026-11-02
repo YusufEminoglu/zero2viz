@@ -61,14 +61,36 @@ Spec contract (produced by the dock, consumed by every engine):
         },
         # "data" stays the ordinary unfaceted chart, so engines that cannot
         # facet render the whole dataset. "facets" and "frames" never coexist.
+
+        # optional — rendering options every engine honours (all default off):
+        "options": {
+            "horizontal": bool,      # bar / lollipop / histogram: bars run left→right,
+                                     # categories top→bottom (first category on top)
+            "reverse_x": bool,       # flip the horizontal axis
+            "reverse_y": bool,       # flip the vertical axis
+            "race": bool,            # animated single-series bar: re-rank every
+                                     # frame (default True); False keeps one order
+            "category_colors": {"label": "#rrggbb"},  # e.g. the layer's own
+                                     # symbol colours; categories (or series
+                                     # named) in it use that colour, the rest
+                                     # keep the palette
+        },
     }
+
+Every engine page also defines ``window.o2vizExport(format, width, height
+[, scale])`` → ``Promise`` resolving to an SVG string (``"svg"``) or a PNG data
+URL (``"png"``) of the chart laid out at ``width`` × ``height`` CSS pixels
+(PNG pixels = CSS pixels × ``scale``, default 1).
 
 Feature ids ("ids" / point fid) make charts clickable: the embedded
 bridge forwards clicked ids to QGIS, which selects them on the canvas.
 """
 from __future__ import annotations
 
+import html as _html
+import json
 import os
+import re
 
 CHART_TYPES = ("bar", "lollipop", "line", "area", "scatter", "bubble", "histogram",
                "pie", "box", "heatmap", "treemap", "sunburst",
@@ -148,7 +170,10 @@ BRIDGE_JS = """
   window.__o2vizSelect = function (ids) {
     try {
       if (!ids || !ids.length) return;
-      var clean = ids.filter(function (v) { return v !== null && v !== undefined; });
+      // feature ids are integers: anything else never reaches the title
+      var clean = ids.filter(function (v) {
+        return typeof v === "number" && isFinite(v) && Math.floor(v) === v;
+      });
       if (!clean.length) return;
       seq += 1;
       document.title = "o2viz-select:" + clean.join(",") + ":" + seq;
@@ -157,6 +182,95 @@ BRIDGE_JS = """
 })();
 """
 TITLE_PREFIX = "o2viz-select:"
+# the one message shape the page writes: prefix, integer ids, sequence number
+_SELECT_TITLE_RE = re.compile(
+    r"o2viz-select:(-?[0-9]{1,19}(?:,-?[0-9]{1,19}){0,99999}):([0-9]{1,12})", re.ASCII)
+
+
+def parse_select_title(title: str) -> list[int] | None:
+    """Feature ids from a selection title written by ``BRIDGE_JS``, or None
+    for any other title. Only the exact shape ``o2viz-select:<int,...>:<seq>``
+    is accepted — a page title that merely starts with the prefix (a layer
+    name, a crafted value) selects nothing."""
+    if not isinstance(title, str) or not title.startswith(TITLE_PREFIX):
+        return None
+    m = _SELECT_TITLE_RE.fullmatch(title)
+    if m is None:
+        return None
+    return [int(part) for part in m.group(1).split(",")]
+
+
+def page_title(title: str, fallback: str = "02viz chart") -> str:
+    """The ``<title>`` of a chart page. A chart titled like a selection
+    message would select features as soon as the page loads, so such a title
+    is shown with a leading "Chart: "."""
+    text = title or fallback
+    if text.startswith(TITLE_PREFIX):
+        text = "Chart: " + text
+    return text
+
+
+def script_json(value) -> str:
+    """JSON for embedding inside an HTML ``<script>`` element.
+
+    ``<``, ``>`` and ``&`` are written as ``\u003c`` / ``\u003e`` / ``\u0026``
+    and the JS line separators U+2028 / U+2029 as escapes, so no value (a
+    layer name, a category such as ``</script>``) can end the script element
+    or open a comment; ``JSON.parse`` / JS read the same text back."""
+    return (json.dumps(value, ensure_ascii=False)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def escape_html(text) -> str:
+    """Text for HTML element content or a quoted attribute value."""
+    return _html.escape("" if text is None else str(text), quote=True)
+
+
+def options_of(spec: dict) -> dict:
+    """The spec's rendering options (see the contract above); {} when absent."""
+    opts = spec.get("options")
+    return opts if isinstance(opts, dict) else {}
+
+
+_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def category_colors(spec: dict) -> dict:
+    """``options["category_colors"]`` reduced to valid ``label -> #rrggbb``."""
+    raw = options_of(spec).get("category_colors")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): v for k, v in raw.items() if isinstance(v, str) and _HEX_RE.match(v)}
+
+
+def colors_for(labels: list, palette: list, cmap: dict, single: str | None = None) -> list:
+    """One colour per label: its ``cmap`` colour when present, otherwise the
+    palette (cycled by position, or ``single`` for every unmapped label)."""
+    pal = palette or ["#2a8f85"]
+    out = []
+    for i, lab in enumerate(labels):
+        col = cmap.get(str(lab))
+        out.append(col if col else (single if single else pal[i % len(pal)]))
+    return out
+
+
+def is_race(spec: dict) -> bool:
+    """An animated single-series bar chart re-ranks its bars every frame
+    (a bar-chart race) unless ``options["race"]`` is False."""
+    if spec.get("type") != "bar" or not spec.get("frames"):
+        return False
+    if options_of(spec).get("race") is False:
+        return False
+    datas = spec["frames"].get("datas") or []
+    return bool(datas) and all(len(d.get("series") or [None]) == 1 for d in datas)
+
+
+HORIZONTAL_TYPES = frozenset(("bar", "lollipop", "histogram"))
+
+
+def is_horizontal(spec: dict) -> bool:
+    return bool(options_of(spec).get("horizontal")) and spec.get("type") in HORIZONTAL_TYPES
 
 _HTML = """<!DOCTYPE html>
 <html>
@@ -196,7 +310,7 @@ def read_web(filename: str) -> str:
 
 def wrap_html(title: str, lib_js: str, body_js: str, theme: dict) -> str:
     return _HTML.format(
-        title=title or "02viz chart",
+        title=escape_html(page_title(title)),
         bg=theme.get("bg", "#ffffff"),
         lib=lib_js,
         bridge=BRIDGE_JS,
@@ -243,7 +357,7 @@ def webkit_fallback_page(engine_label: str, chart_type: str = "") -> str:
     chart is still exported and openable in the browser; this just replaces the
     silent blank panel with a clear, actionable message."""
     what = f"{chart_type} chart" if chart_type else "chart"
-    return _FALLBACK_HTML.format(engine=engine_label, what=what)
+    return _FALLBACK_HTML.format(engine=escape_html(engine_label), what=escape_html(what))
 
 
 class ChartEngine:

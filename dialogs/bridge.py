@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from qgis.core import QgsProject
 
-from ..engines.base import TITLE_PREFIX
+from ..engines.base import parse_select_title
 
 
 class SelectionBridge:
@@ -32,24 +32,27 @@ class SelectionBridge:
         self._layer_id = layer.id() if layer is not None else None
 
     def handle_title(self, title: str) -> None:
-        """titleChanged slot: ignore ordinary titles, decode selection ones."""
-        if not title or not title.startswith(TITLE_PREFIX):
-            return
-        payload = title[len(TITLE_PREFIX):]
-        ids_csv, sep, _seq = payload.rpartition(":")
-        self.select(ids_csv if sep else payload)
+        """titleChanged slot: only the exact message shape the plugin's own
+        page writes (``o2viz-select:<int,...>:<seq>``) selects anything; any
+        other title, including a crafted one that merely starts with the
+        prefix, is ignored."""
+        ids = parse_select_title(title)
+        if ids:
+            self.select_ids(ids)
 
     def select(self, ids_csv: str) -> None:
-        if not self._layer_id:
-            return
-        layer = QgsProject.instance().mapLayer(self._layer_id)
-        if layer is None:
-            return
+        """Select from a comma-separated id list (integers only)."""
         try:
             ids = [int(part) for part in ids_csv.split(",") if part.strip()]
         except ValueError:
             return
-        if not ids:
+        self.select_ids(ids)
+
+    def select_ids(self, ids: list[int]) -> None:
+        if not self._layer_id or not ids:
+            return
+        layer = QgsProject.instance().mapLayer(self._layer_id)
+        if layer is None:
             return
         if self.on_selected:
             self.on_selected()

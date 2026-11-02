@@ -83,6 +83,8 @@ _TOC = (
     ("start", "Quick start"),
     ("data", "Choosing data"),
     ("charts", "Charts"),
+    ("presets", "Chart presets"),
+    ("custom", "Custom specs & exports"),
     ("explore", "Explore (dashboard)"),
     ("diagrams", "Map diagrams"),
     ("normalise", "Normalising diagrams"),
@@ -159,8 +161,9 @@ _BODY = """
   <li>Not sure what to make? Click <b>💡 Suggest</b> for an instant chart, or <b>✨ Explore layer</b> for a full dashboard.</li>
 </ol>
 <div class="note">Everything is offline. Export the chart as one self-contained
-HTML file or capture the active embedded view as PNG, SVG or PDF. Every output
-is published atomically. Clicking a bar/point selects those features on the map.</div>
+HTML file, as SVG (the chart engine's own vector drawing), as PDF (made from that
+SVG) or as PNG at the size you choose. A file is either written completely or not
+at all. Clicking a bar/point selects those features on the map.</div>
 </section>
 
 <section id="data"><h2><span class="n">2</span>Choosing data</h2>
@@ -169,7 +172,8 @@ is published atomically. Clicking a bar/point selects those features on the map.
   <li><b>Layer</b> — any vector layer, spatial or attribute-only.</li>
   <li><b>Only selected features</b> — chart/diagram/label just the current selection.</li>
   <li><b>Live: redraw on selection</b> — re-render automatically as the map selection changes.</li>
-  <li><b>Load external table…</b> — opens a CSV/XLSX/ODS/GeoPackage table and adds it to the layer list.</li>
+  <li><b>Load external table…</b> — opens a CSV/XLSX/ODS/GeoPackage table and adds it to the layer list.
+      CSV columns get their real types (numbers, dates, text), so numeric columns can be charted.</li>
 </ul>
 </section>
 
@@ -190,22 +194,25 @@ types grey out) — then the <b>Type</b>.</p>
 <tr><td>Bubble</td><td>Scatter with a third number as the dot size.</td></tr>
 <tr><td>Histogram</td><td>Shape and spread of one numeric field (set <b>Bins</b>).</td></tr>
 <tr><td>Pie / donut</td><td>Parts of a whole for a single category (use <b>Top N</b>).</td></tr>
-<tr><td>Box</td><td>Median, quartiles and outliers, optionally per group.</td></tr>
+<tr><td>Box</td><td>Median, quartiles and the full minimum–maximum range, optionally per group.</td></tr>
 <tr><td>Heatmap</td><td>A value across two categorical axes (a matrix).</td></tr>
 <tr><td>Treemap / Sunburst</td><td>Hierarchical parts of a whole (group → sub-group).</td></tr>
 <tr><td>Mean ± σ band / bars</td><td>Average with a one-standard-deviation envelope or whiskers.</td></tr>
 <tr><td>Density (KDE)</td><td>Smooth distribution, one curve per group (clamped at 0 for non-negative data).</td></tr>
 <tr><td>Violin</td><td>Distribution shape with the median marked (clamped at 0 for non-negative data).</td></tr>
 <tr><td>Radar</td><td>Compare several measures on one figure (≥ 3 axes).</td></tr>
-<tr><td>Pareto</td><td>Sorted bars + cumulative-share line (the 80/20 view).</td></tr>
+<tr><td>Pareto</td><td>Sorted bars + cumulative-share line (the 80/20 view); needs values of zero or more.</td></tr>
 <tr><td>ECDF (cumulative)</td><td>Empirical cumulative distribution step curve (0–100 %) with exact quantiles, optionally per group.</td></tr>
 <tr><td>Lorenz &amp; Gini</td><td>Inequality / concentration curve against the 45° equality line, with the exact Gini coefficient (0–1) per group.</td></tr></table>
 
 <h3>Shaping controls</h3>
 <ul>
-  <li><b>Aggregate</b> — none / count / sum / mean / median / min / max / std / iqr for the Y measure.</li>
+  <li><b>Aggregate</b> — none / count / sum / mean / median / min / max / std / iqr for the Y measure.
+      A yes/no field counts as 1/0, so <b>sum</b> counts the “yes” rows and <b>mean</b> gives their share.</li>
   <li><b>Group / Color</b> — split into one coloured series per value.</li>
-  <li><b>Top N</b> + <b>Sort</b> — keep the N biggest categories (rest → “Other”), order by value.</li>
+  <li><b>Top N</b> + <b>Sort</b> — keep the N biggest categories, order by value. The rest
+      become “Other”, computed with the same aggregate over all their rows (the mean of
+      those rows for a mean chart, not a sum of means).</li>
   <li><b>Trend line</b> — least-squares fit on scatter/bubble.</li>
   <li><b>Animate by ▶</b> — turn a year/sequence field into a play axis: a bar-chart
       race or Gapminder-style bubbles (ECharts &amp; Plotly; bar·lollipop·line·area·scatter·bubble·pie).
@@ -235,7 +242,7 @@ types grey out) — then the <b>Type</b>.</p>
       to edit your own; applied identically across every engine.</li>
   <li><b>Click selects on map</b> — clicking a bar/slice/point selects those features
       in QGIS; selecting on the canvas dims the non-selected chart items (cross-filter).</li>
-  <li><b>Export HTML / PNG / SVG / PDF</b> writes a verified deliverable;
+  <li><b>Export HTML / PNG / SVG / PDF</b> saves the current chart;
       <b>↗</b> opens the interactive chart in your browser.</li>
 </ul>
 </section>
@@ -253,13 +260,11 @@ so you can choose a replacement without a failed render.</p>
 <section id="custom"><h2><span class="n">5</span>Custom specs and exports</h2>
 <p>When the engine is <b>Vega-Lite</b>, enable <b>Custom Vega-Lite spec</b> to edit the generated JSON. Press <b>Render chart</b> to validate it and render it with the bundled offline Vega runtime. Parse errors remain in the status panel.</p>
 <p>The current data is injected as the named offline dataset <code>o2viz</code>. Keep the generated <code>__ids</code> values in your rows when you want chart clicks to select map features.</p>
-<ul><li><b>Export HTML</b> saves the complete offline page.</li><li><b>Export SVG</b> and <b>Export PNG</b> use the active rendered view where the engine supports it.</li><li><b>Export PDF</b> uses QGIS print output and does not require a browser or network.</li></ul>
+<ul><li><b>Export HTML</b> saves the complete offline page.</li><li><b>Export SVG</b> saves the chart engine's own vector drawing (Plotly, ECharts, Vega or matplotlib), not a screenshot of the panel.</li><li><b>Export PNG</b> draws the chart at the width and height you pick.</li><li><b>Export PDF</b> is made from that SVG, so text and lines stay sharp at any zoom; it needs no browser or network.</li></ul>
+<p>PNG, SVG and PDF are offered only while the panel shows a rendered chart — not the Guide, an explainer card or an error message.</p>
 </section>
 
-<section id="tiles"><h2><span class="n">5</span>Explore tile picker</h2>
-<p>Before opening Explore, use the checkable tile picker to choose KPI row, field table, count bars, histograms, correlation matrix, scatter with trend, normalised box plot and insights. The default keeps the complete dashboard output.</p>
-</section>
-<section id="explore"><h2><span class="n">4</span>Explore — one-click dashboard</h2>
+<section id="explore"><h2><span class="n">6</span>Explore — one-click dashboard</h2>
 <p><b>✨ Explore layer</b> profiles every field and builds a full interactive page:</p>
 <ul>
   <li><b>KPI cards</b> — rows, fields, numeric/categorical counts and overall completeness.</li>
@@ -273,6 +278,8 @@ so you can choose a replacement without a failed render.</p>
       and notable correlations.</li>
 </ul>
 <p>Identifier columns (<code>fid</code>, <code>id</code>, <code>uuid</code>, primary keys…) are skipped — they carry no analytical meaning.</p>
+<h3>Choosing the tiles</h3>
+<p>Before opening Explore, use the checkable tile picker to choose KPI row, field table, count bars, histograms, correlation matrix, scatter with trend, normalised box plot and insights. The default keeps the complete dashboard output.</p>
 <p><b>Explore: animate by ▶</b> plays the whole dashboard through a field's values
    (years, phases, survey waves). One play bar steps the count bars, histograms, the
    scatter and the Rows / Complete cards together; categories, bin edges and axes come
@@ -280,7 +287,7 @@ so you can choose a replacement without a failed render.</p>
    showing all rows.</p>
 </section>
 
-<section id="diagrams"><h2><span class="n">5</span>Map diagrams (on the canvas)</h2>
+<section id="diagrams"><h2><span class="n">7</span>Map diagrams (on the canvas)</h2>
 <p>The <b>Diagrams</b> tab draws a small <b>pie / bar / stacked / text</b> diagram on
 <i>every feature</i>, directly on the map, using native QGIS rendering — so it prints,
 exports to layouts and follows the layer like any symbology.</p>
@@ -291,7 +298,7 @@ exports to layouts and follows the layer like any symbology.</p>
 </ol>
 </section>
 
-<section id="normalise"><h2><span class="n">6</span>Normalising diagrams — why it matters</h2>
+<section id="normalise"><h2><span class="n">8</span>Normalising diagrams — why it matters</h2>
 <p>Put two fields on very different scales into one pie or bar — say
 <code>population</code> (0–500,000) and <code>area_km2</code> (0–40) — and the big-number
 field swamps the small one: the slice or bar for <code>area_km2</code> is invisible and
@@ -309,7 +316,7 @@ columns are written to your data.</div>
 angle. For pie / stacked diagrams prefer <b>Min–max</b> or <b>Log</b>.</div>
 </section>
 
-<section id="labels"><h2><span class="n">7</span>Labels &amp; expressions</h2>
+<section id="labels"><h2><span class="n">9</span>Labels &amp; expressions</h2>
 <p>The <b>Labels</b> tab turns a field into well-placed, publication-grade labels with a
 style preset (clean halo / strong halo / bold / plain). Beyond a single field you can
 <b>format</b> and <b>compose</b> the text without leaving the dock:</p>
@@ -336,7 +343,7 @@ wordwrap(<b>"long_name"</b>, 16)                 <b>// wrap every ~16 characters
 <code>format_number()</code> handle decimals; <code>concat()</code> joins text and numbers.</div>
 </section>
 
-<section id="assistant"><h2><span class="n">8</span>Smart suggestions (offline)</h2>
+<section id="assistant"><h2><span class="n">10</span>Smart suggestions (offline)</h2>
 <p>02viz includes a built-in, fully offline assistant — no account, no internet.
 It reads the active layer's fields and proposes concrete next steps:</p>
 <ul>
@@ -348,7 +355,7 @@ It reads the active layer's fields and proposes concrete next steps:</p>
 </ul>
 </section>
 
-<section id="ai"><h2><span class="n">9</span>Use an AI assistant (optional)</h2>
+<section id="ai"><h2><span class="n">11</span>Use an AI assistant (optional)</h2>
 <p>02viz never sends your data anywhere. If you'd like extra help, copy one of these
 prompts into ChatGPT, Claude or any LLM, paste in your field names, and bring the
 answer back (for example into the <b>Advanced expression</b> box).</p>
@@ -369,18 +376,22 @@ feature: <b>&lt;fields and their rough ranges&gt;</b>. Should I use
 Min–max, Z-score or Log normalisation, and why? One short paragraph.</pre>
 </section>
 
-<section id="trouble"><h2><span class="n">10</span>Troubleshooting</h2>
+<section id="trouble"><h2><span class="n">12</span>Troubleshooting</h2>
 <table><tr><th>Symptom</th><th>Fix</th></tr>
-<tr><td>Embedded panel is blank with Plotly or Vega-Lite</td>
+<tr><td>Plotly or Vega-Lite shows an “Open this chart in your browser” card</td>
 <td>That QGIS build has only the legacy QtWebKit view, which can't run those engines.
 Click <b>↗</b> to open in your browser, switch the engine to <b>ECharts</b> (renders in the
 dock everywhere), or install QtWebEngine for QGIS.</td></tr>
 <tr><td>Drop-downs or labels look dark / unreadable</td>
-<td>Fixed in 0.9.1 — the panel pins its own light colours under any QGIS theme. Update 02viz.</td></tr>
+<td>The panel sets its own light colours under every QGIS theme. If a control is still hard
+to read, report it with a screenshot at
+<code>github.com/YusufEminoglu/zero2viz/issues</code>.</td></tr>
 <tr><td>“Aggregation needs a Y field”</td>
 <td>Pick a numeric <b>Y</b> field, or set <b>Aggregate = count</b> (which ignores Y).</td></tr>
 <tr><td>matplotlib engine asks to install</td>
-<td>It's the optional publication-grade engine; click to install into the QGIS Python, or use a vendored engine (ECharts/Plotly/Vega-Lite).</td></tr>
+<td>matplotlib ships with QGIS on OSGeo4W and the standalone Windows installers. If your
+QGIS Python lacks it, 02viz shows the exact command to install it yourself (02viz never
+installs anything), or use ECharts, Plotly or Vega-Lite, which need nothing extra.</td></tr>
 <tr><td>Pie slices look wrong after normalising</td>
 <td>Z-score can be negative — use <b>Min–max</b> or <b>Log</b> for pie / stacked diagrams.</td></tr></table>
 </section>

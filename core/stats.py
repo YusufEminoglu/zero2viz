@@ -2,13 +2,18 @@
 """Pure-Python statistics helpers (no numpy/pandas — Hub-safe, testable headless)."""
 from __future__ import annotations
 
+import datetime
 import math
 
 AGGREGATIONS = ("none", "count", "sum", "mean", "median", "min", "max", "std", "iqr")
 
 
 def to_float(value):
-    """Guarded numeric coercion; returns None for anything non-finite."""
+    """Guarded numeric coercion; returns None for anything non-finite.
+
+    Booleans are *not* numbers here (a yes/no field is not a measure to
+    histogram or correlate); aggregations count them through
+    :func:`measure` instead."""
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -16,6 +21,47 @@ def to_float(value):
     except (TypeError, ValueError):
         return None
     return f if math.isfinite(f) else None
+
+
+def measure(value):
+    """Numeric value of a Y measure for aggregation: like :func:`to_float`,
+    but a boolean counts as 1 (true) or 0 (false), so ``sum`` of a yes/no
+    field is the number of yes rows and ``mean`` is their share."""
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    return to_float(value)
+
+
+def temporal_iso(value) -> str | None:
+    """ISO 8601 text for a date / datetime / time value, or None when
+    ``value`` is not temporal. Accepts Python ``datetime`` objects and Qt's
+    QDate / QDateTime / QTime (duck-typed, so this module stays Qt-free).
+    An invalid (null) Qt temporal also returns None."""
+    if isinstance(value, datetime.datetime):
+        return value.isoformat(sep="T", timespec="seconds" if not value.microsecond
+                               else "milliseconds")
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    for attr in ("toPyDateTime", "toPyDate", "toPyTime"):
+        convert = getattr(value, attr, None)
+        if not callable(convert):
+            continue
+        is_valid = getattr(value, "isValid", None)
+        if callable(is_valid) and not is_valid():
+            return None
+        try:
+            return temporal_iso(convert())
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return None
+
+
+def is_temporal(value) -> bool:
+    """True for Python and Qt date / datetime / time values."""
+    if isinstance(value, (datetime.date, datetime.time)):
+        return True
+    return any(callable(getattr(value, a, None))
+               for a in ("toPyDateTime", "toPyDate", "toPyTime"))
 
 
 def _median(sorted_vals: list[float]) -> float:
@@ -46,7 +92,7 @@ def aggregate(xs: list, ys: list, how: str) -> tuple[list[str], list[float]]:
             order.append(key)
         counts[key] += 1
         if how != "count" and i < len(ys):
-            f = to_float(ys[i])
+            f = measure(ys[i])
             if f is not None:
                 groups[key].append(f)
 
@@ -93,8 +139,41 @@ def _bin_label(v: float) -> str:
     return s[:-1] if s.endswith(".") else s
 
 
+def _edge_text(v: float, decimals: int) -> str:
+    """``v`` with at most ``decimals`` decimals (trailing zeros dropped) and
+    comma thousands."""
+    r = round(v, decimals)
+    if r == 0:
+        r = 0.0  # no "-0"
+    if decimals <= 0 or r == int(r):
+        return f"{int(round(r)):,}"
+    s = f"{r:,.{decimals}f}".rstrip("0")
+    return s[:-1] if s.endswith(".") else s
+
+
+def bin_edge_labels(lo: float, width: float, bins: int) -> list[str]:
+    """Text for the ``bins + 1`` edges of equal-width bins.
+
+    The readable :func:`_bin_label` style is kept whenever it already gives
+    every edge its own text. When it does not (years binned in half-years,
+    ratios in steps of 1e-4: the old labels read "2,000–2,000" or "0–0", so
+    Vega-Lite merged bins and Plotly drew bars on top of each other), every
+    edge gets the smallest common number of decimals that keeps them all
+    distinct."""
+    edges = [lo + i * width for i in range(bins + 1)]
+    labels = [_bin_label(e) for e in edges]
+    if len(set(labels)) == len(labels):
+        return labels
+    for decimals in range(0, 16):
+        labels = [_edge_text(e, decimals) for e in edges]
+        if len(set(labels)) == len(labels):
+            return labels
+    return [repr(e) for e in edges]
+
+
 def histogram(values: list, bins: int = 20) -> tuple[list[str], list[int]]:
-    """Equal-width binning. Returns (labels, counts); empty input → ([], [])."""
+    """Equal-width binning. Returns (labels, counts); empty input → ([], []).
+    Every label is distinct (see :func:`bin_edge_labels`)."""
     nums = sorted(v for v in (to_float(x) for x in values) if v is not None)
     if not nums:
         return [], []
@@ -107,8 +186,8 @@ def histogram(values: list, bins: int = 20) -> tuple[list[str], list[int]]:
     for v in nums:
         i = min(int((v - lo) / width), bins - 1)
         counts[i] += 1
-    labels = [f"{_bin_label(lo + i * width)}–{_bin_label(lo + (i + 1) * width)}"
-             for i in range(bins)]
+    edges = bin_edge_labels(lo, width, bins)
+    labels = [f"{edges[i]}–{edges[i + 1]}" for i in range(bins)]
     return labels, counts
 
 

@@ -364,10 +364,6 @@ def test_explore_animation_profiles_every_frame(iface):
     html_ok = 'id="o2vizSlider"' in html and '"labels": ["2019", "2020", "2021"]' in html
     static_html = dash_mod.build_dashboard(profile_mod.build_profile(layer))
     static_ok = "var FRAMES = null;" in static_html and 'id="o2vizSlider"' not in static_html
-    out_dir = Path(r"C:\Users\YE\PyCharmMiscProject\qgis_plugins\scratch\02viz_explore_samples")
-    if out_dir.parent.is_dir():
-        out_dir.mkdir(exist_ok=True)
-        (out_dir / "explore_animated.html").write_text(html, encoding="utf-8")
     return _ok(
         "Explore animate-by: frames per tile on one axis, KPIs per frame, static tiles stay static",
         labels_ok and animated == {"bar", "histogram", "scatter"} and "heatmap" in static
@@ -449,10 +445,32 @@ def test_new_chart_types_and_aggregations(iface):
         app.processEvents()
 
 
+def test_unload_removes_the_page_folder(iface):
+    """The dock keeps one temporary page file; unload must take its folder
+    with it (v0.19 left a new 1-5 MB file per render behind)."""
+    module = __import__(PACKAGE)
+    plugin = module.classFactory(iface)
+    plugin.initGui()
+    app = QgsApplication.instance()
+    plugin.panel_action.trigger()
+    app.processEvents()
+    page = plugin._dock._chart_file()
+    Path(page).write_text("<html></html>", encoding="utf-8")
+    folder = os.path.dirname(page)
+    plugin.unload()
+    app.sendPostedEvents()
+    app.processEvents()
+    return _ok("unload removes the dock's temporary page folder",
+               os.path.isfile(page) is False and not os.path.exists(folder),
+               f"folder_left={os.path.exists(folder)}")
+
+
 def run_all(iface):
     print("=" * 60)
     print(" zero2viz - lifecycle smoke")
     print("=" * 60)
+    from qgis.PyQt.QtCore import QSettings
+    QSettings().remove("zero2viz/last_setup")  # every check starts from a fresh panel
     results = [
         test_metadata(),
         test_no_percent_in_metadata(),
@@ -465,6 +483,7 @@ def run_all(iface):
         test_facet_by_builds_small_multiples(iface),
         test_explore_animation_profiles_every_frame(iface),
         test_new_chart_types_and_aggregations(iface),
+        test_unload_removes_the_page_folder(iface),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)
@@ -472,25 +491,23 @@ def run_all(iface):
     return passed == len(results)
 
 
-def main():
-    app = QgsApplication.instance()
-    owns_app = app is None
-    profile = None
-    if owns_app:
-        profile = tempfile.TemporaryDirectory(prefix="zero2viz-smoke-")
-        app = QgsApplication([], True, profile.name, "external")
-        app.initQgis()
-    iface = _Iface()
-    try:
-        return run_all(iface)
-    finally:
-        iface.mainWindow().close()
-        if owns_app:
-            app.exitQgis()
-            profile.cleanup()
-
-
 if __name__ == "__main__":
-    sys.exit(0 if main() else 1)
-else:
-    main()
+    # Runs only as a script/module, never on import (TRAPS 4.4), and exits with
+    # os._exit from the frame that holds the QgsApplication (TRAPS 4.6).
+    from qgis.PyQt.QtCore import QSettings
+
+    _PROFILE = tempfile.TemporaryDirectory(prefix="zero2viz-smoke-")
+    # the dock remembers its setup in QSettings: keep it in the throwaway
+    # profile, never in the developer's registry or live QGIS profile
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, _PROFILE.name)
+    _APP = QgsApplication.instance()
+    if _APP is None:
+        _APP = QgsApplication([], True, _PROFILE.name, "external")
+        _APP.initQgis()
+    _IFACE = _Iface()
+    _OK = run_all(_IFACE)
+    _IFACE.mainWindow().close()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0 if _OK else 1)

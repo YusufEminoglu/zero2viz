@@ -1,5 +1,88 @@
 # Changelog
 
+## [0.20.0] - 2026-11-02
+
+Every chart now shows the data as it is, every export is the file it says it
+is, and the panel fits a dock as narrow as 350 pixels.
+
+### Added
+
+- **Horizontal bars and reversed axes.** Bar, lollipop and histogram charts
+  can run horizontally, and either axis can be reversed (GitHub issue #1).
+- **Use layer colours.** Tick it and chart categories take the symbol colours
+  of the layer's categorized or rule-based style, so the chart matches the map
+  legend; categories the style does not cover keep the palette colours.
+- **Vector SVG and PDF, PNG at your size.** SVG now comes from each engine's
+  own vector output (Plotly, ECharts, Vega-Lite and matplotlib) and PDF is made
+  from that SVG, so both stay sharp at any zoom; PNG is saved at the width and
+  height you pick. The download buttons inside ECharts and Plotly charts now
+  save a file as well.
+- **The panel remembers your last setup** when it reopens, not only saved
+  presets and the last folder.
+
+### Changed
+
+- **A panel that fits a narrow dock** (GitHub issue #2). No sideways scrolling
+  at 350 pixels wide: all exports sit in one Export menu, Render and the status
+  line stay pinned at the bottom, less-used rows are folded away, and the view
+  scrolls to the chart after rendering. The first screen leads with the layer
+  and fields; the engine choice moved under Advanced.
+- **Export only what is on screen.** PNG, SVG and PDF are available only while
+  the view shows a rendered chart, so the Guide, an error message or the "open
+  in your browser" card can no longer be saved as if it were the chart.
+- **External CSV files keep their column types.** They open through the QGIS
+  delimited-text reader with type detection, so numbers and dates are no longer
+  read as text.
+- **The matplotlib engine leaves QGIS alone.** It draws on its own figure
+  instead of switching the plotting backend and global settings, so the QGIS
+  Python console and other plugins keep theirs; very large bar counts are
+  capped with a message instead of blocking QGIS for minutes.
+- **Listing and README corrected.** Small multiples work for the seven chart
+  types that support them (bar, lollipop, line, area, scatter, bubble and pie);
+  selecting features on the map highlights them in the chart rather than
+  filtering it; matplotlib ships with OSGeo4W QGIS on Windows; the README counts
+  20 chart types and 30 plugins in the family and links each sibling plugin to
+  its own repository. New search tags: histogram, pie chart, scatter plot, box
+  plot, heatmap, time series and bar chart race. Bug reports now go to the
+  [GitHub issue tracker](https://github.com/YusufEminoglu/zero2viz/issues).
+
+### Fixed
+
+- **Charts that misread the data.**
+  - Plotly no longer puts category codes such as "30", "4", "100" or "2024-03"
+    on a number or date axis, and it keeps the "(null)" and "Other" bars.
+  - The Top-N "Other" bar uses the chosen aggregate on the merged rows: a mean
+    of 10 is no longer shown as a sum of 150.
+  - Dates are written as ISO dates and sorted in date order, instead of
+    "PyQt5.QtCore.QDate(...)" text sorted Jan, Oct, Feb.
+  - Histogram bin labels carry enough decimals to stay distinct, so no bins
+    merge (Vega-Lite) or overlap (Plotly).
+  - With aggregate "none", empty (NULL) values are skipped instead of drawn as
+    0, and every engine draws repeated X values the same way.
+  - The bar-chart race re-sorts its bars in every frame, and numeric frame
+    labels play in numeric order (1, 2, 10 rather than 1, 10, 2).
+  - Pareto refuses negative values with a message instead of climbing past
+    100 %, and true/false fields are counted instead of summing to 0.
+- **Chart pages are safe with any layer name.** Titles are HTML-escaped
+  everywhere and data inside the page's scripts is escaped, so a value
+  containing `</script>` can no longer blank the chart or run script, and the
+  map-selection bridge accepts only the plugin's own messages.
+- **Exports after a failed render.** After a failed render or after opening
+  the Guide, an export no longer saves the previous page and reports success.
+- **Charts follow layer edits.** Editing or saving the charted layer marks the
+  chart out of date and redraws it, so clicking a bar no longer selects the
+  wrong features.
+- **No temporary files left behind.** Each panel keeps one temporary chart
+  file and removes it when the plugin unloads; before, every render left a new
+  file behind (4.6 MB or more with Plotly).
+- The install hint for the matplotlib engine names the QGIS Python instead of
+  the QGIS program itself.
+- **Easier to read.** Text contrast is at least 4.5:1 (white on teal, the
+  placeholder text); check boxes stay visible under every built-in Qt style
+  and QGIS theme, Night Mapping included; the garbled "Â·" and the empty
+  "Spec JSON" label are gone; the Guide's numbering and two wrong sentences
+  are corrected.
+
 ## [0.19.1] - 2026-10-27
 
 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.

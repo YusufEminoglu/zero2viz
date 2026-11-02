@@ -8,9 +8,8 @@ every bar and point still selects features on the canvas.
 from __future__ import annotations
 
 import html as html_escape
-import json
 
-from .base import BRIDGE_JS, DEFAULT_THEME, THEMES, read_web
+from .base import BRIDGE_JS, DEFAULT_THEME, THEMES, page_title, read_web, script_json
 from .echarts import EChartsEngine
 
 _PAGE = """<!DOCTYPE html>
@@ -241,11 +240,11 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
             '<div class="play"><button id="o2vizPlayBtn" title="Play / pause">&#9654;</button>'
             f'<input type="range" id="o2vizSlider" min="0" max="{n - 1}" value="0" step="1">'
             '<span class="flabel" id="o2vizFrameLabel"></span></div>')
-        frames_json = json.dumps({
+        frames_json = script_json({
             "field": frames["field"], "labels": [str(v) for v in frames["labels"]],
             "interval": int(frames.get("interval", 1400)),
             "kpis": frames.get("kpis") if profile.get("kpis") else [],
-            "tiles": tile_frames}, ensure_ascii=False)
+            "tiles": tile_frames})
 
     kpi_html = "".join(
         f'<div class="kpi"><div class="v">{esc(str(v))}</div>'
@@ -256,7 +255,7 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
                          for _ in options)
 
     return _PAGE.format(
-        title=esc(profile.get("title", "")),
+        title=esc(page_title(profile.get("title", ""), fallback="")),
         meta=esc(profile.get("meta", "")),
         insights=insight_html,
         kpis=kpi_html,
@@ -264,7 +263,7 @@ def build_dashboard(profile: dict, theme: dict | None = None) -> str:
         tiles=tiles_html,
         play_bar=play_bar,
         frames=frames_json,
-        options=json.dumps(options, ensure_ascii=False),
+        options=script_json(options),
         lib=read_web("echarts.min.js"),
         bridge=BRIDGE_JS,
         bg=theme["bg"], text=theme["text"], grid=theme["grid"],

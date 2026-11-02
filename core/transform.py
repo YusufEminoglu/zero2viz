@@ -8,14 +8,67 @@ features it represents and can select them back on the map canvas.
 from __future__ import annotations
 
 import math
+import re
 
-from .stats import _median, _quantile, kde_points, mean_std, to_float
+from .stats import (_median, _quantile, is_temporal, kde_points, mean_std, measure,
+                    temporal_iso, to_float)
 
 SORT_MODES = ("natural", "value_desc", "value_asc")
+NULL_KEY = "(null)"
+
+# ISO 8601 date / datetime keys (what _key makes of QDate / QDateTime values)
+_ISO_DATE_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
+    r"(?:Z|[+-]\d{2}:?\d{2})?)?$")
+_PLAIN_TYPES = (str, int, float)
 
 
 def _key(value) -> str:
-    return "(null)" if value is None else str(value)
+    """Category label of a raw value: "(null)" for NULL, ISO 8601 text for
+    dates / datetimes / times (Python or Qt — never "PyQt5.QtCore.QDate(…)"),
+    ``str(value)`` otherwise."""
+    if value is None:
+        return NULL_KEY
+    if type(value) in _PLAIN_TYPES:
+        return str(value)
+    iso = temporal_iso(value)
+    if iso is not None:
+        return iso
+    if is_temporal(value):
+        return NULL_KEY  # an invalid / null QDate is a missing value
+    return str(value)
+
+
+def _chronological(keys: list[str]) -> list[str]:
+    """Dates sort as dates: when every non-NULL key is an ISO date/datetime,
+    return them in time order (ISO text sorts chronologically), NULL last.
+    Any other key list is returned unchanged (first-appearance order)."""
+    dated = [k for k in keys if k != NULL_KEY]
+    if not dated or not all(_ISO_DATE_RE.match(k) for k in dated):
+        return keys
+    return sorted(dated) + [k for k in keys if k == NULL_KEY]
+
+
+class GroupedValues(list):
+    """Aggregated values (a plain list to every consumer and to JSON) that
+    remember the aggregation and the numbers behind each value, so
+    :func:`topn_collapse` can compute its "Other" bucket with the *same*
+    aggregation over the merged rows instead of summing per-group results
+    (a mean of 10 everywhere used to show "Other" = 150)."""
+
+    __slots__ = ("how", "samples", "counts")
+
+    def __init__(self, values=(), how=None, samples=None, counts=None):
+        super().__init__(values)
+        self.how = how
+        self.samples = samples  # list[list[float]] aligned with the values
+        self.counts = counts    # list[int] rows per value
+
+    def reorder(self, order: list[int]) -> "GroupedValues":
+        return GroupedValues(
+            [self[i] for i in order], self.how,
+            None if self.samples is None else [self.samples[i] for i in order],
+            None if self.counts is None else [self.counts[i] for i in order])
 
 
 def _reduce(vals: list[float], count: int, how: str) -> float:
@@ -43,7 +96,11 @@ def _reduce(vals: list[float], count: int, how: str) -> float:
 
 
 def group_rows(xs: list, ys: list, fids: list, how: str):
-    """Single-series grouping → (categories, values, ids_per_category)."""
+    """Single-series grouping → (categories, values, ids_per_category).
+
+    Categories keep first-appearance order, except that dates sort as dates.
+    A boolean Y counts 1 / 0. ``values`` is a :class:`GroupedValues`, so a
+    later :func:`topn_collapse` aggregates "Other" correctly."""
     order: list[str] = []
     nums: dict[str, list[float]] = {}
     counts: dict[str, int] = {}
@@ -58,11 +115,47 @@ def group_rows(xs: list, ys: list, fids: list, how: str):
         counts[k] += 1
         ids[k].append(fids[i] if i < len(fids) else None)
         if how != "count" and i < len(ys):
-            f = to_float(ys[i])
+            f = measure(ys[i])
             if f is not None:
                 nums[k].append(f)
-    values = [_reduce(nums[k], counts[k], how) for k in order]
+    order = _chronological(order)
+    values = GroupedValues([_reduce(nums[k], counts[k], how) for k in order], how,
+                           [nums[k] for k in order], [counts[k] for k in order])
     return order, values, [ids[k] for k in order]
+
+
+def raw_rows(xs: list, ys: list, fids: list):
+    """Aggregate "none": one bar / point per feature, in row order.
+
+    Rows whose Y is NULL or not a number are skipped — never drawn as 0 —
+    and a boolean Y counts 1 / 0. A repeated X value gets a numbered label
+    ("A", "A (2)", …) so every engine draws one slot per feature: before,
+    ECharts drew one slot per row while Plotly and Vega-Lite merged equal
+    labels into one slot and overlapped or stacked the bars.
+    → (categories, values, ids_per_category); the number of skipped rows is
+    ``len(xs) - len(categories)``."""
+    cats: list[str] = []
+    vals: list[float] = []
+    ids: list[list] = []
+    used: set[str] = set()
+    last_n: dict[str, int] = {}
+    for i, x in enumerate(xs):
+        y = measure(ys[i]) if i < len(ys) else None
+        if y is None:
+            continue
+        base = _key(x)
+        label = base
+        if label in used:
+            n = last_n.get(base, 1)
+            while label in used:
+                n += 1
+                label = f"{base} ({n})"
+            last_n[base] = n
+        used.add(label)
+        cats.append(label)
+        vals.append(y)
+        ids.append([fids[i]] if i < len(fids) else [])
+    return cats, vals, ids
 
 
 def pivot_rows(xs: list, series: list, ys: list, fids: list, how: str):
@@ -87,9 +180,11 @@ def pivot_rows(xs: list, series: list, ys: list, fids: list, how: str):
         counts[cell] += 1
         ids[cell].append(fids[i] if i < len(fids) else None)
         if how != "count" and i < len(ys):
-            f = to_float(ys[i])
+            f = measure(ys[i])
             if f is not None:
                 nums[cell].append(f)
+    cat_order = _chronological(cat_order)
+    ser_order = _chronological(ser_order)
     out = []
     for cs in ser_order:
         values, id_rows = [], []
@@ -122,9 +217,11 @@ def heatmap_rows(xs: list, ys: list, vals: list, how: str):
             nums[cell] = []
         counts[cell] += 1
         if how != "count" and i < len(vals):
-            f = to_float(vals[i])
+            f = measure(vals[i])
             if f is not None:
                 nums[cell].append(f)
+    x_cats = _chronological(x_cats)
+    y_cats = _chronological(y_cats)
     cells, flat = [], []
     for (cx, cy), n in counts.items():
         v = _reduce(nums[(cx, cy)], n, how)
@@ -147,7 +244,7 @@ def tree_rows(groups: list, subs: list, vals: list, how: str, fids: list | None 
         bucket = children[cg].setdefault(cs, {"nums": [], "count": 0, "ids": []})
         bucket["count"] += 1
         if how != "count" and i < len(vals):
-            f = to_float(vals[i])
+            f = measure(vals[i])
             if f is not None:
                 bucket["nums"].append(f)
     nodes = []
@@ -168,15 +265,41 @@ def tree_rows(groups: list, subs: list, vals: list, how: str, fids: list | None 
 
 
 def topn_collapse(cats: list[str], vals: list[float], ids: list[list] | None, n: int,
-                  others_label: str = "Other"):
-    """Keep the n largest categories, collapse the rest into one bucket."""
+                  others_label: str = "Other", *, how: str | None = None,
+                  samples: list[list[float]] | None = None,
+                  counts: list[int] | None = None):
+    """Keep the n largest categories, collapse the rest into one bucket.
+
+    The bucket is computed with the chart's own aggregation over the merged
+    rows: the mean of all "Other" rows for a mean chart, their median for a
+    median chart, their row count for a count chart. ``how`` / ``samples`` /
+    ``counts`` come from a :class:`GroupedValues` (what :func:`group_rows`
+    returns) or can be passed explicitly; without them (raw, unaggregated
+    values) the bucket is the sum of the collapsed values."""
     if n <= 0 or len(cats) <= n:
         return cats, vals, ids
+    if isinstance(vals, GroupedValues):
+        how = how or vals.how
+        samples = vals.samples if samples is None else samples
+        counts = vals.counts if counts is None else counts
     ranked = sorted(range(len(cats)), key=lambda i: vals[i], reverse=True)
     keep = sorted(ranked[:n])  # preserve original order among the kept
     rest = ranked[n:]
     out_c = [cats[i] for i in keep] + [others_label]
-    out_v = [vals[i] for i in keep] + [sum(vals[i] for i in rest)]
+    merged_nums: list[float] = []
+    merged_count = 0
+    if how and how != "none" and (samples is not None or how == "count") and counts is not None:
+        for i in rest:
+            merged_count += counts[i]
+            if samples is not None:
+                merged_nums.extend(samples[i])
+        other = _reduce(merged_nums, merged_count, how)
+        out_v = GroupedValues(
+            [vals[i] for i in keep] + [other], how,
+            None if samples is None else [samples[i] for i in keep] + [merged_nums],
+            [counts[i] for i in keep] + [merged_count])
+    else:
+        out_v = [vals[i] for i in keep] + [sum(vals[i] for i in rest)]
     out_i = None
     if ids is not None:
         merged: list = []
@@ -193,7 +316,9 @@ def sort_cats(cats: list[str], vals: list[float], ids: list[list] | None, mode: 
         return cats, vals, ids
     order = sorted(range(len(cats)), key=lambda i: vals[i],
                    reverse=(mode == "value_desc"))
-    return ([cats[i] for i in order], [vals[i] for i in order],
+    out_v = (vals.reorder(order) if isinstance(vals, GroupedValues)
+             else [vals[i] for i in order])
+    return ([cats[i] for i in order], out_v,
             [ids[i] for i in order] if ids is not None else None)
 
 
@@ -216,9 +341,10 @@ def band_rows(xs: list, ys: list, groups: list | None, fids: list, k: float = 1.
             nums[cell] = []
             ids[cell] = []
         ids[cell].append(fids[i] if i < len(fids) else None)
-        f = to_float(ys[i]) if i < len(ys) else None
+        f = measure(ys[i]) if i < len(ys) else None
         if f is not None:
             nums[cell].append(f)
+    cat_order = _chronological(cat_order)
     out = []
     for cs in ser_order:
         means, los, his, id_rows = [], [], [], []
@@ -262,7 +388,18 @@ def violin_rows(order: list[str], buckets: dict[str, list], points: int = 60,
 
 def pareto_rows(cats: list[str], vals: list[float], ids: list[list] | None):
     """Sort descending and add the cumulative share (0–100 %)
-    → (categories, values, cum, ids)."""
+    → (categories, values, cum, ids).
+
+    A Pareto chart reads as "share of the total"; with a negative category the
+    running share overshoots 100 % and the 80/20 reading is false, so negative
+    values are refused with a message (``ValueError``)."""
+    negative = [cats[i] for i, v in enumerate(vals) if v is not None and v < 0]
+    if negative:
+        many = len(negative) != 1
+        raise ValueError(
+            f"Pareto needs values of zero or more, but {len(negative)} "
+            f"categor{'ies are' if many else 'y is'} below zero (for example "
+            f"'{negative[0]}'). Use count, or a measure that cannot be negative.")
     order = sorted(range(len(cats)), key=lambda i: vals[i], reverse=True)
     cats = [cats[i] for i in order]
     vals = [vals[i] for i in order]
@@ -347,12 +484,22 @@ def frame_groups(frame_col: list):
             buckets[k] = []
             order.append(k)
         buckets[k].append(i)
-    nums = [to_float(k) for k in order]
-    if order and all(n is not None for n in nums):
-        order = [k for _, k in sorted(zip(nums, order), key=lambda p: p[0])]
-    else:
-        order = sorted(order)
+    order = _ordered_labels(order)
     return order, [buckets[k] for k in order]
+
+
+def _ordered_labels(labels: list[str]) -> list[str]:
+    """Time-axis order: numerically when every non-NULL label is a number
+    (1, 2, 10 — not 1, 10, 2), otherwise as text (ISO dates therefore in time
+    order); "(null)" always last."""
+    rest = [k for k in labels if k != NULL_KEY]
+    nulls = [k for k in labels if k == NULL_KEY]
+    nums = [to_float(k) for k in rest]
+    if rest and all(n is not None for n in nums):
+        rest = [k for _, k in sorted(zip(nums, rest), key=lambda p: p[0])]
+    else:
+        rest = sorted(rest)
+    return rest + nulls
 
 
 def union_categories(cat_lists: list) -> list[str]:
@@ -366,10 +513,7 @@ def union_categories(cat_lists: list) -> list[str]:
             if c not in seen:
                 seen.add(c)
                 merged.append(c)
-    nums = [to_float(c) for c in merged]
-    if merged and all(n is not None for n in nums):
-        return [c for _, c in sorted(zip(nums, merged), key=lambda p: p[0])]
-    return sorted(merged)
+    return _ordered_labels(merged)
 
 
 def align_values(target: list, cats: list, values: list, ids: list | None = None):
@@ -417,7 +561,10 @@ def _build_slices(kind: str, cols: dict, fids: list, idx_per: list, *,
     bounds_or_None)`` or ``None`` when there is no chartable data."""
 
     def sub(name, idxs):
-        col = cols.get(name, [])
+        # A count chart has no Y field: its column is empty, not missing rows.
+        col = cols.get(name) or []
+        if not col:
+            return [None] * len(idxs)
         return [col[i] for i in idxs]
 
     datas: list[dict] = []

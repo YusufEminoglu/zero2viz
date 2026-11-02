@@ -2,12 +2,34 @@
 """Plotly engine — plotly.js (MIT) vendored in ../web/plotly.min.js."""
 from __future__ import annotations
 
-import json
-
-from .base import ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import (ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, category_colors, colors_for,
+                   is_horizontal, is_race, options_of, read_web, script_json, theme_of,
+                   wrap_html)
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
 _OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
+
+# chart types whose x positions are category labels: the axis must be typed
+# "category", or Plotly guesses — codes "30", "4", "100" become numbers on a
+# linear axis, "2024-03" a date, and "(null)" / "Other" bars vanish
+_CATEGORY_X = frozenset(("bar", "lollipop", "line", "area", "histogram", "box",
+                         "errorband", "errorbar", "pareto"))
+
+# window.o2vizExport (engines.base contract): the engine's own vector / raster
+# export at a chosen size — Plotly.toImage, never a screenshot of the widget
+_EXPORT_JS = """
+window.o2vizExport = function (format, width, height, scale) {
+  var w = Math.max(16, Math.round(width || gd.clientWidth || 900));
+  var h = Math.max(16, Math.round(height || gd.clientHeight || 560));
+  if (format === "svg") {
+    return Plotly.toImage(gd, {format: "svg", width: w, height: h, imageDataOnly: true});
+  }
+  if (format === "png") {
+    return Plotly.toImage(gd, {format: "png", width: w, height: h, scale: scale || 1});
+  }
+  return Promise.reject(new Error("Unsupported export format: " + format));
+};
+"""
 
 _BODY = """
 var gd = document.getElementById("chart");
@@ -57,7 +79,7 @@ window.__o2vizHighlight = function (ids) {
     window.__o2vizHighlighted = (want === null) ? -1 : ids.length;
   } catch (e) { /* highlight is guarded */ }
 };
-"""
+""" + _EXPORT_JS
 
 # animated figure (play axis): data + layout + frames, with a slider and
 # play/pause buttons baked into the layout. Cross-filter highlighting is
@@ -77,7 +99,7 @@ gd.on("plotly_click", function (ev) {
   if (ids.length) __o2vizSelect(ids);
 });
 window.__o2vizHighlight = function () { /* cross-filter paused during animation */ };
-"""
+""" + _EXPORT_JS
 
 
 def _rgba(hex_color: str, alpha: float) -> str:
@@ -102,19 +124,49 @@ class PlotlyEngine(ChartEngine):
 
     def build_html(self, spec: dict) -> str:
         if spec.get("frames") and spec["type"] in self.animates:
-            traces, layout, frames = self._animated_figure(spec)
-            body = _ANIM_BODY % {"data": json.dumps(traces, ensure_ascii=False),
-                                 "layout": json.dumps(layout, ensure_ascii=False),
-                                 "frames": json.dumps(frames, ensure_ascii=False)}
+            traces, layout, frames = self.animated_figure(spec)
+            body = _ANIM_BODY % {"data": script_json(traces),
+                                 "layout": script_json(layout),
+                                 "frames": script_json(frames)}
         else:
-            if spec.get("facets") and spec["type"] in self.facets:
-                traces, layout = self._facet_figure(spec)
-            else:
-                traces, layout = self._figure(spec)
-            body = _BODY % {"traces": json.dumps(traces, ensure_ascii=False),
-                            "layout": json.dumps(layout, ensure_ascii=False)}
+            traces, layout = self.figure(spec)
+            body = _BODY % {"traces": script_json(traces),
+                            "layout": script_json(layout)}
         return wrap_html(spec.get("title", ""), read_web("plotly.min.js"),
                          body, theme_of(spec))
+
+    def figure(self, spec: dict):
+        """Public: (traces, layout) of a static or faceted chart, exactly as
+        the page draws it (axis options applied)."""
+        if spec.get("facets") and spec["type"] in self.facets:
+            traces, layout = self._facet_figure(spec)
+        else:
+            traces, layout = self._figure(spec)
+        self._finish_axes(layout, spec)
+        return traces, layout
+
+    def animated_figure(self, spec: dict):
+        """Public: (traces, layout, frames) of an animated chart."""
+        traces, layout, frames = self._animated_figure(spec)
+        self._finish_axes(layout, spec)
+        return traces, layout, frames
+
+    @staticmethod
+    def _finish_axes(layout: dict, spec: dict) -> None:
+        """Apply ``options["reverse_x"/"reverse_y"]`` to every x / y axis."""
+        opts = options_of(spec)
+        for prefix, flag in (("xaxis", opts.get("reverse_x")), ("yaxis", opts.get("reverse_y"))):
+            if not flag:
+                continue
+            for key, ax in layout.items():
+                if not (key.startswith(prefix) and isinstance(ax, dict)):
+                    continue
+                if isinstance(ax.get("range"), list) and len(ax["range"]) == 2:
+                    ax["range"] = [ax["range"][1], ax["range"][0]]
+                elif ax.get("autorange") == "reversed":
+                    ax["autorange"] = True
+                else:
+                    ax["autorange"] = "reversed"
 
     # ───────────────────────── animation (play axis) ─────────────────────────
 
@@ -127,12 +179,23 @@ class PlotlyEngine(ChartEngine):
         trans = min(interval // 2, 400)
 
         traces, layout = self._figure(dict(static, data=frames["datas"][0]))
-        self._fix_ranges(layout, spec["type"], frames.get("bounds"))
+        self._fix_ranges(layout, spec["type"], frames.get("bounds"), spec)
+        race = is_race(spec)
+        cat_axis = "yaxis" if is_horizontal(spec) else "xaxis"
 
         pframes = []
         for i, fdata in enumerate(frames["datas"]):
             ftr, _ = self._figure(dict(static, data=fdata))
-            pframes.append({"name": labels[i], "data": ftr})
+            frame = {"name": labels[i], "data": ftr}
+            if race:
+                # bar-chart race: every frame re-ranks the bars (largest first)
+                order = self._race_order(fdata)
+                frame["layout"] = {cat_axis: {"categoryorder": "array",
+                                              "categoryarray": order}}
+                if i == 0:
+                    layout[cat_axis]["categoryorder"] = "array"
+                    layout[cat_axis]["categoryarray"] = order
+            pframes.append(frame)
 
         anim_args = {"mode": "immediate", "fromcurrent": True,
                      "frame": {"duration": interval, "redraw": True},
@@ -161,6 +224,18 @@ class PlotlyEngine(ChartEngine):
         layout["margin"]["b"] = max(layout["margin"].get("b", 72), 110)
         return traces, layout, pframes
 
+    @staticmethod
+    def _race_order(fdata: dict) -> list:
+        """Categories of one frame, largest value first (ties keep the axis
+        order)."""
+        cats = list(fdata.get("categories", []))
+        series = fdata.get("series") or [{"values": fdata.get("values", [])}]
+        vals = series[0].get("values", []) if series else []
+        rank = sorted(range(len(cats)),
+                      key=lambda i: (-(vals[i] if i < len(vals) and vals[i] is not None
+                                       else float("-inf")), i))
+        return [cats[i] for i in rank]
+
     # ───────────────────────── small multiples ─────────────────────────
 
     def _facet_figure(self, spec: dict):
@@ -172,6 +247,7 @@ class PlotlyEngine(ChartEngine):
         kind = spec["type"]
         theme = theme_of(spec)
         palette = theme["palette"] or ["#2a8f85"]
+        cmap = category_colors(spec)
         static = {k: v for k, v in spec.items() if k != "facets"}
         datas = fac["datas"]
         labels = [str(v) for v in fac.get("labels", [])]
@@ -213,12 +289,13 @@ class PlotlyEngine(ChartEngine):
                     tr["domain"] = {"x": dom_x, "y": dom_y}
                     tr["textinfo"] = "none"
                     tr["marker"] = dict(tr.get("marker") or {}, colors=[
+                        cmap.get(str(c)) or
                         palette[(cats.index(c) if c in cats else 0) % len(palette)]
                         for c in tr.get("labels", [])])
                     tr["showlegend"] = i == 0
                     traces.append(tr)
                 continue
-            self._fix_ranges(flay, kind, fac.get("bounds"))
+            self._fix_ranges(flay, kind, fac.get("bounds"), spec)
             suffix = "" if i == 0 else str(i + 1)
             xa, ya = dict(flay["xaxis"]), dict(flay["yaxis"])
             xa["domain"], ya["domain"] = dom_x, dom_y
@@ -229,27 +306,31 @@ class PlotlyEngine(ChartEngine):
                 ya["title"] = {"text": ""}
             layout[f"xaxis{suffix}"] = xa
             layout[f"yaxis{suffix}"] = ya
+            per_point = bool(cmap) and any(
+                isinstance((tr.get("marker") or {}).get("color"), list) for tr in ftr)
             for tr in ftr:
                 nm = tr.get("name", "")
                 if nm not in names:
                     names.append(nm)
-                col = palette[names.index(nm) % len(palette)]
+                col = cmap.get(str(nm)) or palette[names.index(nm) % len(palette)]
                 tr["xaxis"], tr["yaxis"] = f"x{suffix}", f"y{suffix}"
                 tr["legendgroup"] = nm
                 tr["showlegend"] = i == 0 and len(ftr) > 1
-                tr["marker"] = dict(tr.get("marker") or {}, color=col)
-                if tr.get("type") != "bar":
-                    tr["line"] = dict(tr.get("line") or {}, color=col)
+                if not per_point:  # layer colours per bar stay per bar
+                    tr["marker"] = dict(tr.get("marker") or {}, color=col)
+                    if tr.get("type") != "bar":
+                        tr["line"] = dict(tr.get("line") or {}, color=col)
                 traces.append(tr)
         layout["annotations"] = annotations
         if kind != "pie" and len(names) <= 1:
             layout["showlegend"] = False
         return traces, layout
 
-    def _fix_ranges(self, layout: dict, kind: str, bounds) -> None:
+    def _fix_ranges(self, layout: dict, kind: str, bounds, spec: dict | None = None) -> None:
         """Lock axis ranges to the global extent so frames don't rescale."""
         if not bounds:
             return
+        value_axis = "xaxis" if (spec is not None and is_horizontal(spec)) else "yaxis"
 
         def pad(rng, zero=False):
             lo, hi = rng
@@ -265,7 +346,7 @@ class PlotlyEngine(ChartEngine):
             if bounds.get("y"):
                 layout["yaxis"]["range"] = pad(bounds["y"])
         elif kind in ("bar", "lollipop", "line", "area") and bounds.get("y"):
-            layout["yaxis"]["range"] = pad(bounds["y"], zero=kind in ("bar", "lollipop", "area"))
+            layout[value_axis]["range"] = pad(bounds["y"], zero=kind in ("bar", "lollipop", "area"))
 
     # ───────────────────── figure builder ─────────────────────
 
@@ -296,6 +377,7 @@ class PlotlyEngine(ChartEngine):
             xa = dict(axis_style, title={"text": spec.get("x_label", "")})
             if cat_x:  # categorical x: drop vertical grid lines (chart junk)
                 xa["showgrid"] = False
+                xa["type"] = "category"
             layout["xaxis"] = xa
             layout["yaxis"] = dict(axis_style, title={"text": spec.get("y_label", "")})
 
@@ -413,6 +495,9 @@ class PlotlyEngine(ChartEngine):
                          [1, theme["palette"][2]]]
             traces.append({"type": "heatmap", "x": x_cats, "y": y_cats, "z": z,
                            "colorscale": scale, "showscale": True})
+            # both heatmap axes are category labels ("10", "2", "1" stay text)
+            layout["xaxis"]["type"] = "category"
+            layout["yaxis"]["type"] = "category"
 
         elif kind in ("treemap", "sunburst"):
             ids_, labels, parents, values = [], [], [], []
@@ -594,16 +679,91 @@ class PlotlyEngine(ChartEngine):
         else:
             raise ValueError(f"Unsupported chart type: {kind}")
 
+        cmap = category_colors(spec)
+        if cmap:
+            self._apply_category_colors(kind, traces, data, theme, cmap)
+        horizontal = is_horizontal(spec)
+        if horizontal:
+            self._make_horizontal(traces, layout)
         if spec.get("overlays") and kind in _OVERLAY_OK:
-            self._apply_overlays(layout, spec["overlays"], theme)
+            self._apply_overlays(layout, spec["overlays"], theme, horizontal)
         return traces, layout
 
-    def _apply_overlays(self, layout: dict, overlays: list, theme: dict) -> None:
+    @staticmethod
+    def _apply_category_colors(kind: str, traces: list, data: dict, theme: dict,
+                               cmap: dict) -> None:
+        """``options["category_colors"]``: a single series colours each bar /
+        dot / slice by its category; several series colour each series by
+        its name. Labels missing from the map keep the palette."""
+        palette = theme["palette"] or ["#2a8f85"]
+        cats = data.get("categories", [])
+        if kind == "pie":
+            for tr in traces:
+                tr["marker"] = dict(tr.get("marker") or {},
+                                    colors=colors_for(tr.get("labels", []), palette, cmap))
+            return
+        named = [tr for tr in traces if tr.get("showlegend") is not False
+                 and not str(tr.get("name", "")).endswith("·stem")]
+        if kind in ("bar", "lollipop", "pareto") and len(named) == 1:
+            tr = named[0]
+            tr["marker"] = dict(tr.get("marker") or {}, color=colors_for(
+                tr.get("x") or cats, palette, cmap, single=palette[0]))
+            return
+        for tr in named:
+            col = cmap.get(str(tr.get("name", "")))
+            if not col:
+                continue
+            tr["marker"] = dict(tr.get("marker") or {}, color=col)
+            if tr.get("type") != "bar":
+                tr["line"] = dict(tr.get("line") or {}, color=col)
+
+    @staticmethod
+    def _make_horizontal(traces: list, layout: dict) -> None:
+        """``options["horizontal"]``: bars run left→right, categories top→bottom
+        with the first category on top (the vertical chart's reading order)."""
+        for tr in traces:
+            tr["x"], tr["y"] = tr.get("y", []), tr.get("x", [])
+            if tr.get("type") == "bar":
+                tr["orientation"] = "h"
+        xa, ya = layout.get("xaxis", {}), layout.get("yaxis", {})
+        ya_new = dict(xa, autorange="reversed")
+        xa_new = dict(ya)
+        xa_new.pop("type", None)
+        layout["xaxis"], layout["yaxis"] = xa_new, ya_new
+
+    def _apply_overlays(self, layout: dict, overlays: list, theme: dict,
+                        horizontal: bool = False) -> None:
         """Reference lines/bands (see core.overlays) as full-width ``shapes``
-        (x on paper, y on data) with matching edge ``annotations``."""
+        (x on paper, y on data) with matching edge ``annotations``; on
+        horizontal bars the value axis is x, so the guides turn vertical."""
         shapes = list(layout.get("shapes", []))
         annos = list(layout.get("annotations", []))
         label_bg = _rgba(theme["bg"], 0.72)
+        if horizontal:
+            for ov in overlays:
+                color = ov.get("color")
+                line = ov.get("kind") == "line"
+                lo = ov["value"] if line else ov["lo"]
+                hi = ov["value"] if line else ov["hi"]
+                shape = {"type": "line" if line else "rect", "yref": "paper",
+                         "y0": 0, "y1": 1, "xref": "x", "x0": lo, "x1": hi}
+                if line:
+                    shape["line"] = {"color": color, "width": ov.get("width", 1.6),
+                                     "dash": _dash(ov.get("dash"))}
+                    shape["layer"] = "above"
+                else:
+                    shape["fillcolor"] = _rgba(color, ov.get("opacity", 0.12))
+                    shape["line"] = {"width": 0}
+                    shape["layer"] = "below"
+                shapes.append(shape)
+                annos.append({"yref": "paper", "y": 1, "yanchor": "bottom",
+                              "xref": "x", "x": hi, "xanchor": "left",
+                              "text": ov.get("label", ""), "showarrow": False,
+                              "font": {"color": color, "size": 10, "family": FONT_FAMILY},
+                              "bgcolor": label_bg, "borderpad": 2})
+            layout["shapes"] = shapes
+            layout["annotations"] = annos
+            return
         for ov in overlays:
             color = ov.get("color")
             if ov.get("kind") == "line":

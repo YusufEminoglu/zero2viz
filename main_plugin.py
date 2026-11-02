@@ -56,7 +56,11 @@ class O2VizPlugin:
 
     def unload(self) -> None:
         if self._dock:
+            # remember the chart setup and remove the dock's temporary page
+            # folder before the widget goes (it is gone for good after this)
+            self._dock.cleanup()
             self.iface.removeDockWidget(self._dock)
+            self._dock.setParent(None)
             self._dock.deleteLater()
             self._dock = None
         if self.toolbar:

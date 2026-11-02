@@ -7,7 +7,7 @@ We try in that order and finally fall back to the system browser.
 """
 from __future__ import annotations
 
-# why each backend was rejected, for support/diagnostics
+# why each backend was rejected or a call failed, for support/diagnostics
 FALLBACK_LOG: list[str] = []
 
 
@@ -67,14 +67,57 @@ def run_js(kind: str, view, code: str) -> bool:
     return False
 
 
-def show_html_file(kind: str, view, path: str) -> bool:
-    """Display the HTML file; returns True if shown embedded."""
+def eval_js(kind: str, view, code: str, callback) -> bool:
+    """Run JS in the page and hand its result to ``callback(value)``.
+
+    WebEngine answers asynchronously through ``runJavaScript``'s callback;
+    WebKit's ``evaluateJavaScript`` answers at once (the callback then runs
+    before this returns). Returns False if the script could not be sent."""
+    if view is None:
+        return False
+    if kind == "webkit":
+        try:
+            value = view.page().mainFrame().evaluateJavaScript(code)
+        except Exception as exc:
+            FALLBACK_LOG.append(f"evaljs[{kind}]: {exc}")
+            return False
+        callback(value)
+        return True
+    if kind == "webengine":
+        page = view.page()
+        try:
+            try:
+                page.runJavaScript(code, callback)
+            except TypeError:  # the bindings that only take (code, worldId, callback)
+                page.runJavaScript(code, 0, callback)
+            return True
+        except Exception as exc:
+            FALLBACK_LOG.append(f"evaljs[{kind}]: {exc}")
+    return False
+
+
+def show_html_file(kind: str, view, path: str, version: int | None = None) -> bool:
+    """Display the HTML file; returns True if shown embedded.
+
+    ``version`` is appended as a query so a file rewritten in place (the dock
+    keeps one chart file) is always loaded fresh, never from a cache."""
     if view is not None:
         from qgis.PyQt.QtCore import QUrl
 
-        view.load(QUrl.fromLocalFile(path))
+        url = QUrl.fromLocalFile(path)
+        if version is not None:
+            url.setQuery(f"v={int(version)}")
+        view.load(url)
         return True
     import webbrowser
 
     webbrowser.open("file:///" + path.replace("\\", "/"))
     return False
+
+
+def show_html_text(view, html: str) -> bool:
+    """Show a small, self-contained page (an explainer card) without a file."""
+    if view is None:
+        return False
+    view.setHtml(html)
+    return True

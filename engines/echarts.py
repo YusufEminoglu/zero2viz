@@ -2,10 +2,11 @@
 """ECharts engine — Apache ECharts (Apache-2.0) vendored in ../web/echarts.min.js."""
 from __future__ import annotations
 
-import json
 import math
 
-from .base import ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, read_web, theme_of, wrap_html
+from .base import (ANIMATABLE, FACETABLE, FONT_FAMILY, ChartEngine, category_colors, colors_for,
+                   is_horizontal, is_race, options_of, read_web, script_json, theme_of,
+                   wrap_html)
 
 # chart types that carry reference lines/bands on their value axis (core.overlays)
 _OVERLAY_OK = frozenset(("bar", "lollipop", "line", "area", "scatter", "bubble"))
@@ -42,17 +43,69 @@ function __o2vizWhiskerRender(params, api) {
     { type: "line", shape: { x1: cx - half, y1: hi, x2: cx + half, y2: hi }, style: ls }
   ] };
 }
-(OPT.series || []).forEach(function (s) {
-  if (s.__render === "violin") s.renderItem = __o2vizViolinRender;
-  if (s.__render === "whisker") s.renderItem = __o2vizWhiskerRender;
-});
-if (OPT.__xnames && OPT.xAxis && OPT.xAxis.type === "value") {
-  OPT.xAxis.axisLabel = OPT.xAxis.axisLabel || {};
-  OPT.xAxis.axisLabel.formatter = function (v) {
-    return (Math.abs(v - Math.round(v)) < 1e-6 && OPT.__xnames[Math.round(v)]) || "";
-  };
+function __o2vizAttach(opt) {
+  (opt.series || []).forEach(function (s) {
+    if (s.__render === "violin") s.renderItem = __o2vizViolinRender;
+    if (s.__render === "whisker") s.renderItem = __o2vizWhiskerRender;
+  });
+  if (opt.__xnames && opt.xAxis && opt.xAxis.type === "value") {
+    opt.xAxis.axisLabel = opt.xAxis.axisLabel || {};
+    opt.xAxis.axisLabel.formatter = function (v) {
+      return (Math.abs(v - Math.round(v)) < 1e-6 && opt.__xnames[Math.round(v)]) || "";
+    };
+  }
+  return opt;
 }
+__o2vizAttach(OPT);
 chart.setOption(OPT);
+// window.o2vizExport (engines.base contract): a second, off-screen ECharts
+// instance at the requested size — the SVG renderer for "svg" (true vectors),
+// the canvas renderer for "png" — never a screenshot of the widget.
+function __o2vizExportOption() {
+  var opt = __o2vizAttach(JSON.parse(JSON.stringify(OPT)));
+  var base = opt.baseOption || opt;
+  base.animation = false;
+  [].concat(base.toolbox || []).forEach(function (t) { t.show = false; });
+  if (opt.baseOption && opt.baseOption.timeline) {
+    var cur = 0;
+    try { cur = chart.getOption().timeline[0].currentIndex || 0; } catch (e) { cur = 0; }
+    opt.baseOption.timeline.currentIndex = cur;
+    opt.baseOption.timeline.autoPlay = false;
+    opt.baseOption.timeline.show = false;
+  }
+  return opt;
+}
+window.o2vizExport = function (format, width, height, scale) {
+  return new Promise(function (resolve, reject) {
+    var holder = null, inst = null;
+    try {
+      if (format !== "svg" && format !== "png") {
+        throw new Error("Unsupported export format: " + format);
+      }
+      var w = Math.max(16, Math.round(width || chart.getWidth() || 900));
+      var h = Math.max(16, Math.round(height || chart.getHeight() || 560));
+      var ratio = format === "png" ? (scale || 1) : 1;
+      holder = document.createElement("div");
+      holder.style.cssText = "position:absolute;left:-30000px;top:0;width:" + w +
+                             "px;height:" + h + "px;";
+      document.body.appendChild(holder);
+      inst = echarts.init(holder, null, {renderer: format === "svg" ? "svg" : "canvas",
+                                         width: w, height: h, devicePixelRatio: ratio});
+      var opt = __o2vizExportOption();
+      inst.setOption(opt);
+      var bg = (opt.baseOption || opt).backgroundColor || "#ffffff";
+      resolve(format === "svg" ? inst.renderToSVGString()
+                               : inst.getDataURL({type: "png", pixelRatio: ratio,
+                                                  backgroundColor: bg,
+                                                  excludeComponents: ["toolbox"]}));
+    } catch (e) {
+      reject(e);
+    } finally {
+      if (inst) inst.dispose();
+      if (holder && holder.parentNode) holder.parentNode.removeChild(holder);
+    }
+  });
+};
 // re-measure once the embedded view has settled its size (see base.py note):
 // a single init can capture a 0-height container in QWebEngine and paint blank.
 function __o2vizFit() { try { chart.resize(); } catch (e) {} }
@@ -206,15 +259,34 @@ class EChartsEngine(ChartEngine):
     facets = FACETABLE
 
     def build_html(self, spec: dict) -> str:
+        return wrap_html(spec.get("title", ""), read_web("echarts.min.js"),
+                         _BODY % {"option": script_json(self.page_option(spec))},
+                         theme_of(spec))
+
+    def page_option(self, spec: dict) -> dict:
+        """Public: the complete option the page draws (static, timeline or
+        small multiples), with the axis options applied."""
         if spec.get("frames") and spec["type"] in self.animates:
             option = self._timeline_option(spec)
         elif spec.get("facets") and spec["type"] in self.facets:
             option = self._facet_option(spec)
         else:
             option = self.option(spec)
-        return wrap_html(spec.get("title", ""), read_web("echarts.min.js"),
-                         _BODY % {"option": json.dumps(option, ensure_ascii=False)},
-                         theme_of(spec))
+        self._finish_axes(option, spec)
+        return option
+
+    @staticmethod
+    def _finish_axes(option: dict, spec: dict) -> None:
+        """``options["reverse_x"/"reverse_y"]``: flip every x / y axis."""
+        opts = options_of(spec)
+        base = option.get("baseOption", option)
+        for key, flag in (("xAxis", opts.get("reverse_x")), ("yAxis", opts.get("reverse_y"))):
+            if not flag:
+                continue
+            axes = base.get(key)
+            for ax in (axes if isinstance(axes, list) else [axes]):
+                if isinstance(ax, dict):
+                    ax["inverse"] = not ax.get("inverse", False)
 
     def option(self, spec: dict) -> dict:
         """Public: the ECharts option for a spec (reused by the dashboard)."""
@@ -233,7 +305,9 @@ class EChartsEngine(ChartEngine):
         static = {k: v for k, v in spec.items() if k != "frames"}
 
         base = self._option(static)  # spec["data"] is already frame 0 (union-aligned)
-        self._stabilise_axes(base, spec["type"], frames.get("bounds"))
+        self._stabilise_axes(base, spec["type"], frames.get("bounds"), spec)
+        race = is_race(spec)
+        cat_key = "yAxis" if is_horizontal(spec) else "xAxis"
         if isinstance(base.get("grid"), dict):
             base["grid"]["bottom"] = max(base["grid"].get("bottom", 64), 96)
 
@@ -243,6 +317,8 @@ class EChartsEngine(ChartEngine):
         for i, fdata in enumerate(frames["datas"]):
             opt = self._option(dict(static, data=fdata))
             entry = {"series": opt["series"]}
+            if race:
+                entry[cat_key] = {"data": self._race_frame(opt["series"], fdata, spec)}
             if field:
                 entry["title"] = {"subtext": f"{field}: {labels[i]}",
                                   "subtextStyle": {"color": theme["text"],
@@ -266,7 +342,42 @@ class EChartsEngine(ChartEngine):
         }
         if field:
             base.setdefault("title", {})["subtext"] = f"{field}: {labels[0]}"
+        if race:
+            # bar-chart race: every frame carries its own category axis, ranked
+            # by that frame's values (largest first), so the bars re-sort on
+            # each step; each category keeps its colour wherever it moves
+            base[cat_key]["data"] = self._race_frame(base["series"], frames["datas"][0], spec)
         return {"baseOption": base, "options": options}
+
+    @staticmethod
+    def _race_frame(series: list, fdata: dict, spec: dict) -> list:
+        """Rank one race frame: reorder the bar series' data (largest value
+        first) with a colour pinned per category, and return the ranked
+        category list for that frame's category axis."""
+        theme = theme_of(spec)
+        palette = theme["palette"] or ["#2a8f85"]
+        cmap = category_colors(spec)
+        union = list((spec.get("frames") or {}).get("categories") or fdata.get("categories", []))
+        cats = list(fdata.get("categories", []))
+        src = (fdata.get("series") or [{}])[0]
+        vals = list(src.get("values", []))
+        ids = src.get("ids") or []
+        rank = sorted(range(len(cats)),
+                      key=lambda i: (-(vals[i] if i < len(vals) and vals[i] is not None
+                                       else float("-inf")), i))
+        bar = next((s for s in series if s.get("type") == "bar"), None)
+        if bar is not None:
+            items = []
+            for i in rank:
+                cat = cats[i]
+                slot = union.index(cat) if cat in union else i
+                items.append({"value": vals[i] if i < len(vals) else None,
+                              "__ids": ids[i] if i < len(ids) else [],
+                              "itemStyle": dict((bar.get("itemStyle") or {}),
+                                                color=cmap.get(str(cat))
+                                                or palette[slot % len(palette)])})
+            bar["data"] = items
+        return [cats[i] for i in rank]
 
     # ───────────────────────── small multiples ─────────────────────────
 
@@ -283,6 +394,7 @@ class EChartsEngine(ChartEngine):
         kind = spec["type"]
         theme = theme_of(spec)
         palette = theme["palette"] or ["#2a8f85"]
+        cmap = category_colors(spec)
         static = {k: v for k, v in spec.items() if k != "facets"}
         datas = fac["datas"]
         labels = [str(v) for v in fac.get("labels", [])]
@@ -325,10 +437,11 @@ class EChartsEngine(ChartEngine):
                              label={"show": False})
                     for item in s.get("data", []):
                         j = cats.index(item["name"]) if item["name"] in cats else 0
-                        item["itemStyle"] = {"color": palette[j % len(palette)]}
+                        item["itemStyle"] = {"color": cmap.get(str(item["name"]))
+                                             or palette[j % len(palette)]}
                     series.append(s)
                 continue
-            self._stabilise_axes(opt, kind, fac.get("bounds"))
+            self._stabilise_axes(opt, kind, fac.get("bounds"), spec)
             grids.append({"left": pct(x0 + 0.6), "top": pct(y0 + head),
                           "width": pct(cw - 1.2), "height": pct(ch - head - 1.0),
                           "containLabel": True})
@@ -346,7 +459,7 @@ class EChartsEngine(ChartEngine):
                 nm = s.get("name", "")
                 if nm not in names:
                     names.append(nm)
-                col = palette[names.index(nm) % len(palette)]
+                col = cmap.get(str(nm)) or palette[names.index(nm) % len(palette)]
                 s["xAxisIndex"] = s["yAxisIndex"] = gi
                 if s.get("stack"):
                     # ECharts stacks by id across ALL grids: keep panels apart
@@ -369,22 +482,23 @@ class EChartsEngine(ChartEngine):
                                   "data": names, "textStyle": {"color": theme["text"]}}
         return base
 
-    def _stabilise_axes(self, option: dict, kind: str, bounds) -> None:
+    def _stabilise_axes(self, option: dict, kind: str, bounds, spec: dict | None = None) -> None:
         """Fix the value axis (and, for scatter/bubble, both axes) to the
         global range so the chart doesn't rescale on every frame."""
         if not bounds:
             return
+        value_key = "xAxis" if (spec is not None and is_horizontal(spec)) else "yAxis"
         if kind in ("scatter", "bubble"):
             for key, rng in (("xAxis", bounds.get("x")), ("yAxis", bounds.get("y"))):
                 if rng and isinstance(option.get(key), dict):
                     lo, hi, step = _axis_fit(rng[0], rng[1])
                     option[key].update(min=lo, max=hi, interval=step, scale=False)
-        elif bounds.get("y") and isinstance(option.get("yAxis"), dict):
+        elif bounds.get("y") and isinstance(option.get(value_key), dict):
             lo, hi = bounds["y"]
             if kind in ("bar", "lollipop", "area", "histogram"):
                 lo = min(lo, 0.0)
             lo_p, hi_p, step = _axis_fit(lo, hi)
-            option["yAxis"].update(min=lo_p, max=hi_p, interval=step, scale=False)
+            option[value_key].update(min=lo_p, max=hi_p, interval=step, scale=False)
 
     # ───────────────────── option builder ─────────────────────
 
@@ -752,19 +866,85 @@ class EChartsEngine(ChartEngine):
         else:
             raise ValueError(f"Unsupported chart type: {kind}")
 
+        cmap = category_colors(spec)
+        if cmap:
+            self._apply_category_colors(kind, option, data, theme, cmap)
+        horizontal = is_horizontal(spec)
+        if horizontal:
+            self._make_horizontal(option)
         if spec.get("overlays") and kind in _OVERLAY_OK:
-            self._add_overlays(option, spec["overlays"], theme)
+            self._add_overlays(option, spec["overlays"], theme, horizontal)
         return option
 
-    def _add_overlays(self, option: dict, overlays: list, theme: dict) -> None:
+    @staticmethod
+    def _apply_category_colors(kind: str, option: dict, data: dict, theme: dict,
+                               cmap: dict) -> None:
+        """``options["category_colors"]``: one series colours each bar / dot /
+        slice by its category; several series colour each series by name."""
+        palette = theme["palette"] or ["#2a8f85"]
+        series = option.get("series", [])
+        if kind == "pie":
+            for s in series:
+                items = s.get("data", [])
+                cols = colors_for([it.get("name") for it in items], palette, cmap)
+                for it, col in zip(items, cols):
+                    it["itemStyle"] = dict(it.get("itemStyle") or {}, color=col)
+            return
+        named = [s for s in series if not str(s.get("name", "")).endswith(("·stem", "·σ",
+                                                                            "·lo", "·hi"))]
+        if kind in ("bar", "lollipop", "pareto") and len(named) == 1 \
+                or (kind == "lollipop" and len(series) == 2):
+            cats = data.get("categories", [])
+            cols = colors_for(cats, palette, cmap, single=palette[0])
+            for s in series:
+                if s.get("type") not in ("bar", "scatter"):
+                    continue
+                items = []
+                for i, it in enumerate(s.get("data", [])):
+                    item = dict(it) if isinstance(it, dict) else {"value": it}
+                    if i < len(cols):
+                        item["itemStyle"] = dict(item.get("itemStyle") or {}, color=cols[i])
+                    items.append(item)
+                s["data"] = items
+            return
+        for s in named:
+            col = cmap.get(str(s.get("name", "")))
+            if not col:
+                continue
+            s["itemStyle"] = dict(s.get("itemStyle") or {}, color=col)
+            if s.get("type") == "line":
+                s["lineStyle"] = dict(s.get("lineStyle") or {}, color=col)
+
+    @staticmethod
+    def _make_horizontal(option: dict) -> None:
+        """``options["horizontal"]``: swap the axes — categories on the left,
+        first category on top, bars growing to the right."""
+        cat_ax, val_ax = option.get("xAxis"), option.get("yAxis")
+        if not (isinstance(cat_ax, dict) and isinstance(val_ax, dict)):
+            return
+        cat_ax = dict(cat_ax, inverse=True, nameLocation="end", nameGap=12)
+        cat_ax["axisLabel"] = dict(cat_ax.get("axisLabel") or {}, rotate=0)
+        val_ax = dict(val_ax, nameGap=30)
+        option["xAxis"], option["yAxis"] = val_ax, cat_ax
+        if isinstance(option.get("grid"), dict):
+            option["grid"] = dict(option["grid"], left=24, containLabel=True)
+        for s in option.get("series", []):
+            style = s.get("itemStyle")
+            if isinstance(style, dict) and isinstance(style.get("borderRadius"), list):
+                style["borderRadius"] = [0, 4, 4, 0] if s.get("barWidth") != 3 else [0, 2, 2, 0]
+
+    def _add_overlays(self, option: dict, overlays: list, theme: dict,
+                      horizontal: bool = False) -> None:
         """Reference lines/bands (see core.overlays) as invisible carrier
         series: a low-z series holds the markAreas (bands sit behind the data)
-        and a high-z series the markLines (guides sit on top)."""
+        and a high-z series the markLines (guides sit on top). On horizontal
+        bars the value axis is x."""
+        axis = "xAxis" if horizontal else "yAxis"
         mark_lines, mark_areas = [], []
         for ov in overlays:
             if ov.get("kind") == "line":
                 mark_lines.append({
-                    "yAxis": ov["value"],
+                    axis: ov["value"],
                     "lineStyle": {"color": ov.get("color"),
                                   "type": ov.get("dash") or "dashed",
                                   "width": ov.get("width", 1.6)},
@@ -774,13 +954,13 @@ class EChartsEngine(ChartEngine):
                 })
             else:
                 mark_areas.append([
-                    {"yAxis": ov["lo"],
+                    {axis: ov["lo"],
                      "itemStyle": {"color": ov.get("color"),
                                    "opacity": ov.get("opacity", 0.12)},
                      "label": {"show": True, "formatter": ov.get("label", ""),
                                "position": "insideTopLeft", "color": ov.get("color"),
                                "fontFamily": FONT_FAMILY, "fontSize": 10}},
-                    {"yAxis": ov["hi"]},
+                    {axis: ov["hi"]},
                 ])
         # keep the legend to the real series (carriers must not show up there)
         real_names = [s.get("name", "") for s in option.get("series", [])
