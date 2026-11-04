@@ -48,9 +48,9 @@ def _placement_for(layer):
         over = P.Placement.OverPoint
         curved = P.Placement.Curved
     gtype = layer.geometryType()
-    if gtype == QgsWkbTypes.PointGeometry:
+    if gtype == QgsWkbTypes.GeometryType.PointGeometry:
         return around
-    if gtype == QgsWkbTypes.LineGeometry:
+    if gtype == QgsWkbTypes.GeometryType.LineGeometry:
         return curved
     return over  # polygons: centroid
 
@@ -90,8 +90,8 @@ def apply_labels(layer, *, field: str = "", expression: str = "",
         bg = QgsTextBackgroundSettings()
         bg.setEnabled(True)
         with suppress(Exception):
-            bg.setType(QgsTextBackgroundSettings.ShapeRectangle)
-            bg.setSizeType(QgsTextBackgroundSettings.SizeBuffer)
+            bg.setType(QgsTextBackgroundSettings.ShapeType.ShapeRectangle)
+            bg.setSizeType(QgsTextBackgroundSettings.SizeType.SizeBuffer)
         bg.setSize(QSizeF(1.4, 0.8))
         with suppress(Exception):
             bg.setRadii(QSizeF(1.2, 1.2))

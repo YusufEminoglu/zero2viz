@@ -35,7 +35,7 @@ except ImportError:  # pragma: no cover
 
 try:  # render-unit enum location differs across QGIS lines
     from qgis.core import QgsUnitTypes
-    _MM = QgsUnitTypes.RenderMillimeters
+    _MM = QgsUnitTypes.RenderUnit.RenderMillimeters
 except (ImportError, AttributeError):  # pragma: no cover - QGIS 4 scoped enums
     from qgis.core import Qgis
     _MM = Qgis.RenderUnit.Millimeters
@@ -74,9 +74,9 @@ def _placement_for(layer):
         around = P.Placement.AroundPoint
         line = P.Placement.Line
     gtype = layer.geometryType()
-    if gtype == QgsWkbTypes.PointGeometry:
+    if gtype == QgsWkbTypes.GeometryType.PointGeometry:
         return around
-    if gtype == QgsWkbTypes.LineGeometry:
+    if gtype == QgsWkbTypes.GeometryType.LineGeometry:
         return line
     return over  # polygons: centroid
 
@@ -85,9 +85,9 @@ def layer_has_geometry(layer) -> bool:
     """Diagrams need somewhere to draw — attribute-only tables have none."""
     try:
         return layer.geometryType() in (
-            QgsWkbTypes.PointGeometry,
-            QgsWkbTypes.LineGeometry,
-            QgsWkbTypes.PolygonGeometry,
+            QgsWkbTypes.GeometryType.PointGeometry,
+            QgsWkbTypes.GeometryType.LineGeometry,
+            QgsWkbTypes.GeometryType.PolygonGeometry,
         )
     except Exception:
         return False

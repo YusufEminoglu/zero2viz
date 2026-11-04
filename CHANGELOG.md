@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.1] - 2026-11-04
+
+### Changed
+
+- Qt6 / QGIS 4 compatibility: Qt and QGIS enum values are written in their scoped form (for example `QgsWkbTypes.GeometryType.PointGeometry`), which QGIS 3.28+ and QGIS 4 both accept; no behaviour change.
+
 ## [0.20.0] - 2026-11-02
 
 Every chart now shows the data as it is, every export is the file it says it

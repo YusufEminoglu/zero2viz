@@ -557,7 +557,7 @@ def _vector_filter():
     from qgis.core import QgsMapLayerProxyModel
 
     try:
-        return QgsMapLayerProxyModel.VectorLayer
+        return QgsMapLayerProxyModel.Filter.VectorLayer
     except AttributeError:  # QGIS 4 scoped enums
         return QgsMapLayerProxyModel.Filter.VectorLayer
 
@@ -565,7 +565,7 @@ def _vector_filter():
 def _numeric_field_filter():
     """Scoped-enum-safe numeric filter for QgsFieldComboBox (Qt5/Qt6)."""
     try:
-        return QgsFieldProxyModel.Numeric
+        return QgsFieldProxyModel.Filter.Numeric
     except AttributeError:  # QGIS 4 scoped enums
         return QgsFieldProxyModel.Filter.Numeric
 
